@@ -2,15 +2,16 @@
 
 use Illuminate\Support\Facades\Route;
 
-Route::get('/', fn() => redirect('/login'));
-Route::get('/login', fn() => view('auth.login'))->name('login');
-Route::get('/swafi', fn() => view('swafi.dashboard'))->name('swafi.dashboard');
-Route::get('/swafi/registro-individual', fn() => view('swafi.registro-individual'))->name('swafi.registro-individual');
-Route::get('/swafi/registro-masivo', fn() => view('swafi.registro-masivo'))->name('swafi.registro-masivo');
-Route::get('/swafi/valores', fn() => view('swafi.valores'))->name('swafi.valores');
-Route::get('/swafi/ubicacion', fn() => view('swafi.ubicacion'))->name('swafi.ubicacion');
-Route::get('/swafi/busqueda', fn() => view('swafi.busqueda'))->name('swafi.busqueda');
-Route::get('/swafi/reportes', fn() => view('swafi.reportes'))->name('swafi.reportes');
-Route::get('/swafi/catalogos', fn() => view('swafi.catalogos'))->name('swafi.catalogos');
-Route::get('/swafi/seguridad', fn() => view('swafi.seguridad'))->name('swafi.seguridad');
-Route::get('/swafi/expediente', fn() => view('swafi.expediente'))->name('swafi.expediente');
+Route::redirect('/', '/login');
+
+Route::view('/login', 'auth.login')->name('login');
+Route::view('/dashboard', 'swafi.dashboard')->name('dashboard');
+Route::view('/registro-individual', 'swafi.registro-individual')->name('registro-individual');
+Route::view('/registro-masivo', 'swafi.registro-masivo')->name('registro-masivo');
+Route::view('/valores-fiscales-financieros', 'swafi.valores')->name('valores');
+Route::view('/ubicacion-inventario', 'swafi.ubicacion')->name('ubicacion');
+Route::view('/busqueda-avanzada', 'swafi.busqueda')->name('busqueda');
+Route::view('/reportes', 'swafi.reportes')->name('reportes');
+Route::view('/catalogos', 'swafi.catalogos')->name('catalogos');
+Route::view('/seguridad-acceso', 'swafi.seguridad')->name('seguridad');
+Route::view('/detalle-expediente', 'swafi.expediente')->name('expediente');
