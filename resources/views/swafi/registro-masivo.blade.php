@@ -1,24 +1,30 @@
 @extends('layouts.app')
-@section('title','SWAFI | Registro masivo')
-@section('section','Registro masivo')
-@section('page_title','Carga masiva de expedientes')
+
+@section('title', 'Registro masivo | SWAFI')
+@section('page_title', 'Registro masivo')
+@section('page_subtitle', 'Carga de expedientes mediante layout Excel y validación previa')
+@section('breadcrumb', 'Registro masivo')
 @section('content')
+
 <section class="card">
-    <div class="card-head"><h3>Importación por layout</h3><div class="actions"><button class="btn btn-light">Descargar plantilla</button><button class="btn btn-primary">Procesar carga</button></div></div>
-    <div class="upload-box large">Suelta aquí el archivo Excel o layout institucional para validación.</div>
-    <div class="kpi-grid compact">
-        <div class="kpi-card"><span>Registros leídos</span><strong>1,248</strong></div>
-        <div class="kpi-card"><span>Exitosos</span><strong>1,196</strong></div>
-        <div class="kpi-card"><span>Con observación</span><strong>37</strong></div>
-        <div class="kpi-card"><span>Rechazados</span><strong>15</strong></div>
-    </div>
-    <table class="data-table">
-        <thead><tr><th>Fila</th><th>Folio</th><th>Activo</th><th>Proveedor</th><th>Estatus</th><th>Observación</th></tr></thead>
-        <tbody>
-            <tr><td>12</td><td>FAC-00124</td><td>AF-009824</td><td>Tecnología Patrimonial</td><td><span class="tag ok">Correcto</span></td><td>Sin observaciones</td></tr>
-            <tr><td>19</td><td>FAC-00131</td><td>AF-009921</td><td>Servicios Integrales</td><td><span class="tag warn">Validar</span></td><td>Falta XML adjunto</td></tr>
-            <tr><td>28</td><td>FAC-00146</td><td>AF-010015</td><td>Activos del Bajío</td><td><span class="tag bad">Error</span></td><td>RFC inválido</td></tr>
-        </tbody>
-    </table>
+  <div class="section-title"><h2>Registro masivo por layout</h2><span class="pill ok">Importación referencial</span></div>
+  <div class="list">
+    <div class="list-item"><strong>Archivo cargado</strong><span>layout_activo_fijo_marzo.xlsx</span></div>
+    <div class="list-item"><strong>Registros detectados</strong><span>240</span></div>
+    <div class="list-item"><strong>Registros correctos</strong><span>228</span></div>
+    <div class="list-item"><strong>Registros observados</strong><span>12</span></div>
+  </div>
 </section>
+<section class="card table-card" style="margin-top:20px">
+  <div class="section-title"><h2>Vista previa de validación</h2><div><span class="tab">Descargar plantilla</span><span class="tab">Validar archivo</span><span class="tab">Procesar carga</span></div></div>
+  <table>
+    <thead><tr><th>ID activo</th><th>Proveedor</th><th>Planta</th><th>Monto</th><th>Estatus</th></tr></thead>
+    <tbody>
+      <tr><td>AF-1001</td><td>ACME Industrial</td><td>Planta Marinela</td><td>$ 85,000</td><td><span class="pill ok">Aceptado</span></td></tr>
+      <tr><td>AF-1002</td><td>Equipos del Centro</td><td>Planta Tía Rosa</td><td>$ 122,300</td><td><span class="pill warn">Observado</span></td></tr>
+      <tr><td>AF-1003</td><td>Refacciones Delta</td><td>Planta Santa María</td><td>$ 48,900</td><td><span class="pill ok">Aceptado</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
 @endsection

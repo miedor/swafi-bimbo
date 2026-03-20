@@ -1,38 +1,42 @@
 @extends('layouts.app')
-@section('title','SWAFI | Dashboard')
-@section('section','Dashboard')
-@section('page_title','Panel ejecutivo')
+
+@section('title', 'Dashboard principal | SWAFI')
+@section('page_title', 'Dashboard principal')
+@section('page_subtitle', 'Resumen ejecutivo del control documental y patrimonial')
+@section('breadcrumb', 'Dashboard')
 @section('content')
-<div class="kpi-grid">
-    <div class="kpi-card"><span>Total de facturas</span><strong>12,480</strong><small>+8% este mes</small></div>
-    <div class="kpi-card"><span>Pendientes de validación</span><strong>246</strong><small>87 críticas</small></div>
-    <div class="kpi-card"><span>Activos sin ubicación</span><strong>53</strong><small>Seguimiento inmediato</small></div>
-    <div class="kpi-card"><span>Reportes generados</span><strong>118</strong><small>Últimos 30 días</small></div>
+
+<div class="grid-kpi">
+  <div class="card kpi"><div class="label">Facturas registradas</div><div class="value">12,480</div><div class="status">+ 4.7% vs mes anterior</div></div>
+  <div class="card kpi"><div class="label">Pendientes de validación</div><div class="value">186</div><div class="status">Requieren revisión documental</div></div>
+  <div class="card kpi"><div class="label">Ubicación pendiente</div><div class="value">74</div><div class="status">Activos sin localización confirmada</div></div>
+  <div class="card kpi"><div class="label">Valores incompletos</div><div class="value">53</div><div class="status">Campos fiscales/financieros faltantes</div></div>
+  <div class="card kpi"><div class="label">Reportes generados</div><div class="value">328</div><div class="status">Exportaciones del periodo</div></div>
 </div>
-<div class="content-grid two-col">
-    <section class="card">
-        <div class="card-head"><h3>Resumen operativo</h3><a href="{{ route('swafi.busqueda') }}">Ver detalle</a></div>
-        <div class="chart-placeholder bars">
-            <div style="height:55%"></div><div style="height:82%"></div><div style="height:68%"></div><div style="height:91%"></div><div style="height:40%"></div>
-        </div>
-        <p class="muted">Distribución estimada de expedientes por estatus documental.</p>
-    </section>
-    <section class="card">
-        <div class="card-head"><h3>Actividad reciente</h3><a href="{{ route('swafi.reportes') }}">Exportar</a></div>
-        <ul class="timeline">
-            <li><strong>Registro masivo</strong><span>1,240 expedientes cargados desde planta Guadalajara.</span></li>
-            <li><strong>Validación fiscal</strong><span>Se actualizaron montos y depreciación de 84 activos.</span></li>
-            <li><strong>Toma de inventario</strong><span>Almacén central cerró conciliación física del mes.</span></li>
-            <li><strong>Seguridad</strong><span>Nuevo rol Supervisor asignado a contraloría patrimonial.</span></li>
-        </ul>
-    </section>
+<div class="content-grid">
+  <section class="card chart-box">
+    <div class="section-title"><h2>Estado de expedientes</h2><a class="btn btn-secondary" href="{{ route('reportes') }}">Ver reportes</a></div>
+    <div class="chart-placeholder"><span style="height:50%"></span><span style="height:78%"></span><span style="height:62%"></span><span style="height:90%"></span><span style="height:72%"></span><span style="height:38%"></span><span style="height:85%"></span></div>
+    <div class="footer-note">Visualización referencial para el avance del prototipo.</div>
+  </section>
+  <section class="card">
+    <div class="section-title"><h2>Actividad reciente</h2><span class="pill ok">Bitácora activa</span></div>
+    <div class="list">
+      <div class="list-item"><strong>Carga masiva de 240 expedientes</strong><span>Hace 12 min</span></div>
+      <div class="list-item"><strong>Actualización de ubicación en Planta Tía Rosa</strong><span>Hace 28 min</span></div>
+      <div class="list-item"><strong>Reporte de expedientes incompletos exportado</strong><span>Hace 42 min</span></div>
+      <div class="list-item"><strong>Alta de responsable en catálogo base</strong><span>Hace 1 h</span></div>
+    </div>
+  </section>
 </div>
-<div class="content-grid three-col">
-    <a class="module-card" href="{{ route('swafi.registro-individual') }}"><h4>Registro individual</h4><p>Alta manual de expedientes con evidencia PDF y XML.</p></a>
-    <a class="module-card" href="{{ route('swafi.registro-masivo') }}"><h4>Registro masivo</h4><p>Carga por layout con validación previa y bitácora.</p></a>
-    <a class="module-card" href="{{ route('swafi.valores') }}"><h4>Valores fiscales</h4><p>Consulta y edición de importes, depreciación y vida útil.</p></a>
-    <a class="module-card" href="{{ route('swafi.ubicacion') }}"><h4>Ubicación física</h4><p>Control de planta, área y responsable del activo fijo.</p></a>
-    <a class="module-card" href="{{ route('swafi.busqueda') }}"><h4>Búsqueda avanzada</h4><p>Filtros combinados por proveedor, activo y estatus.</p></a>
-    <a class="module-card" href="{{ route('swafi.expediente') }}"><h4>Ficha de expediente</h4><p>Vista integral con trazabilidad documental y financiera.</p></a>
-</div>
+<section class="card">
+  <div class="section-title"><h2>Accesos rápidos</h2><span class="pill warn">Maquetado UI/UX</span></div>
+  <div class="quick-links">
+    <a href="{{ route('registro-individual') }}">Registro individual</a>
+    <a href="{{ route('registro-masivo') }}">Registro masivo</a>
+    <a href="{{ route('busqueda') }}">Búsqueda avanzada</a>
+    <a href="{{ route('expediente') }}">Detalle de expediente</a>
+  </div>
+</section>
+
 @endsection

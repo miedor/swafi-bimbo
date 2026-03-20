@@ -1,33 +1,29 @@
 @extends('layouts.app')
-@section('title','SWAFI | Reportes')
-@section('section','Reportes ad hoc')
-@section('page_title','Constructor de reportes')
+
+@section('title', 'Reportes ad hoc | SWAFI')
+@section('page_title', 'Reportes ad hoc')
+@section('page_subtitle', 'Generación dinámica de reportes ejecutivos y operativos')
+@section('breadcrumb', 'Reportes')
 @section('content')
-<div class="content-grid two-col">
-    <section class="card">
-        <h3>Parámetros de salida</h3>
-        <div class="form-grid two-col">
-            <label><span>Reporte</span><input type="text" value="Activos por ubicación"></label>
-            <label><span>Formato</span><input type="text" value="PDF"></label>
-            <label><span>Planta</span><input type="text" value="Todas"></label>
-            <label><span>Periodo</span><input type="text" value="Marzo 2026"></label>
-        </div>
-        <div class="actions"><button class="btn btn-light">Vista previa</button><button class="btn btn-primary">Generar</button></div>
-    </section>
-    <section class="card">
-        <h3>Reportes frecuentes</h3>
-        <ul class="simple-list">
-            <li>Facturas por planta</li>
-            <li>Expedientes incompletos</li>
-            <li>Valores fiscales y financieros</li>
-            <li>Toma de inventario</li>
-            <li>Bitácora de cambios</li>
-        </ul>
-    </section>
-</div>
+
 <section class="card">
-    <div class="chart-placeholder donuts">
-        <div></div><div></div><div></div>
-    </div>
+  <div class="section-title"><h2>Reportes ad hoc</h2><div class="tabs"><span class="tab">PDF</span><span class="tab">Excel</span><span class="tab">Vista previa</span></div></div>
+  <div class="quick-links">
+    <a href="#">Facturas por planta</a>
+    <a href="#">Activos por ubicación</a>
+    <a href="#">Expedientes incompletos</a>
+    <a href="#">Valores fiscales y financieros</a>
+  </div>
 </section>
+<section class="card table-card" style="margin-top:20px">
+  <table>
+    <thead><tr><th>Reporte</th><th>Última ejecución</th><th>Formato</th><th>Responsable</th></tr></thead>
+    <tbody>
+      <tr><td>Inventario por ubicación</td><td>19/03/2026 17:22</td><td>Excel</td><td>Analista patrimonial</td></tr>
+      <tr><td>Expedientes incompletos</td><td>19/03/2026 16:48</td><td>PDF</td><td>Contabilidad</td></tr>
+      <tr><td>Depreciación mensual</td><td>19/03/2026 15:10</td><td>Excel</td><td>Finanzas</td></tr>
+    </tbody>
+  </table>
+</section>
+
 @endsection

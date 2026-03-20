@@ -1,44 +1,31 @@
 @extends('layouts.app')
-@section('title','SWAFI | Expediente')
-@section('section','Detalle de expediente')
-@section('page_title','Ficha integral del expediente')
+
+@section('title', 'Detalle de expediente | SWAFI')
+@section('page_title', 'Detalle de expediente')
+@section('page_subtitle', 'Vista integral del expediente documental y patrimonial')
+@section('breadcrumb', 'Detalle de expediente')
 @section('content')
-<div class="content-grid two-col">
-    <section class="card detail-block">
-        <h3>Datos generales</h3>
-        <dl>
-            <div><dt>Folio</dt><dd>FAC-2026-00124</dd></div>
-            <div><dt>Proveedor</dt><dd>Tecnología Patrimonial del Centro</dd></div>
-            <div><dt>RFC</dt><dd>BIM800123AA1</dd></div>
-            <div><dt>Fecha factura</dt><dd>19/03/2026</dd></div>
-        </dl>
-    </section>
-    <section class="card detail-block">
-        <h3>Datos del activo</h3>
-        <dl>
-            <div><dt>Activo fijo</dt><dd>AF-009824</dd></div>
-            <div><dt>Serie</dt><dd>MCG-AXP-8842</dd></div>
-            <div><dt>Marca / modelo</dt><dd>Toyota / 8FBE20</dd></div>
-            <div><dt>Ubicación</dt><dd>Almacén 2 / Andén 4</dd></div>
-        </dl>
-    </section>
-    <section class="card detail-block">
-        <h3>Valores fiscales y financieros</h3>
-        <dl>
-            <div><dt>Monto fiscal</dt><dd>$482,000.00</dd></div>
-            <div><dt>Valor financiero</dt><dd>$469,500.00</dd></div>
-            <div><dt>Depreciación</dt><dd>$24,100.00</dd></div>
-            <div><dt>Vida útil</dt><dd>10 años</dd></div>
-        </dl>
-    </section>
-    <section class="card detail-block">
-        <h3>Trazabilidad</h3>
-        <ul class="simple-list">
-            <li>Alta inicial del expediente</li>
-            <li>Validación fiscal completada</li>
-            <li>Asignación de ubicación física</li>
-            <li>Carga de documentos XML y PDF</li>
-        </ul>
-    </section>
-</div>
+
+<section class="card">
+  <div class="section-title"><h2>Detalle de expediente</h2><span class="pill ok">Ficha ejecutiva</span></div>
+  <div class="tabs"><span class="tab">Datos generales</span><span class="tab">Activo fijo</span><span class="tab">Valores</span><span class="tab">Ubicación</span><span class="tab">Documentos</span><span class="tab">Historial</span></div>
+  <div class="meta-grid">
+    <div class="meta-box"><strong>Folio factura</strong><div>FAC-2026-000184</div></div>
+    <div class="meta-box"><strong>ID activo</strong><div>AF-PLT-00945</div></div>
+    <div class="meta-box"><strong>Proveedor</strong><div>ACME Industrial</div></div>
+    <div class="meta-box"><strong>Estatus</strong><div><span class="pill ok">Completo</span></div></div>
+    <div class="meta-box"><strong>Valor fiscal</strong><div>$ 185,000</div></div>
+    <div class="meta-box"><strong>Valor financiero</strong><div>$ 182,300</div></div>
+    <div class="meta-box"><strong>Ubicación física</strong><div>Línea 3 / Pasillo B</div></div>
+    <div class="meta-box"><strong>Responsable</strong><div>Jorge Méndez</div></div>
+  </div>
+</section>
+<section class="card" style="margin-top:20px">
+  <div class="list">
+    <div class="list-item"><strong>Documentos asociados</strong><span>PDF, XML, evidencia de alta</span></div>
+    <div class="list-item"><strong>Última modificación</strong><span>19/03/2026 17:44 por admin.swafi</span></div>
+    <div class="list-item"><strong>Trazabilidad</strong><span>Creación, revisión, actualización de ubicación y exportación de reporte</span></div>
+  </div>
+</section>
+
 @endsection

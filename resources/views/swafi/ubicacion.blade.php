@@ -1,36 +1,33 @@
 @extends('layouts.app')
-@section('title','SWAFI | Ubicación')
-@section('section','Ubicación e inventario')
-@section('page_title','Localización física del activo fijo')
+
+@section('title', 'Ubicación física e inventario | SWAFI')
+@section('page_title', 'Ubicación física e inventario')
+@section('page_subtitle', 'Control de localización de activos y seguimiento de toma de inventario')
+@section('breadcrumb', 'Ubicación física e inventario')
 @section('content')
-<div class="content-grid two-col">
-    <section class="card">
-        <h3>Asignación de ubicación</h3>
-        <div class="form-grid two-col">
-            <label><span>Planta</span><input type="text" value="Planta Guadalajara"></label>
-            <label><span>Área</span><input type="text" value="Almacén"></label>
-            <label><span>Edificio</span><input type="text" value="B"></label>
-            <label><span>Piso</span><input type="text" value="PB"></label>
-            <label><span>Pasillo</span><input type="text" value="4"></label>
-            <label><span>Responsable</span><input type="text" value="Jefatura de almacén"></label>
-        </div>
-    </section>
-    <section class="card">
-        <h3>Semáforo de localización</h3>
-        <div class="status-stack">
-            <div class="status-line"><span class="dot ok"></span> Localizados: 2,842</div>
-            <div class="status-line"><span class="dot warn"></span> Pendientes: 97</div>
-            <div class="status-line"><span class="dot bad"></span> No encontrados: 14</div>
-        </div>
-    </section>
-</div>
-<section class="card">
-    <table class="data-table">
-        <thead><tr><th>Activo</th><th>Descripción</th><th>Planta</th><th>Ubicación</th><th>Responsable</th><th>Estatus</th></tr></thead>
-        <tbody>
-            <tr><td>AF-009824</td><td>Montacargas eléctrico</td><td>Guadalajara</td><td>Almacén 2 / Andén 4</td><td>Jefatura almacén</td><td><span class="tag ok">Localizado</span></td></tr>
-            <tr><td>AF-010201</td><td>Servidor industrial</td><td>Toluca</td><td>Site principal</td><td>TI infraestructura</td><td><span class="tag warn">Pendiente</span></td></tr>
-        </tbody>
-    </table>
+
+<section class="card form-card">
+  <div class="section-title"><h2>Ubicación física e inventario</h2><span class="pill danger">74 pendientes</span></div>
+  <div class="form-row three">
+    <label><span>Planta</span><input value="Planta Santa María"></label>
+    <label><span>Área</span><input value="Producción"></label>
+    <label><span>Edificio / Piso</span><input value="Edificio B / Piso 1"></label>
+  </div>
+  <div class="form-row three">
+    <label><span>Pasillo</span><input value="Pasillo B"></label>
+    <label><span>Responsable</span><input value="Mantenimiento Planta"></label>
+    <label><span>Código interno</span><input value="UBI-PLT-B-14"></label>
+  </div>
 </section>
+<section class="card table-card" style="margin-top:20px">
+  <table>
+    <thead><tr><th>Activo</th><th>Ubicación</th><th>Responsable</th><th>Estatus</th></tr></thead>
+    <tbody>
+      <tr><td>AF-PLT-00945</td><td>Línea 3 / Pasillo B</td><td>Jorge Méndez</td><td><span class="pill ok">Localizado</span></td></tr>
+      <tr><td>AF-PLT-00946</td><td>Almacén temporal</td><td>María Ponce</td><td><span class="pill warn">Pendiente</span></td></tr>
+      <tr><td>AF-PLT-00947</td><td>No identificada</td><td>Sin asignar</td><td><span class="pill danger">No encontrado</span></td></tr>
+    </tbody>
+  </table>
+</section>
+
 @endsection

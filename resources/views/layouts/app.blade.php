@@ -1,55 +1,50 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>@yield('title', 'SWAFI')</title>
-    <link rel="stylesheet" href="{{ asset('swafi/css/swafi.css') }}">
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>@yield('title', 'SWAFI')</title>
+  <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi.css') }}">
 </head>
 <body>
-    @php
-        $current = request()->route()->getName();
-    @endphp
-    <div class="shell">
-        <aside class="sidebar">
-            <div class="brand">
-                <img src="{{ asset('swafi/img/logo-bimbo.jpg') }}" alt="Bimbo" class="brand-logo">
-                <div>
-                    <span class="brand-kicker">Bimbo S.A. de C.V.</span>
-                    <h1>SWAFI</h1>
-                    <p>Sistema Web de Gestión de Facturas de Activo Fijo</p>
-                </div>
-            </div>
-            <nav class="nav">
-                <a class="{{ $current === 'swafi.dashboard' ? 'active' : '' }}" href="{{ route('swafi.dashboard') }}">Dashboard</a>
-                <a class="{{ $current === 'swafi.registro-individual' ? 'active' : '' }}" href="{{ route('swafi.registro-individual') }}">Registro individual</a>
-                <a class="{{ $current === 'swafi.registro-masivo' ? 'active' : '' }}" href="{{ route('swafi.registro-masivo') }}">Registro masivo</a>
-                <a class="{{ $current === 'swafi.valores' ? 'active' : '' }}" href="{{ route('swafi.valores') }}">Valores fiscales y financieros</a>
-                <a class="{{ $current === 'swafi.ubicacion' ? 'active' : '' }}" href="{{ route('swafi.ubicacion') }}">Ubicación e inventario</a>
-                <a class="{{ $current === 'swafi.busqueda' ? 'active' : '' }}" href="{{ route('swafi.busqueda') }}">Búsqueda avanzada</a>
-                <a class="{{ $current === 'swafi.reportes' ? 'active' : '' }}" href="{{ route('swafi.reportes') }}">Reportes ad hoc</a>
-                <a class="{{ $current === 'swafi.catalogos' ? 'active' : '' }}" href="{{ route('swafi.catalogos') }}">Catálogos base</a>
-                <a class="{{ $current === 'swafi.seguridad' ? 'active' : '' }}" href="{{ route('swafi.seguridad') }}">Seguridad y acceso</a>
-                <a class="{{ $current === 'swafi.expediente' ? 'active' : '' }}" href="{{ route('swafi.expediente') }}">Detalle de expediente</a>
-            </nav>
-            <div class="sidebar-footer">
-                <a href="{{ route('login') }}">Cerrar sesión</a>
-            </div>
-        </aside>
-        <main class="content">
-            <header class="topbar">
-                <div>
-                    <div class="breadcrumb">SWAFI / @yield('section')</div>
-                    <h2>@yield('page_title')</h2>
-                </div>
-                <div class="topbar-tools">
-                    <input type="text" placeholder="Buscar expediente, activo o proveedor">
-                    <span class="pill">Administrador</span>
-                </div>
-            </header>
-            @yield('content')
-        </main>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand-panel">
+      <div class="brand-badge"><img src="{{ asset('assets/swafi/img/logo-bimbo.jpg') }}" alt="Bimbo"></div>
+      <div>
+        <span>Bimbo S.A. de C.V.</span>
+        <strong>SWAFI</strong>
+      </div>
     </div>
-    <script src="{{ asset('swafi/js/swafi.js') }}"></script>
+    <nav class="nav-group">
+      <a class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}"><span class="nav-dot"></span>Dashboard</a>
+      <a class="nav-item {{ request()->routeIs('registro-individual') ? 'active' : '' }}" href="{{ route('registro-individual') }}"><span class="nav-dot"></span>Registro individual</a>
+      <a class="nav-item {{ request()->routeIs('registro-masivo') ? 'active' : '' }}" href="{{ route('registro-masivo') }}"><span class="nav-dot"></span>Registro masivo</a>
+      <a class="nav-item {{ request()->routeIs('valores') ? 'active' : '' }}" href="{{ route('valores') }}"><span class="nav-dot"></span>Valores fiscales y financieros</a>
+      <a class="nav-item {{ request()->routeIs('ubicacion') ? 'active' : '' }}" href="{{ route('ubicacion') }}"><span class="nav-dot"></span>Ubicación e inventario</a>
+      <a class="nav-item {{ request()->routeIs('busqueda') ? 'active' : '' }}" href="{{ route('busqueda') }}"><span class="nav-dot"></span>Búsqueda avanzada</a>
+      <a class="nav-item {{ request()->routeIs('reportes') ? 'active' : '' }}" href="{{ route('reportes') }}"><span class="nav-dot"></span>Reportes ad hoc</a>
+      <a class="nav-item {{ request()->routeIs('catalogos') ? 'active' : '' }}" href="{{ route('catalogos') }}"><span class="nav-dot"></span>Catálogos base</a>
+      <a class="nav-item {{ request()->routeIs('seguridad') ? 'active' : '' }}" href="{{ route('seguridad') }}"><span class="nav-dot"></span>Seguridad y acceso</a>
+      <a class="nav-item {{ request()->routeIs('expediente') ? 'active' : '' }}" href="{{ route('expediente') }}"><span class="nav-dot"></span>Detalle de expediente</a>
+      <a class="nav-item" href="{{ route('login') }}"><span class="nav-dot"></span>Cerrar sesión</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="topbar">
+      <div class="title-wrap">
+        <h1>@yield('page_title', 'SWAFI')</h1>
+        <p>@yield('page_subtitle', 'Sistema Web de Gestión de Facturas de Activo Fijo')</p>
+      </div>
+      <div class="userbar">
+        <div class="search">Buscar expediente, activo, proveedor o ubicación...</div>
+        <div class="avatar">ED</div>
+      </div>
+    </div>
+    <div class="breadcrumb">Inicio / @yield('breadcrumb', 'Dashboard')</div>
+    @yield('content')
+  </main>
+</div>
+<script src="{{ asset('assets/swafi/js/swafi.js') }}"></script>
 </body>
 </html>

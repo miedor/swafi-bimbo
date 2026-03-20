@@ -1,25 +1,37 @@
 @extends('layouts.app')
-@section('title','SWAFI | Búsqueda')
-@section('section','Búsqueda avanzada')
-@section('page_title','Consulta por criterios')
+
+@section('title', 'Búsqueda avanzada | SWAFI')
+@section('page_title', 'Búsqueda avanzada')
+@section('page_subtitle', 'Localización por múltiples criterios del expediente y del activo')
+@section('breadcrumb', 'Búsqueda avanzada')
 @section('content')
-<section class="card">
-    <div class="filter-row wrap">
-        <input type="text" placeholder="Folio factura">
-        <input type="text" placeholder="Proveedor">
-        <input type="text" placeholder="RFC">
-        <input type="text" placeholder="Número de activo">
-        <input type="text" placeholder="Serie">
-        <input type="text" placeholder="Planta">
-        <input type="text" placeholder="Ubicación">
-        <button class="btn btn-primary">Buscar</button>
-    </div>
-    <table class="data-table">
-        <thead><tr><th>Folio</th><th>Proveedor</th><th>Activo</th><th>Serie</th><th>Planta</th><th>Estatus</th><th>Acción</th></tr></thead>
-        <tbody>
-            <tr><td>FAC-2026-00124</td><td>Tecnología Patrimonial</td><td>AF-009824</td><td>MCG-AXP-8842</td><td>Guadalajara</td><td><span class="tag ok">Completo</span></td><td><a href="{{ route('swafi.expediente') }}">Consultar</a></td></tr>
-            <tr><td>FAC-2026-00125</td><td>Servicios Integrales</td><td>AF-009825</td><td>SRV-00118</td><td>Toluca</td><td><span class="tag warn">Incompleto</span></td><td><a href="{{ route('swafi.expediente') }}">Consultar</a></td></tr>
-        </tbody>
-    </table>
+
+<section class="card form-card">
+  <div class="section-title"><h2>Búsqueda avanzada</h2><span class="pill ok">Consulta en segundos</span></div>
+  <div class="form-row three">
+    <label><span>Folio factura</span><input value="FAC-2026"></label>
+    <label><span>Proveedor</span><input value="Proveedor industrial"></label>
+    <label><span>RFC</span><input value="PIC010101ABC"></label>
+  </div>
+  <div class="form-row three">
+    <label><span>Número de activo</span><input value="AF-PLT"></label>
+    <label><span>Serie</span><input value="TRS"></label>
+    <label><span>Planta</span><input value="Santa María"></label>
+  </div>
+  <div class="form-row three">
+    <label><span>Ubicación</span><input value="Línea 3"></label>
+    <label><span>Fecha</span><input value="2026-03"></label>
+    <label><span>Estatus documental</span><select><option>Completo</option></select></label>
+  </div>
 </section>
+<section class="card table-card" style="margin-top:20px">
+  <table>
+    <thead><tr><th>Folio</th><th>Activo</th><th>Proveedor</th><th>Planta</th><th>Estatus</th><th>Acción</th></tr></thead>
+    <tbody>
+      <tr><td>FAC-184</td><td>AF-PLT-00945</td><td>ACME Industrial</td><td>Santa María</td><td><span class="pill ok">Completo</span></td><td><a href="{{ route('expediente') }}">Consultar</a></td></tr>
+      <tr><td>FAC-185</td><td>AF-PLT-00946</td><td>Equipos del Centro</td><td>Tía Rosa</td><td><span class="pill warn">Observado</span></td><td><a href="{{ route('expediente') }}">Consultar</a></td></tr>
+    </tbody>
+  </table>
+</section>
+
 @endsection

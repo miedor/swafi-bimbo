@@ -1,23 +1,21 @@
 @extends('layouts.app')
-@section('title','SWAFI | Valores')
-@section('section','Valores fiscales y financieros')
-@section('page_title','Consulta de valores fiscales y financieros')
+
+@section('title', 'Valores fiscales y financieros | SWAFI')
+@section('page_title', 'Valores fiscales y financieros')
+@section('page_subtitle', 'Consulta y control de datos contables del activo fijo')
+@section('breadcrumb', 'Valores fiscales y financieros')
 @section('content')
-<section class="card">
-    <div class="filter-row">
-        <input type="text" placeholder="Proveedor">
-        <input type="text" placeholder="Planta">
-        <input type="text" placeholder="Año">
-        <input type="text" placeholder="Tipo de activo">
-        <button class="btn btn-primary">Filtrar</button>
-    </div>
-    <table class="data-table">
-        <thead><tr><th>Folio</th><th>Activo</th><th>Valor fiscal</th><th>Depreciación</th><th>Valor en libros</th><th>Vida útil</th><th>Estatus</th></tr></thead>
-        <tbody>
-            <tr><td>FAC-2026-00124</td><td>AF-009824</td><td>$482,000.00</td><td>$24,100.00</td><td>$457,900.00</td><td>10 años</td><td><span class="tag ok">Vigente</span></td></tr>
-            <tr><td>FAC-2026-00125</td><td>AF-009825</td><td>$156,000.00</td><td>$7,800.00</td><td>$148,200.00</td><td>5 años</td><td><span class="tag warn">Revisión</span></td></tr>
-            <tr><td>FAC-2026-00126</td><td>AF-009826</td><td>$1,280,000.00</td><td>$64,000.00</td><td>$1,216,000.00</td><td>12 años</td><td><span class="tag ok">Vigente</span></td></tr>
-        </tbody>
-    </table>
+
+<section class="card table-card">
+  <div class="section-title"><h2>Valores fiscales y financieros</h2><div class="tabs"><span class="tab">Planta</span><span class="tab">Proveedor</span><span class="tab">Año</span><span class="tab">Tipo de activo</span></div></div>
+  <table>
+    <thead><tr><th>Folio</th><th>Activo</th><th>Valor fiscal</th><th>Depreciación</th><th>Valor en libros</th><th>Valor financiero</th><th>Estatus</th></tr></thead>
+    <tbody>
+      <tr><td>FAC-184</td><td>AF-PLT-00945</td><td>$ 185,000</td><td>$ 12,400</td><td>$ 172,600</td><td>$ 182,300</td><td><span class="pill ok">Completo</span></td></tr>
+      <tr><td>FAC-185</td><td>AF-PLT-00946</td><td>$ 98,500</td><td>$ 6,900</td><td>$ 91,600</td><td>$ 95,000</td><td><span class="pill warn">Revisión</span></td></tr>
+      <tr><td>FAC-186</td><td>AF-PLT-00947</td><td>$ 240,000</td><td>$ 16,500</td><td>$ 223,500</td><td>$ 236,200</td><td><span class="pill ok">Completo</span></td></tr>
+    </tbody>
+  </table>
 </section>
+
 @endsection
