@@ -129,10 +129,11 @@ input:focus,select:focus,textarea:focus{border-color:#8fb7ff;box-shadow:0 0 0 4p
 }
 
 .login-brand-logo-v1 {
-    width: 132px;
-    height: 132px;
+    width: 96px;
+    height: 96px;
     background: #ffffff;
-    border-radius: 26px;
+    border-radius: 20px;
+    padding: 8px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -141,7 +142,8 @@ input:focus,select:focus,textarea:focus{border-color:#8fb7ff;box-shadow:0 0 0 4p
 }
 
 .login-brand-logo-v1 img {
-    width: 94px;
+    width: 78px;
+    max-width: 100%;
     height: auto;
     display: block;
 }
