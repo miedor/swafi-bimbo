@@ -31,9 +31,30 @@
     <tbody>
       <tr><td>Proveedores</td><td>1,280</td><td><span class="pill ok">Activo</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
       <tr><td>Plantas</td><td>42</td><td><span class="pill ok">Activo</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
-      <tr><td>Centros de costo</td><td>315</td><td><span class="pill warn">Revisión</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
+      <tr><td>Centros de costo</td><td>315</td><td><span class="pill ok">Activo</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
     </tbody>
   </table>
+
+  <div class="table-footer">
+    <div class="table-summary">Mostrando 1–10 de 248 resultados</div>
+    <div class="table-pagination">
+      <span class="page-link disabled">Anterior</span>
+      <span class="page-link active">1</span>
+      <span class="page-link">2</span>
+      <span class="page-link">3</span>
+      <span class="page-link">Siguiente</span>
+    </div>
+    <div class="table-page-size">
+      <span>Ver</span>
+      <select>
+        <option selected>10</option>
+        <option>25</option>
+        <option>50</option>
+      </select>
+      <span>registros</span>
+    </div>
+  </div>
+
 </section>
 
 @endsection

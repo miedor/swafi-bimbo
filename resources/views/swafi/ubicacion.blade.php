@@ -25,10 +25,31 @@
     <thead><tr><th>Activo</th><th>Ubicación</th><th>Responsable</th><th>Estatus</th><th>Acciones</th></tr></thead>
     <tbody>
       <tr><td>AF-PLT-00945</td><td>Línea 3 / Pasillo B</td><td>Jorge Méndez</td><td><span class="pill ok">Localizado</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
-      <tr><td>AF-PLT-00946</td><td>Almacén temporal</td><td>María Ponce</td><td><span class="pill warn">Pendiente</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
+      <tr><td>AF-PLT-00946</td><td>Almacén temporal</td><td>María Ponce</td><td><span class="pill ok">Activo</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
       <tr><td>AF-PLT-00947</td><td>No identificada</td><td>Sin asignar</td><td><span class="pill danger">No encontrado</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
     </tbody>
   </table>
+
+  <div class="table-footer">
+    <div class="table-summary">Mostrando 1–10 de 248 resultados</div>
+    <div class="table-pagination">
+      <span class="page-link disabled">Anterior</span>
+      <span class="page-link active">1</span>
+      <span class="page-link">2</span>
+      <span class="page-link">3</span>
+      <span class="page-link">Siguiente</span>
+    </div>
+    <div class="table-page-size">
+      <span>Ver</span>
+      <select>
+        <option selected>10</option>
+        <option>25</option>
+        <option>50</option>
+      </select>
+      <span>registros</span>
+    </div>
+  </div>
+
 </section>
 
 @endsection

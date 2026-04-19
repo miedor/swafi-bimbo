@@ -13,10 +13,31 @@
     <thead><tr><th>Folio</th><th>Activo</th><th>Valor fiscal</th><th>Depreciación</th><th>Valor en libros</th><th>Valor financiero</th><th>Estatus</th><th>Acciones</th></tr></thead>
     <tbody>
       <tr><td>FAC-184</td><td>AF-PLT-00945</td><td>$ 185,000</td><td>$ 12,400</td><td>$ 172,600</td><td>$ 182,300</td><td><span class="pill ok">Completo</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
-      <tr><td>FAC-185</td><td>AF-PLT-00946</td><td>$ 98,500</td><td>$ 6,900</td><td>$ 91,600</td><td>$ 95,000</td><td><span class="pill warn">Revisión</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
+      <tr><td>FAC-185</td><td>AF-PLT-00946</td><td>$ 98,500</td><td>$ 6,900</td><td>$ 91,600</td><td>$ 95,000</td><td><span class="pill ok">Activo</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
       <tr><td>FAC-186</td><td>AF-PLT-00947</td><td>$ 240,000</td><td>$ 16,500</td><td>$ 223,500</td><td>$ 236,200</td><td><span class="pill ok">Completo</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
     </tbody>
   </table>
+
+  <div class="table-footer">
+    <div class="table-summary">Mostrando 1–10 de 248 resultados</div>
+    <div class="table-pagination">
+      <span class="page-link disabled">Anterior</span>
+      <span class="page-link active">1</span>
+      <span class="page-link">2</span>
+      <span class="page-link">3</span>
+      <span class="page-link">Siguiente</span>
+    </div>
+    <div class="table-page-size">
+      <span>Ver</span>
+      <select>
+        <option selected>10</option>
+        <option>25</option>
+        <option>50</option>
+      </select>
+      <span>registros</span>
+    </div>
+  </div>
+
 </section>
 
 @endsection

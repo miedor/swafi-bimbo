@@ -29,9 +29,30 @@
     <thead><tr><th>Folio</th><th>Activo</th><th>Proveedor</th><th>Planta</th><th>Estatus</th><th>Acciones</th></tr></thead>
     <tbody>
       <tr><td>FAC-184</td><td>AF-PLT-00945</td><td>ACME Industrial</td><td>Santa María</td><td><span class="pill ok">Completo</span></td><td><div class="table-actions"><a href="{{ route('expediente') }}">Consultar</a><a href="{{ route('registro-individual') }}">Editar</a><a href="#">Eliminar</a></div></td></tr>
-      <tr><td>FAC-185</td><td>AF-PLT-00946</td><td>Equipos del Centro</td><td>Tía Rosa</td><td><span class="pill warn">Observado</span></td><td><div class="table-actions"><a href="{{ route('expediente') }}">Consultar</a><a href="{{ route('registro-individual') }}">Editar</a><a href="#">Eliminar</a></div></td></tr>
+      <tr><td>FAC-185</td><td>AF-PLT-00946</td><td>Equipos del Centro</td><td>Tía Rosa</td><td><span class="pill ok">Completo</span></td><td><div class="table-actions"><a href="{{ route('expediente') }}">Consultar</a><a href="{{ route('registro-individual') }}">Editar</a><a href="#">Eliminar</a></div></td></tr>
     </tbody>
   </table>
+
+  <div class="table-footer">
+    <div class="table-summary">Mostrando 1–10 de 248 resultados</div>
+    <div class="table-pagination">
+      <span class="page-link disabled">Anterior</span>
+      <span class="page-link active">1</span>
+      <span class="page-link">2</span>
+      <span class="page-link">3</span>
+      <span class="page-link">Siguiente</span>
+    </div>
+    <div class="table-page-size">
+      <span>Ver</span>
+      <select>
+        <option selected>10</option>
+        <option>25</option>
+        <option>50</option>
+      </select>
+      <span>registros</span>
+    </div>
+  </div>
+
 </section>
 
 @endsection

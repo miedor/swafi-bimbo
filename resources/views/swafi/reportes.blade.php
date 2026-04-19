@@ -24,6 +24,27 @@
       <tr><td>Depreciación mensual</td><td>19/03/2026 15:10</td><td>Excel</td><td>Finanzas</td></tr>
     </tbody>
   </table>
+
+  <div class="table-footer">
+    <div class="table-summary">Mostrando 1–10 de 248 resultados</div>
+    <div class="table-pagination">
+      <span class="page-link disabled">Anterior</span>
+      <span class="page-link active">1</span>
+      <span class="page-link">2</span>
+      <span class="page-link">3</span>
+      <span class="page-link">Siguiente</span>
+    </div>
+    <div class="table-page-size">
+      <span>Ver</span>
+      <select>
+        <option selected>10</option>
+        <option>25</option>
+        <option>50</option>
+      </select>
+      <span>registros</span>
+    </div>
+  </div>
+
 </section>
 
 @endsection
