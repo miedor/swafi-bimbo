@@ -346,3 +346,12 @@ input:focus,select:focus,textarea:focus{border-color:#8fb7ff;box-shadow:0 0 0 4p
         align-items: flex-start;
     }
 }
+
+
+.userbar-compact{justify-content:flex-end}
+.action-group{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px}
+.action-group-spaced{margin-bottom:18px}
+.tab-danger{background:#fee2e2;color:#991b1b}
+.table-actions{display:flex;gap:10px;flex-wrap:wrap}
+.table-actions a{color:#184f9b;font-weight:700}
+.table-actions a:last-child{color:#991b1b}
