@@ -1,12 +1,16 @@
 <?php
 
+use App\Http\Controllers\RegistroIndividualController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login');
 
 Route::view('/login', 'auth.login')->name('login');
 Route::view('/dashboard', 'swafi.dashboard')->name('dashboard');
-Route::view('/registro-individual', 'swafi.registro-individual')->name('registro-individual');
+
+Route::get('/registro-individual', [RegistroIndividualController::class, 'create'])->name('registro-individual');
+Route::post('/registro-individual', [RegistroIndividualController::class, 'store'])->name('registro-individual.store');
+
 Route::view('/registro-masivo', 'swafi.registro-masivo')->name('registro-masivo');
 Route::view('/valores-fiscales-financieros', 'swafi.valores')->name('valores');
 Route::view('/ubicacion-inventario', 'swafi.ubicacion')->name('ubicacion');
