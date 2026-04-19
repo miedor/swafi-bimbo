@@ -26,10 +26,10 @@
 </section>
 <section class="card table-card" style="margin-top:20px">
   <table>
-    <thead><tr><th>Folio</th><th>Activo</th><th>Proveedor</th><th>Planta</th><th>Estatus</th><th>Acción</th></tr></thead>
+    <thead><tr><th>Folio</th><th>Activo</th><th>Proveedor</th><th>Planta</th><th>Estatus</th><th>Acciones</th></tr></thead>
     <tbody>
-      <tr><td>FAC-184</td><td>AF-PLT-00945</td><td>ACME Industrial</td><td>Santa María</td><td><span class="pill ok">Completo</span></td><td><a href="{{ route('expediente') }}">Consultar</a></td></tr>
-      <tr><td>FAC-185</td><td>AF-PLT-00946</td><td>Equipos del Centro</td><td>Tía Rosa</td><td><span class="pill warn">Observado</span></td><td><a href="{{ route('expediente') }}">Consultar</a></td></tr>
+      <tr><td>FAC-184</td><td>AF-PLT-00945</td><td>ACME Industrial</td><td>Santa María</td><td><span class="pill ok">Completo</span></td><td><div class="table-actions"><a href="{{ route('expediente') }}">Consultar</a><a href="{{ route('registro-individual') }}">Editar</a><a href="#">Eliminar</a></div></td></tr>
+      <tr><td>FAC-185</td><td>AF-PLT-00946</td><td>Equipos del Centro</td><td>Tía Rosa</td><td><span class="pill warn">Observado</span></td><td><div class="table-actions"><a href="{{ route('expediente') }}">Consultar</a><a href="{{ route('registro-individual') }}">Editar</a><a href="#">Eliminar</a></div></td></tr>
     </tbody>
   </table>
 </section>

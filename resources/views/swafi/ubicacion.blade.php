@@ -18,14 +18,15 @@
     <label><span>Responsable</span><input value="Mantenimiento Planta"></label>
     <label><span>Código interno</span><input value="UBI-PLT-B-14"></label>
   </div>
+  <div class="action-group"><span class="tab">Guardar</span><span class="tab">Editar</span><span class="tab tab-danger">Eliminar</span><span class="tab">Registrar toma</span></div>
 </section>
 <section class="card table-card" style="margin-top:20px">
   <table>
-    <thead><tr><th>Activo</th><th>Ubicación</th><th>Responsable</th><th>Estatus</th></tr></thead>
+    <thead><tr><th>Activo</th><th>Ubicación</th><th>Responsable</th><th>Estatus</th><th>Acciones</th></tr></thead>
     <tbody>
-      <tr><td>AF-PLT-00945</td><td>Línea 3 / Pasillo B</td><td>Jorge Méndez</td><td><span class="pill ok">Localizado</span></td></tr>
-      <tr><td>AF-PLT-00946</td><td>Almacén temporal</td><td>María Ponce</td><td><span class="pill warn">Pendiente</span></td></tr>
-      <tr><td>AF-PLT-00947</td><td>No identificada</td><td>Sin asignar</td><td><span class="pill danger">No encontrado</span></td></tr>
+      <tr><td>AF-PLT-00945</td><td>Línea 3 / Pasillo B</td><td>Jorge Méndez</td><td><span class="pill ok">Localizado</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
+      <tr><td>AF-PLT-00946</td><td>Almacén temporal</td><td>María Ponce</td><td><span class="pill warn">Pendiente</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
+      <tr><td>AF-PLT-00947</td><td>No identificada</td><td>Sin asignar</td><td><span class="pill danger">No encontrado</span></td><td><div class="table-actions"><a href="#">Consultar</a><a href="#">Editar</a><a href="#">Eliminar</a></div></td></tr>
     </tbody>
   </table>
 </section>

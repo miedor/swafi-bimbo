@@ -2,7 +2,7 @@
 
 @section('title', 'Registro individual | SWAFI')
 @section('page_title', 'Registro individual')
-@section('page_subtitle', 'Captura manual y validación de expedientes de activo fijo')
+@section('page_subtitle', 'Captura manual y mantenimiento del expediente de activo fijo')
 @section('breadcrumb', 'Registro individual')
 @section('content')
 
@@ -38,7 +38,7 @@
     <label><span>Documento PDF/XML</span><input value="factura_184.pdf, factura_184.xml"></label>
   </div>
   <label><span>Observaciones</span><textarea>Expediente capturado para fines demostrativos del prototipo UI/UX.</textarea></label>
-  <div class="tabs"><span class="tab">Guardar</span><span class="tab">Cancelar</span><span class="tab">Validar</span><span class="tab">Vista previa</span></div>
+  <div class="action-group"><span class="tab">Guardar</span><span class="tab">Editar</span><span class="tab tab-danger">Eliminar</span><span class="tab">Cancelar</span><span class="tab">Vista previa</span></div>
 </section>
 
 @endsection

@@ -8,6 +8,7 @@
 
 <section class="card">
   <div class="section-title"><h2>Detalle de expediente</h2><span class="pill ok">Ficha ejecutiva</span></div>
+  <div class="action-group action-group-spaced"><span class="tab">Editar</span><span class="tab tab-danger">Eliminar</span><span class="tab">Descargar</span></div>
   <div class="tabs"><span class="tab">Datos generales</span><span class="tab">Activo fijo</span><span class="tab">Valores</span><span class="tab">Ubicación</span><span class="tab">Documentos</span><span class="tab">Historial</span></div>
   <div class="meta-grid">
     <div class="meta-box"><strong>Folio factura</strong><div>FAC-2026-000184</div></div>
