@@ -36,8 +36,7 @@
         <h1>@yield('page_title', 'SWAFI')</h1>
         <p>@yield('page_subtitle', 'Sistema Web de Gestión de Facturas de Activo Fijo')</p>
       </div>
-      <div class="userbar">
-        <div class="search">Buscar expediente, activo, proveedor o ubicación...</div>
+      <div class="userbar userbar-compact">
         <div class="avatar">ED</div>
       </div>
     </div>
