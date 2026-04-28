@@ -15,8 +15,38 @@
     <div class="list-item"><strong>Registros observados</strong><span>12</span></div>
   </div>
 </section>
+
 <section class="card table-card" style="margin-top:20px">
-  <div class="section-title"><h2>Vista previa de validación</h2><div><span class="tab">Descargar plantilla</span><span class="tab">Validar archivo</span><span class="tab">Procesar carga</span></div></div>
+  <div class="section-title">
+    <h2>Consulta y vista previa de carga</h2>
+    <div class="tabs">
+      <span class="tab">Descargar plantilla</span>
+      <span class="tab">Validar archivo</span>
+      <span class="tab">Procesar carga</span>
+      <span class="tab">Exportar observados</span>
+    </div>
+  </div>
+
+  <div class="query-toolbar">
+    <div class="query-grid query-grid-four">
+      <label><span>ID activo desde</span><input value="AF-1000"></label>
+      <label><span>ID activo hasta</span><input value="AF-1999"></label>
+      <label><span>Monto desde</span><input type="number" step="0.01" value="10000"></label>
+      <label><span>Monto hasta</span><input type="number" step="0.01" value="200000"></label>
+    </div>
+    <div class="query-grid query-grid-four">
+      <label><span>Planta</span><select><option>Todas</option><option>Planta Marinela</option><option>Planta Tía Rosa</option><option>Planta Santa María</option></select></label>
+      <label><span>Estatus de carga</span><select><option>Todos</option><option>Aceptado</option><option>Observado</option><option>Rechazado</option></select></label>
+      <label><span>Fecha carga desde</span><input type="date" value="2026-03-01"></label>
+      <label><span>Fecha carga hasta</span><input type="date" value="2026-03-31"></label>
+    </div>
+    <div class="action-group">
+      <span class="tab">Consultar</span>
+      <span class="tab">Limpiar filtros</span>
+      <span class="tab">Exportar consulta</span>
+    </div>
+  </div>
+
   <table>
     <thead><tr><th>ID activo</th><th>Proveedor</th><th>Planta</th><th>Monto</th><th>Estatus</th></tr></thead>
     <tbody>
@@ -45,7 +75,6 @@
       <span>registros</span>
     </div>
   </div>
-
 </section>
 
 @endsection

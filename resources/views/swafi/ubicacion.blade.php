@@ -20,7 +20,36 @@
   </div>
   <div class="action-group"><span class="tab">Guardar</span><span class="tab">Editar</span><span class="tab tab-danger">Eliminar</span><span class="tab">Registrar toma</span></div>
 </section>
+
 <section class="card table-card" style="margin-top:20px">
+  <div class="section-title">
+    <h2>Consulta de ubicación e inventario</h2>
+    <div class="tabs">
+      <span class="tab">Exportar Excel</span>
+      <span class="tab">Exportar PDF</span>
+    </div>
+  </div>
+
+  <div class="query-toolbar">
+    <div class="query-grid query-grid-four">
+      <label><span>Planta</span><select><option>Todas</option><option>Santa María</option><option>Tía Rosa</option></select></label>
+      <label><span>Área</span><select><option>Todas</option><option>Producción</option><option>Almacén</option></select></label>
+      <label><span>Activo desde</span><input value="AF-PLT-00001"></label>
+      <label><span>Activo hasta</span><input value="AF-PLT-99999"></label>
+    </div>
+    <div class="query-grid query-grid-four">
+      <label><span>Fecha inventario desde</span><input type="date" value="2026-03-01"></label>
+      <label><span>Fecha inventario hasta</span><input type="date" value="2026-03-31"></label>
+      <label><span>Estatus ubicación</span><select><option>Todos</option><option>Localizado</option><option>No encontrado</option></select></label>
+      <label><span>Responsable</span><input value="Jorge"></label>
+    </div>
+    <div class="action-group">
+      <span class="tab">Consultar</span>
+      <span class="tab">Limpiar filtros</span>
+      <span class="tab">Exportar consulta</span>
+    </div>
+  </div>
+
   <table>
     <thead><tr><th>Activo</th><th>Ubicación</th><th>Responsable</th><th>Estatus</th><th>Acciones</th></tr></thead>
     <tbody>
@@ -49,7 +78,6 @@
       <span>registros</span>
     </div>
   </div>
-
 </section>
 
 @endsection
