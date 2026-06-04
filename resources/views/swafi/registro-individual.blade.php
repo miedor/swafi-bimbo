@@ -9,21 +9,19 @@
 <section class="card form-card">
     <div class="section-title">
         <h2>Registro individual de expedientes</h2>
-        <div>
-            <a class="btn btn-secondary" href="{{ route('dashboard') }}">Volver al dashboard</a>
-        </div>
+        <a class="btn btn-secondary" href="{{ route('dashboard') }}">Volver al dashboard</a>
     </div>
 
     @if (session('success'))
-        <div style="margin-bottom:16px; padding:12px 16px; background:#e8f7ea; color:#1f6b2a; border-radius:12px;">
+        <div class="alert-compact" style="background:#e8f7ea; color:#1f6b2a;">
             {{ session('success') }}
         </div>
     @endif
 
     @if ($errors->any())
-        <div style="margin-bottom:16px; padding:12px 16px; background:#fdeaea; color:#8a1f1f; border-radius:12px;">
+        <div class="alert-compact" style="background:#fdeaea; color:#8a1f1f;">
             <strong>Se encontraron errores:</strong>
-            <ul style="margin:8px 0 0 18px;">
+            <ul style="margin:6px 0 0 18px;">
                 @foreach ($errors->all() as $error)
                     <li>{{ $error }}</li>
                 @endforeach
@@ -31,10 +29,16 @@
         </div>
     @endif
 
-    <form method="POST" action="{{ route('registro-individual.store') }}">
+    <div class="form-actions-sticky">
+        <button type="submit" form="registroIndividualForm" class="tab" style="border:none; cursor:pointer;">Guardar</button>
+        <a class="tab" href="{{ route('registro-individual') }}">Limpiar</a>
+        <span class="tab">Vista previa</span>
+    </div>
+
+    <form id="registroIndividualForm" method="POST" action="{{ route('registro-individual.store') }}">
         @csrf
 
-        <div class="form-row three">
+        <div class="field-grid-compact">
             <label>
                 <span>Folio de factura</span>
                 <input name="folio_factura" value="{{ old('folio_factura') }}">
@@ -49,9 +53,7 @@
                 <span>Fecha de factura</span>
                 <input type="date" name="fecha_factura" value="{{ old('fecha_factura') }}">
             </label>
-        </div>
 
-        <div class="form-row three">
             <label>
                 <span>Número de activo fijo</span>
                 <input name="numero_activo" value="{{ old('numero_activo') }}">
@@ -76,10 +78,22 @@
                     @endforeach
                 </select>
             </label>
-        </div>
 
-        <div class="form-row three">
             <label>
+                <span>Monto fiscal</span>
+                <input type="number" step="0.01" name="monto_factura" value="{{ old('monto_factura') }}">
+            </label>
+
+            <label>
+                <span>Moneda</span>
+                <select name="moneda">
+                    <option value="MXN" @selected(old('moneda', 'MXN') == 'MXN')>MXN</option>
+                    <option value="USD" @selected(old('moneda') == 'USD')>USD</option>
+                    <option value="EUR" @selected(old('moneda') == 'EUR')>EUR</option>
+                </select>
+            </label>
+
+            <label class="span-2">
                 <span>Descripción del bien</span>
                 <input name="descripcion" value="{{ old('descripcion') }}">
             </label>
@@ -93,9 +107,7 @@
                 <span>Marca</span>
                 <input name="marca" value="{{ old('marca') }}">
             </label>
-        </div>
 
-        <div class="form-row three">
             <label>
                 <span>Modelo</span>
                 <input name="modelo" value="{{ old('modelo') }}">
@@ -114,22 +126,6 @@
                     <option value="traslado" @selected(old('estatus_operativo') == 'traslado')>Traslado</option>
                 </select>
             </label>
-        </div>
-
-        <div class="form-row three">
-            <label>
-                <span>Monto fiscal</span>
-                <input type="number" step="0.01" name="monto_factura" value="{{ old('monto_factura') }}">
-            </label>
-
-            <label>
-                <span>Moneda</span>
-                <select name="moneda">
-                    <option value="MXN" @selected(old('moneda', 'MXN') == 'MXN')>MXN</option>
-                    <option value="USD" @selected(old('moneda') == 'USD')>USD</option>
-                    <option value="EUR" @selected(old('moneda') == 'EUR')>EUR</option>
-                </select>
-            </label>
 
             <label>
                 <span>Centro de costo</span>
@@ -140,9 +136,7 @@
                     @endforeach
                 </select>
             </label>
-        </div>
 
-        <div class="form-row three">
             <label>
                 <span>Planta o sucursal</span>
                 <select name="planta_id">
@@ -172,24 +166,16 @@
                     @endforeach
                 </select>
             </label>
-        </div>
 
-        <div class="form-row">
-            <label>
+            <label class="span-2">
                 <span>Documento PDF/XML (separa con comas)</span>
                 <input name="documentos_referencia" value="{{ old('documentos_referencia') }}" placeholder="factura_184.pdf, factura_184.xml">
             </label>
-        </div>
 
-        <label>
-            <span>Observaciones</span>
-            <textarea name="observaciones">{{ old('observaciones') }}</textarea>
-        </label>
-
-        <div class="tabs">
-            <button type="submit" class="tab" style="border:none; cursor:pointer;">Guardar</button>
-            <a class="tab" href="{{ route('registro-individual') }}">Limpiar</a>
-            <span class="tab">Vista previa</span>
+            <label class="span-2">
+                <span>Observaciones</span>
+                <textarea name="observaciones">{{ old('observaciones') }}</textarea>
+            </label>
         </div>
     </form>
 </section>
