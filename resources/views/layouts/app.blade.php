@@ -18,15 +18,32 @@
     </div>
     <nav class="nav-group">
       <a class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}"><span class="nav-dot"></span>Dashboard</a>
-      <a class="nav-item {{ request()->routeIs('registro-individual') ? 'active' : '' }}" href="{{ route('registro-individual') }}"><span class="nav-dot"></span>Registro individual</a>
-      <a class="nav-item {{ request()->routeIs('registro-masivo') ? 'active' : '' }}" href="{{ route('registro-masivo') }}"><span class="nav-dot"></span>Registro masivo</a>
-      <a class="nav-item {{ request()->routeIs('valores') ? 'active' : '' }}" href="{{ route('valores') }}"><span class="nav-dot"></span>Valores fiscales y financieros</a>
-      <a class="nav-item {{ request()->routeIs('ubicacion') ? 'active' : '' }}" href="{{ route('ubicacion') }}"><span class="nav-dot"></span>Ubicación e inventario</a>
-      <a class="nav-item {{ request()->routeIs('busqueda') ? 'active' : '' }}" href="{{ route('busqueda') }}"><span class="nav-dot"></span>Búsqueda avanzada</a>
-      <a class="nav-item {{ request()->routeIs('reportes') ? 'active' : '' }}" href="{{ route('reportes') }}"><span class="nav-dot"></span>Reportes ad hoc</a>
-      <a class="nav-item {{ request()->routeIs('catalogos') ? 'active' : '' }}" href="{{ route('catalogos') }}"><span class="nav-dot"></span>Catálogos base</a>
-      <a class="nav-item {{ request()->routeIs('seguridad') ? 'active' : '' }}" href="{{ route('seguridad') }}"><span class="nav-dot"></span>Seguridad y acceso</a>
-      <a class="nav-item {{ request()->routeIs('expediente') ? 'active' : '' }}" href="{{ route('expediente') }}"><span class="nav-dot"></span>Detalle de expediente</a>
+
+      <details class="nav-module" {{ request()->routeIs('registro-individual') || request()->routeIs('registro-masivo') || request()->routeIs('expediente') ? 'open' : '' }}>
+        <summary><span class="nav-dot"></span>M01 Expedientes</summary>
+        <a class="nav-item {{ request()->routeIs('registro-individual') ? 'active' : '' }}" href="{{ route('registro-individual') }}">Registro individual</a>
+        <a class="nav-item {{ request()->routeIs('registro-masivo') ? 'active' : '' }}" href="{{ route('registro-masivo') }}">Registro masivo</a>
+        <a class="nav-item {{ request()->routeIs('expediente') ? 'active' : '' }}" href="{{ route('expediente') }}">Detalle de expediente</a>
+      </details>
+
+      <details class="nav-module" {{ request()->routeIs('valores') || request()->routeIs('ubicacion') ? 'open' : '' }}>
+        <summary><span class="nav-dot"></span>M02 Control activo</summary>
+        <a class="nav-item {{ request()->routeIs('valores') ? 'active' : '' }}" href="{{ route('valores') }}">Valores fiscales y financieros</a>
+        <a class="nav-item {{ request()->routeIs('ubicacion') ? 'active' : '' }}" href="{{ route('ubicacion') }}">Ubicación e inventario</a>
+      </details>
+
+      <details class="nav-module" {{ request()->routeIs('busqueda') || request()->routeIs('reportes') ? 'open' : '' }}>
+        <summary><span class="nav-dot"></span>M03 Consultas</summary>
+        <a class="nav-item {{ request()->routeIs('busqueda') ? 'active' : '' }}" href="{{ route('busqueda') }}">Búsqueda avanzada</a>
+        <a class="nav-item {{ request()->routeIs('reportes') ? 'active' : '' }}" href="{{ route('reportes') }}">Reportes ad hoc</a>
+      </details>
+
+      <details class="nav-module" {{ request()->routeIs('catalogos') || request()->routeIs('seguridad') ? 'open' : '' }}>
+        <summary><span class="nav-dot"></span>M04 Administración</summary>
+        <a class="nav-item {{ request()->routeIs('catalogos') ? 'active' : '' }}" href="{{ route('catalogos') }}">Catálogos base</a>
+        <a class="nav-item {{ request()->routeIs('seguridad') ? 'active' : '' }}" href="{{ route('seguridad') }}">Seguridad y acceso</a>
+      </details>
+
       <a class="nav-item" href="{{ route('login') }}"><span class="nav-dot"></span>Cerrar sesión</a>
     </nav>
   </aside>
