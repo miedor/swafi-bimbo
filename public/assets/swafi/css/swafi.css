@@ -547,3 +547,178 @@ textarea{min-height:70px;}
   .query-grid-four{grid-template-columns:1fr;}
   .topbar{align-items:flex-start;}
 }
+
+/* ===== AJUSTE REGISTRO INDIVIDUAL: DISEÑO POR PESTAÑAS PARA REDUCIR SCROLL ===== */
+.swafi-compact-page{
+  padding:12px 14px !important;
+}
+.compact-page-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+  margin-bottom:10px;
+  padding-bottom:10px;
+  border-bottom:1px solid #e7eef8;
+}
+.compact-page-header h2{
+  margin:0;
+  font-size:18px;
+  line-height:1.15;
+  color:#16304d;
+}
+.compact-page-header p{
+  margin:3px 0 0;
+  font-size:12px;
+  color:#64748b;
+}
+.compact-actions{
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+  flex:0 0 auto;
+}
+.compact-actions .btn{
+  min-height:34px;
+  padding:8px 12px;
+  font-size:12px;
+  border-radius:10px;
+}
+.alert-success-compact{
+  background:#e8f7ea;
+  color:#1f6b2a;
+}
+.alert-error-compact{
+  background:#fdeaea;
+  color:#8a1f1f;
+}
+.alert-compact ul{
+  margin:5px 0 0 18px;
+}
+.compact-tabs-form{
+  display:block;
+}
+.compact-tab-radio{
+  position:absolute;
+  opacity:0;
+  pointer-events:none;
+}
+.compact-tabs-nav{
+  display:grid;
+  grid-template-columns:repeat(4,minmax(0,1fr));
+  gap:8px;
+  margin-bottom:10px;
+}
+.compact-tabs-nav label{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:36px;
+  padding:8px 10px;
+  border:1px solid #dbe5f1;
+  border-radius:12px;
+  background:#f8fbff;
+  color:#184f9b;
+  font-size:12px;
+  font-weight:800;
+  cursor:pointer;
+  text-align:center;
+  transition:background .15s ease, color .15s ease, border-color .15s ease;
+}
+.compact-tabs-nav label:hover{
+  border-color:#9dc4ff;
+  background:#edf4ff;
+}
+#tab-factura:checked ~ .compact-tabs-nav label[for="tab-factura"],
+#tab-activo:checked ~ .compact-tabs-nav label[for="tab-activo"],
+#tab-control:checked ~ .compact-tabs-nav label[for="tab-control"],
+#tab-documentos:checked ~ .compact-tabs-nav label[for="tab-documentos"]{
+  background:#184f9b;
+  border-color:#184f9b;
+  color:#ffffff;
+}
+.compact-tab-panels{
+  border:1px solid #e1eaf6;
+  border-radius:16px;
+  background:#ffffff;
+  padding:12px;
+}
+.compact-panel{
+  display:none;
+  margin:0;
+  padding:0;
+  border:0;
+}
+#tab-factura:checked ~ .compact-tab-panels .panel-factura,
+#tab-activo:checked ~ .compact-tab-panels .panel-activo,
+#tab-control:checked ~ .compact-tab-panels .panel-control,
+#tab-documentos:checked ~ .compact-tab-panels .panel-documentos{
+  display:block;
+}
+.compact-panel legend{
+  display:block;
+  width:100%;
+  margin:0 0 10px;
+  padding:0 0 8px;
+  border-bottom:1px solid #e7eef8;
+  color:#16304d;
+  font-size:14px;
+  font-weight:800;
+}
+.compact-field-grid{
+  display:grid;
+  gap:10px;
+  align-items:start;
+}
+.compact-field-grid-4{
+  grid-template-columns:repeat(4,minmax(0,1fr));
+}
+.compact-field-grid-2{
+  grid-template-columns:1.1fr .9fr;
+}
+.compact-field-grid .span-2{
+  grid-column:span 2;
+}
+.compact-field-grid .span-4{
+  grid-column:1 / -1;
+}
+.compact-field-grid label{
+  display:block;
+  margin:0;
+}
+.compact-field-grid label span{
+  display:block;
+  margin:0 0 4px;
+  font-size:12px;
+  font-weight:800;
+  color:#1e3356;
+}
+.compact-field-grid input,
+.compact-field-grid select,
+.compact-field-grid textarea{
+  width:100%;
+  min-height:36px;
+  padding:8px 10px;
+  border-radius:10px;
+  font-size:13px;
+}
+.compact-field-grid textarea{
+  min-height:74px;
+  resize:vertical;
+}
+@media (max-width:1200px){
+  .compact-field-grid-4{grid-template-columns:repeat(3,minmax(0,1fr));}
+  .compact-field-grid .span-2{grid-column:span 2;}
+  .compact-field-grid .span-4{grid-column:1 / -1;}
+}
+@media (max-width:900px){
+  .compact-page-header{flex-direction:column;align-items:stretch;}
+  .compact-actions{justify-content:flex-start;}
+  .compact-tabs-nav{grid-template-columns:repeat(2,minmax(0,1fr));}
+  .compact-field-grid-4,
+  .compact-field-grid-2{grid-template-columns:1fr;}
+  .compact-field-grid .span-2,
+  .compact-field-grid .span-4{grid-column:1 / -1;}
+}
