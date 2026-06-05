@@ -135,9 +135,9 @@
 
     /*
       Ajuste final menú lateral:
-      - Botones más hacia la izquierda.
-      - Se reserva espacio a la derecha para que la flecha no se corte.
-      - El botón se distingue claramente como grupo desplegable.
+      - Nombres de módulos visibles completos.
+      - Texto permitido en dos líneas.
+      - Flecha desplegable siempre visible.
       - No altera rutas, controladores, modelos ni vistas internas.
     */
 
@@ -151,21 +151,16 @@
 
     .nav-module-button {
       width: calc(100% - 26px) !important;
-      min-height: 42px !important;
+      min-height: 48px !important;
       box-sizing: border-box !important;
 
       display: flex !important;
       align-items: center !important;
       justify-content: space-between !important;
 
-      gap: 8px !important;
-      padding: 9px 8px 9px 12px !important;
+      gap: 7px !important;
+      padding: 8px 8px 8px 11px !important;
 
-      /*
-        Este margen es el ajuste clave:
-        - margin-left negativo: recorre el botón hacia la izquierda.
-        - margin-right amplio: deja espacio para que la flecha no se corte.
-      */
       margin: 8px 30px 6px -4px !important;
 
       border: 1px solid rgba(255, 255, 255, .42) !important;
@@ -175,9 +170,9 @@
       color: #172033 !important;
 
       font-family: inherit !important;
-      font-size: 14px !important;
-      font-weight: 800 !important;
-      line-height: 1.15 !important;
+      font-size: 13px !important;
+      font-weight: 850 !important;
+      line-height: 1.12 !important;
       text-align: left !important;
 
       cursor: pointer !important;
@@ -213,23 +208,28 @@
     }
 
     .nav-module-label {
-      display: inline-flex !important;
+      display: grid !important;
+      grid-template-columns: 18px minmax(0, 1fr) !important;
       align-items: center !important;
-      gap: 8px !important;
+      column-gap: 8px !important;
 
       min-width: 0 !important;
       flex: 1 1 auto !important;
-      overflow: hidden !important;
+      overflow: visible !important;
     }
 
     .nav-module-label span {
       display: block !important;
       min-width: 0 !important;
-      max-width: 140px !important;
+      max-width: 132px !important;
 
-      white-space: nowrap !important;
-      overflow: hidden !important;
-      text-overflow: ellipsis !important;
+      white-space: normal !important;
+      overflow: visible !important;
+      text-overflow: clip !important;
+
+      line-height: 1.12 !important;
+      word-break: normal !important;
+      overflow-wrap: normal !important;
     }
 
     .nav-module-button .nav-icon-module {
