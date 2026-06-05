@@ -135,38 +135,57 @@
 
     /*
       Ajuste final menú lateral:
-      - Botones desplazados más hacia la izquierda.
-      - Módulos completos dentro del ancho del sidebar.
-      - Flecha desplegable visible al extremo derecho.
+      - Botones más hacia la izquierda.
+      - Se reserva espacio a la derecha para que la flecha no se corte.
+      - El botón se distingue claramente como grupo desplegable.
       - No altera rutas, controladores, modelos ni vistas internas.
     */
 
     .nav-group {
+      overflow-x: visible !important;
+    }
+
+    .sidebar {
       overflow-x: hidden !important;
     }
 
     .nav-module-button {
-      width: calc(100% - 2px) !important;
-      min-height: 40px !important;
+      width: calc(100% - 26px) !important;
+      min-height: 42px !important;
+      box-sizing: border-box !important;
+
       display: flex !important;
       align-items: center !important;
       justify-content: space-between !important;
-      gap: 6px !important;
-      padding: 9px 5px 9px 10px !important;
-      margin: 8px 1px 5px 1px !important;
-      border: 1px solid rgba(255, 255, 255, .38) !important;
-      border-radius: 12px !important;
-      background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(242,247,255,.92)) !important;
+
+      gap: 8px !important;
+      padding: 9px 8px 9px 12px !important;
+
+      /*
+        Este margen es el ajuste clave:
+        - margin-left negativo: recorre el botón hacia la izquierda.
+        - margin-right amplio: deja espacio para que la flecha no se corte.
+      */
+      margin: 8px 30px 6px -4px !important;
+
+      border: 1px solid rgba(255, 255, 255, .42) !important;
+      border-radius: 13px !important;
+
+      background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(242,247,255,.94)) !important;
       color: #172033 !important;
+
       font-family: inherit !important;
       font-size: 14px !important;
       font-weight: 800 !important;
       line-height: 1.15 !important;
       text-align: left !important;
+
       cursor: pointer !important;
+
       box-shadow:
         0 8px 16px rgba(2, 20, 48, .12),
-        inset 0 1px 0 rgba(255,255,255,.75) !important;
+        inset 0 1px 0 rgba(255,255,255,.78) !important;
+
       transition:
         transform .16s ease,
         background .16s ease,
@@ -177,15 +196,17 @@
     .nav-module-button:hover {
       transform: translateY(-1px);
       background: linear-gradient(135deg, #ffffff, #edf4ff) !important;
-      border-color: rgba(255, 255, 255, .55) !important;
+      border-color: rgba(255, 255, 255, .58) !important;
+
       box-shadow:
         0 10px 20px rgba(2, 20, 48, .16),
-        inset 0 1px 0 rgba(255,255,255,.85) !important;
+        inset 0 1px 0 rgba(255,255,255,.88) !important;
     }
 
     .nav-module-button.is-open {
       background: linear-gradient(135deg, #ffffff, #e9f2ff) !important;
-      border-color: rgba(255, 255, 255, .65) !important;
+      border-color: rgba(255, 255, 255, .68) !important;
+
       box-shadow:
         0 10px 22px rgba(2, 20, 48, .18),
         inset 4px 0 0 #2b74d6 !important;
@@ -195,14 +216,17 @@
       display: inline-flex !important;
       align-items: center !important;
       gap: 8px !important;
+
       min-width: 0 !important;
       flex: 1 1 auto !important;
+      overflow: hidden !important;
     }
 
     .nav-module-label span {
       display: block !important;
       min-width: 0 !important;
-      max-width: 168px !important;
+      max-width: 140px !important;
+
       white-space: nowrap !important;
       overflow: hidden !important;
       text-overflow: ellipsis !important;
@@ -212,6 +236,7 @@
       width: 17px !important;
       height: 17px !important;
       min-width: 17px !important;
+      flex: 0 0 17px !important;
       color: #6f819d !important;
     }
 
@@ -224,12 +249,19 @@
       width: 24px !important;
       height: 24px !important;
       min-width: 24px !important;
+      flex: 0 0 24px !important;
+
       padding: 4px !important;
+      box-sizing: border-box !important;
+
       border-radius: 999px !important;
       color: #ffffff !important;
       background: #174f9a !important;
+
       box-shadow: 0 4px 10px rgba(23, 79, 154, .26) !important;
+
       transform: rotate(-90deg) !important;
+
       transition:
         transform .18s ease,
         background .18s ease,
@@ -243,16 +275,24 @@
     }
 
     .nav-submenu {
-      width: calc(100% - 2px) !important;
+      width: calc(100% - 26px) !important;
+      box-sizing: border-box !important;
+
       display: grid !important;
       gap: 6px !important;
+
       padding-left: 0 !important;
-      margin: 6px 1px 10px 1px !important;
+      margin: 6px 30px 10px -4px !important;
+
       overflow: hidden !important;
       max-height: 0 !important;
       opacity: 0 !important;
       visibility: hidden !important;
-      transition: max-height .22s ease, opacity .18s ease, visibility .18s ease !important;
+
+      transition:
+        max-height .22s ease,
+        opacity .18s ease,
+        visibility .18s ease !important;
     }
 
     .nav-submenu.is-open {
