@@ -17,26 +17,6 @@
     padding-bottom: 18px !important;
 }
 
-.topbar {
-    margin-bottom: 6px !important;
-}
-
-.topbar h1 {
-    font-size: 28px !important;
-    line-height: 1.1 !important;
-    margin-bottom: 4px !important;
-}
-
-.topbar p {
-    font-size: 13px !important;
-    margin: 0 !important;
-}
-
-.breadcrumb {
-    margin-bottom: 10px !important;
-    font-size: 12px !important;
-}
-
 .ri-shell {
     background: #ffffff;
     border: 1px solid #dce7f5;
@@ -85,7 +65,7 @@
     justify-content: flex-end;
     align-items: center;
     flex-wrap: wrap;
-    min-width: 320px;
+    min-width: 220px;
 }
 
 .ri-btn {
@@ -118,12 +98,6 @@
     background: #edf4ff;
     color: #154f9b;
     border-color: #edf4ff;
-}
-
-.ri-btn-outline {
-    background: #ffffff;
-    color: #154f9b;
-    border-color: #d7e4f4;
 }
 
 .ri-message {
@@ -274,11 +248,6 @@
     line-height: 1.35;
 }
 
-.ri-footer-actions {
-    display: none;
-}
-
-/* Pantallas medianas */
 @media (max-width: 1280px) {
     .ri-grid {
         grid-template-columns: 1fr 1fr;
@@ -297,7 +266,6 @@
     }
 }
 
-/* Tablets */
 @media (max-width: 980px) {
     .ri-header {
         grid-template-columns: 1fr;
@@ -317,7 +285,6 @@
     }
 }
 
-/* Celulares */
 @media (max-width: 680px) {
     .main {
         padding: 12px !important;
@@ -372,7 +339,6 @@
             <div class="ri-actions">
                 <button type="submit" class="ri-btn ri-btn-primary">Guardar</button>
                 <a class="ri-btn ri-btn-soft" href="{{ route('registro-individual') }}">Limpiar</a>
-                <a class="ri-btn ri-btn-outline" href="{{ route('dashboard') }}">Dashboard</a>
             </div>
         </div>
 
