@@ -134,23 +134,24 @@
     }
 
     /*
-      Ajuste visual solicitado:
-      Los módulos principales se ven como botones compactos,
-      menos anchos que el sidebar, para identificar claramente
-      que son grupos desplegables.
+      Ajuste final menú lateral:
+      - Botones más a la izquierda.
+      - Texto completo visible.
+      - Flecha claramente visible.
+      - Sin alterar rutas ni estructura del proyecto.
     */
     .nav-module-button {
-      width: calc(100% - 34px) !important;
-      min-height: 38px !important;
+      width: calc(100% - 18px) !important;
+      min-height: 40px !important;
       display: flex !important;
       align-items: center !important;
       justify-content: space-between !important;
-      gap: 10px !important;
-      padding: 9px 11px !important;
-      margin: 8px 17px 5px 17px !important;
-      border: 1px solid rgba(255, 255, 255, .26) !important;
+      gap: 8px !important;
+      padding: 9px 9px 9px 12px !important;
+      margin: 8px 9px 5px 9px !important;
+      border: 1px solid rgba(255, 255, 255, .32) !important;
       border-radius: 12px !important;
-      background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(242,247,255,.90)) !important;
+      background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(242,247,255,.92)) !important;
       color: #172033 !important;
       font-family: inherit !important;
       font-size: 14px !important;
@@ -160,7 +161,7 @@
       cursor: pointer !important;
       box-shadow:
         0 8px 16px rgba(2, 20, 48, .12),
-        inset 0 1px 0 rgba(255,255,255,.70) !important;
+        inset 0 1px 0 rgba(255,255,255,.75) !important;
       transition:
         transform .16s ease,
         background .16s ease,
@@ -171,15 +172,15 @@
     .nav-module-button:hover {
       transform: translateY(-1px);
       background: linear-gradient(135deg, #ffffff, #edf4ff) !important;
-      border-color: rgba(255, 255, 255, .45) !important;
+      border-color: rgba(255, 255, 255, .50) !important;
       box-shadow:
         0 10px 20px rgba(2, 20, 48, .16),
-        inset 0 1px 0 rgba(255,255,255,.80) !important;
+        inset 0 1px 0 rgba(255,255,255,.85) !important;
     }
 
     .nav-module-button.is-open {
       background: linear-gradient(135deg, #ffffff, #e9f2ff) !important;
-      border-color: rgba(255, 255, 255, .55) !important;
+      border-color: rgba(255, 255, 255, .60) !important;
       box-shadow:
         0 10px 22px rgba(2, 20, 48, .18),
         inset 4px 0 0 #2b74d6 !important;
@@ -190,18 +191,23 @@
       align-items: center !important;
       gap: 8px !important;
       min-width: 0 !important;
+      flex: 1 1 auto !important;
     }
 
     .nav-module-label span {
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      display: block !important;
+      min-width: 0 !important;
+      max-width: 150px !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
     }
 
     .nav-module-button .nav-icon-module {
       width: 17px !important;
       height: 17px !important;
-      color: #7b8da8 !important;
+      min-width: 17px !important;
+      color: #6f819d !important;
     }
 
     .nav-module-button.is-open .nav-icon-module,
@@ -210,28 +216,33 @@
     }
 
     .nav-module-arrow-icon {
-      width: 18px !important;
-      height: 18px !important;
-      min-width: 18px !important;
-      padding: 3px !important;
+      width: 22px !important;
+      height: 22px !important;
+      min-width: 22px !important;
+      padding: 4px !important;
       border-radius: 999px !important;
-      color: #174f9a !important;
-      background: rgba(23, 79, 154, .09) !important;
+      color: #ffffff !important;
+      background: #174f9a !important;
+      box-shadow: 0 4px 10px rgba(23, 79, 154, .22) !important;
       transform: rotate(-90deg) !important;
-      transition: transform .18s ease, background .18s ease !important;
+      transition:
+        transform .18s ease,
+        background .18s ease,
+        box-shadow .18s ease !important;
     }
 
     .nav-module-button.is-open .nav-module-arrow-icon {
       transform: rotate(0deg) !important;
-      background: rgba(23, 79, 154, .15) !important;
+      background: #0f3f7c !important;
+      box-shadow: 0 5px 12px rgba(15, 63, 124, .30) !important;
     }
 
     .nav-submenu {
-      width: calc(100% - 34px) !important;
+      width: calc(100% - 18px) !important;
       display: grid !important;
       gap: 6px !important;
       padding-left: 0 !important;
-      margin: 6px 17px 10px 17px !important;
+      margin: 6px 9px 10px 9px !important;
       overflow: hidden !important;
       max-height: 0 !important;
       opacity: 0 !important;
