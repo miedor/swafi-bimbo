@@ -135,21 +135,26 @@
 
     /*
       Ajuste final menú lateral:
-      - Botones más a la izquierda.
-      - Texto completo visible.
-      - Flecha claramente visible.
-      - Sin alterar rutas ni estructura del proyecto.
+      - Botones desplazados más hacia la izquierda.
+      - Módulos completos dentro del ancho del sidebar.
+      - Flecha desplegable visible al extremo derecho.
+      - No altera rutas, controladores, modelos ni vistas internas.
     */
+
+    .nav-group {
+      overflow-x: hidden !important;
+    }
+
     .nav-module-button {
-      width: calc(100% - 18px) !important;
+      width: calc(100% - 2px) !important;
       min-height: 40px !important;
       display: flex !important;
       align-items: center !important;
       justify-content: space-between !important;
-      gap: 8px !important;
-      padding: 9px 9px 9px 12px !important;
-      margin: 8px 9px 5px 9px !important;
-      border: 1px solid rgba(255, 255, 255, .32) !important;
+      gap: 6px !important;
+      padding: 9px 5px 9px 10px !important;
+      margin: 8px 1px 5px 1px !important;
+      border: 1px solid rgba(255, 255, 255, .38) !important;
       border-radius: 12px !important;
       background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(242,247,255,.92)) !important;
       color: #172033 !important;
@@ -172,7 +177,7 @@
     .nav-module-button:hover {
       transform: translateY(-1px);
       background: linear-gradient(135deg, #ffffff, #edf4ff) !important;
-      border-color: rgba(255, 255, 255, .50) !important;
+      border-color: rgba(255, 255, 255, .55) !important;
       box-shadow:
         0 10px 20px rgba(2, 20, 48, .16),
         inset 0 1px 0 rgba(255,255,255,.85) !important;
@@ -180,7 +185,7 @@
 
     .nav-module-button.is-open {
       background: linear-gradient(135deg, #ffffff, #e9f2ff) !important;
-      border-color: rgba(255, 255, 255, .60) !important;
+      border-color: rgba(255, 255, 255, .65) !important;
       box-shadow:
         0 10px 22px rgba(2, 20, 48, .18),
         inset 4px 0 0 #2b74d6 !important;
@@ -197,7 +202,7 @@
     .nav-module-label span {
       display: block !important;
       min-width: 0 !important;
-      max-width: 150px !important;
+      max-width: 168px !important;
       white-space: nowrap !important;
       overflow: hidden !important;
       text-overflow: ellipsis !important;
@@ -216,14 +221,14 @@
     }
 
     .nav-module-arrow-icon {
-      width: 22px !important;
-      height: 22px !important;
-      min-width: 22px !important;
+      width: 24px !important;
+      height: 24px !important;
+      min-width: 24px !important;
       padding: 4px !important;
       border-radius: 999px !important;
       color: #ffffff !important;
       background: #174f9a !important;
-      box-shadow: 0 4px 10px rgba(23, 79, 154, .22) !important;
+      box-shadow: 0 4px 10px rgba(23, 79, 154, .26) !important;
       transform: rotate(-90deg) !important;
       transition:
         transform .18s ease,
@@ -234,15 +239,15 @@
     .nav-module-button.is-open .nav-module-arrow-icon {
       transform: rotate(0deg) !important;
       background: #0f3f7c !important;
-      box-shadow: 0 5px 12px rgba(15, 63, 124, .30) !important;
+      box-shadow: 0 5px 12px rgba(15, 63, 124, .34) !important;
     }
 
     .nav-submenu {
-      width: calc(100% - 18px) !important;
+      width: calc(100% - 2px) !important;
       display: grid !important;
       gap: 6px !important;
       padding-left: 0 !important;
-      margin: 6px 9px 10px 9px !important;
+      margin: 6px 1px 10px 1px !important;
       overflow: hidden !important;
       max-height: 0 !important;
       opacity: 0 !important;
