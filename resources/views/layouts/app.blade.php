@@ -54,14 +54,6 @@
   <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-icons.css') }}?v={{ file_exists(public_path('assets/swafi/css/swafi-icons.css')) ? filemtime(public_path('assets/swafi/css/swafi-icons.css')) : time() }}">
 
   <style>
-    /* =========================================================
-       SWAFI - Ajustes de navegación y encabezado fijo
-       Objetivo:
-       1. Mantener título visible al hacer scroll.
-       2. Reubicar botón Dashboard más hacia la izquierda.
-       3. Restaurar menú lateral desplegable/contraíble.
-       ========================================================= */
-
     .app-shell {
       min-height: 100vh;
     }
@@ -142,34 +134,55 @@
     }
 
     /*
-      Menú lateral desplegable.
-      Se conservan las clases actuales y los iconos existentes.
+      Ajuste visual solicitado:
+      Los módulos principales se ven como botones compactos,
+      menos anchos que el sidebar, para identificar claramente
+      que son grupos desplegables.
     */
     .nav-module-button {
-      width: 100% !important;
+      width: calc(100% - 34px) !important;
+      min-height: 38px !important;
       display: flex !important;
       align-items: center !important;
       justify-content: space-between !important;
       gap: 10px !important;
-      padding: 10px 12px !important;
-      margin-top: 6px !important;
-      border: 1px solid rgba(255,255,255,.14) !important;
-      border-radius: 0 !important;
-      background: rgba(255,255,255,.92) !important;
+      padding: 9px 11px !important;
+      margin: 8px 17px 5px 17px !important;
+      border: 1px solid rgba(255, 255, 255, .26) !important;
+      border-radius: 12px !important;
+      background: linear-gradient(135deg, rgba(255,255,255,.96), rgba(242,247,255,.90)) !important;
       color: #172033 !important;
       font-family: inherit !important;
-      font-size: 15px !important;
-      font-weight: 700 !important;
-      line-height: 1.2 !important;
+      font-size: 14px !important;
+      font-weight: 800 !important;
+      line-height: 1.15 !important;
       text-align: left !important;
       cursor: pointer !important;
-      transition: background .15s ease, border-color .15s ease, color .15s ease !important;
+      box-shadow:
+        0 8px 16px rgba(2, 20, 48, .12),
+        inset 0 1px 0 rgba(255,255,255,.70) !important;
+      transition:
+        transform .16s ease,
+        background .16s ease,
+        box-shadow .16s ease,
+        border-color .16s ease !important;
     }
 
-    .nav-module-button:hover,
+    .nav-module-button:hover {
+      transform: translateY(-1px);
+      background: linear-gradient(135deg, #ffffff, #edf4ff) !important;
+      border-color: rgba(255, 255, 255, .45) !important;
+      box-shadow:
+        0 10px 20px rgba(2, 20, 48, .16),
+        inset 0 1px 0 rgba(255,255,255,.80) !important;
+    }
+
     .nav-module-button.is-open {
-      background: #f8fafc !important;
-      border-color: rgba(255,255,255,.24) !important;
+      background: linear-gradient(135deg, #ffffff, #e9f2ff) !important;
+      border-color: rgba(255, 255, 255, .55) !important;
+      box-shadow:
+        0 10px 22px rgba(2, 20, 48, .18),
+        inset 4px 0 0 #2b74d6 !important;
     }
 
     .nav-module-label {
@@ -185,24 +198,40 @@
       text-overflow: ellipsis;
     }
 
+    .nav-module-button .nav-icon-module {
+      width: 17px !important;
+      height: 17px !important;
+      color: #7b8da8 !important;
+    }
+
+    .nav-module-button.is-open .nav-icon-module,
+    .nav-module-button:hover .nav-icon-module {
+      color: #174f9a !important;
+    }
+
     .nav-module-arrow-icon {
-      width: 15px !important;
-      height: 15px !important;
-      min-width: 15px !important;
-      color: #9fb4d0 !important;
+      width: 18px !important;
+      height: 18px !important;
+      min-width: 18px !important;
+      padding: 3px !important;
+      border-radius: 999px !important;
+      color: #174f9a !important;
+      background: rgba(23, 79, 154, .09) !important;
       transform: rotate(-90deg) !important;
-      transition: transform .18s ease !important;
+      transition: transform .18s ease, background .18s ease !important;
     }
 
     .nav-module-button.is-open .nav-module-arrow-icon {
       transform: rotate(0deg) !important;
+      background: rgba(23, 79, 154, .15) !important;
     }
 
     .nav-submenu {
+      width: calc(100% - 34px) !important;
       display: grid !important;
       gap: 6px !important;
       padding-left: 0 !important;
-      margin: 6px 0 8px !important;
+      margin: 6px 17px 10px 17px !important;
       overflow: hidden !important;
       max-height: 0 !important;
       opacity: 0 !important;
@@ -217,7 +246,9 @@
     }
 
     .nav-submenu .nav-item {
-      padding-left: 18px !important;
+      padding-left: 16px !important;
+      padding-right: 12px !important;
+      border-radius: 12px !important;
     }
 
     .nav-item {
