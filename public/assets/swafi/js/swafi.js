@@ -1,6 +1,7 @@
 document.addEventListener('DOMContentLoaded', () => {
   /*
-   * Navegación demo existente
+   * Navegación demo existente.
+   * Se conserva para no afectar el comportamiento previo del prototipo.
    */
   document.querySelectorAll('[data-demo-nav]').forEach((btn) => {
     btn.addEventListener('click', (event) => {
@@ -15,10 +16,9 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   /*
-   * Menú lateral desplegable por módulos
-   * - Permite abrir/cerrar cada módulo.
-   * - Conserva el estado en localStorage.
-   * - Si hay una página activa dentro de un módulo, ese módulo inicia abierto.
+   * Menú lateral desplegable por módulos.
+   * Permite abrir y cerrar M01, M02, M03 y M04.
+   * Conserva el estado por navegador con localStorage.
    */
   const storageKey = 'swafi.sidebar.modules';
   const toggles = document.querySelectorAll('[data-nav-toggle]');
@@ -52,15 +52,16 @@ document.addEventListener('DOMContentLoaded', () => {
       localStorage.setItem(storageKey, JSON.stringify(savedState));
     } catch (error) {
       /*
-       * Si el navegador bloquea localStorage, el menú sigue funcionando
-       * durante la sesión actual.
+       * Si el navegador bloquea localStorage,
+       * el menú sigue funcionando durante la sesión.
        */
     }
   };
 
   /*
-   * Aplica el estado guardado. Si el grupo ya viene abierto desde Blade
-   * por tener una ruta activa, se respeta como prioridad.
+   * Al cargar la página:
+   * - Si el módulo contiene la página actual, inicia abierto.
+   * - Si no, recupera el último estado guardado.
    */
   groups.forEach((group) => {
     const moduleId = group.getAttribute('data-nav-group');
@@ -74,6 +75,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     if (hasActiveItem) {
       setModuleState(moduleId, true);
+      saveModuleState(moduleId, true);
       return;
     }
 
@@ -82,6 +84,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 
+  /*
+   * Evento de clic para abrir/cerrar módulos.
+   */
   toggles.forEach((toggle) => {
     toggle.addEventListener('click', () => {
       const moduleId = toggle.getAttribute('data-nav-toggle');
