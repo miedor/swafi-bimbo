@@ -1,11 +1,31 @@
 <?php
 
+use App\Http\Controllers\AuthController;
 use App\Http\Controllers\RegistroIndividualController;
 use Illuminate\Support\Facades\Route;
 
 Route::redirect('/', '/login');
 
-Route::view('/login', 'auth.login')->name('login');
+/*
+|--------------------------------------------------------------------------
+| Autenticación SWAFI
+|--------------------------------------------------------------------------
+| Se sustituye el acceso visual directo por un flujo controlado:
+| - GET /login: muestra el formulario de acceso.
+| - POST /login: valida usuario, contraseña y reCAPTCHA v3.
+| - GET /logout: limpia sesión y regresa al login.
+*/
+
+Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
+Route::post('/login', [AuthController::class, 'login'])->name('login.post');
+Route::get('/logout', [AuthController::class, 'logout'])->name('logout');
+
+/*
+|--------------------------------------------------------------------------
+| Páginas principales SWAFI
+|--------------------------------------------------------------------------
+*/
+
 Route::view('/dashboard', 'swafi.dashboard')->name('dashboard');
 
 Route::get('/registro-individual', [RegistroIndividualController::class, 'create'])->name('registro-individual');
