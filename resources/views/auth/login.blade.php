@@ -28,6 +28,42 @@
 
     <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi.css') }}?v={{ filemtime(public_path('assets/swafi/css/swafi.css')) }}">
     <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-icons.css') }}?v={{ file_exists(public_path('assets/swafi/css/swafi-icons.css')) ? filemtime(public_path('assets/swafi/css/swafi-icons.css')) : time() }}">
+
+    @if(config('services.recaptcha.site_key'))
+        <script src="https://www.google.com/recaptcha/api.js?render={{ config('services.recaptcha.site_key') }}"></script>
+    @endif
+
+    <style>
+        .login-alert-v1 {
+            margin-bottom: 16px;
+            padding: 12px 14px;
+            border-radius: 14px;
+            background: #fff1f2;
+            border: 1px solid #fecdd3;
+            color: #9f1239;
+            font-size: 14px;
+            font-weight: 700;
+        }
+
+        .login-alert-v1 p {
+            margin: 0;
+        }
+
+        .login-alert-v1 p + p {
+            margin-top: 6px;
+        }
+
+        .recaptcha-note-v1 {
+            margin-top: 12px;
+            color: #64748b;
+            font-size: 12px;
+            line-height: 1.45;
+        }
+
+        .recaptcha-note-v1 strong {
+            color: #174f9a;
+        }
+    </style>
 </head>
 
 <body class="login-page-v1 swafi-login-executive">
@@ -87,44 +123,102 @@
                     </div>
                 </div>
 
-                <form class="login-form-v1 login-form-executive" action="{{ url('/dashboard') }}" method="GET">
-                    <div class="form-group-v1 form-group-icon">
-                        <label for="usuario">
-                            {!! $loginIcon('user', 'field-label-icon') !!}
-                            <span>Usuario</span>
-                        </label>
-                        <div class="input-with-icon">
-                            {!! $loginIcon('user', 'input-icon') !!}
-                            <input id="usuario" name="usuario" type="text" value="admin.swafi" autocomplete="username">
+                <div>
+                    @if ($errors->any())
+                        <div class="login-alert-v1">
+                            @foreach ($errors->all() as $error)
+                                <p>{{ $error }}</p>
+                            @endforeach
                         </div>
-                    </div>
+                    @endif
 
-                    <div class="form-group-v1 form-group-icon">
-                        <label for="password">
-                            {!! $loginIcon('lock', 'field-label-icon') !!}
-                            <span>Contraseña</span>
-                        </label>
-                        <div class="input-with-icon">
-                            {!! $loginIcon('lock', 'input-icon') !!}
-                            <input id="password" name="password" type="password" value="12345678" autocomplete="current-password">
+                    <form id="loginForm" class="login-form-v1 login-form-executive" action="{{ route('login.post') }}" method="POST">
+                        @csrf
+
+                        <input type="hidden" name="g-recaptcha-response" id="g-recaptcha-response">
+
+                        <div class="form-group-v1 form-group-icon">
+                            <label for="usuario">
+                                {!! $loginIcon('user', 'field-label-icon') !!}
+                                <span>Usuario</span>
+                            </label>
+                            <div class="input-with-icon">
+                                {!! $loginIcon('user', 'input-icon') !!}
+                                <input
+                                    id="usuario"
+                                    name="usuario"
+                                    type="text"
+                                    value="{{ old('usuario', 'admin.swafi') }}"
+                                    autocomplete="username"
+                                    required
+                                >
+                            </div>
                         </div>
-                    </div>
 
-                    <div class="login-options-v1">
-                        <label class="check-v1">
-                            <input type="checkbox" checked>
-                            <span>Recordar sesión</span>
-                        </label>
-                        <a href="#">¿Olvidaste tu contraseña?</a>
-                    </div>
+                        <div class="form-group-v1 form-group-icon">
+                            <label for="password">
+                                {!! $loginIcon('lock', 'field-label-icon') !!}
+                                <span>Contraseña</span>
+                            </label>
+                            <div class="input-with-icon">
+                                {!! $loginIcon('lock', 'input-icon') !!}
+                                <input
+                                    id="password"
+                                    name="password"
+                                    type="password"
+                                    value="12345678"
+                                    autocomplete="current-password"
+                                    required
+                                >
+                            </div>
+                        </div>
 
-                    <button type="submit" class="btn-login-v1 btn-login-executive">
-                        {!! $loginIcon('login', 'login-button-icon') !!}
-                        <span>Iniciar sesión</span>
-                    </button>
-                </form>
+                        <div class="login-options-v1">
+                            <label class="check-v1">
+                                <input type="checkbox" checked>
+                                <span>Recordar sesión</span>
+                            </label>
+                            <a href="#">¿Olvidaste tu contraseña?</a>
+                        </div>
+
+                        <button type="submit" class="btn-login-v1 btn-login-executive">
+                            {!! $loginIcon('login', 'login-button-icon') !!}
+                            <span>Iniciar sesión</span>
+                        </button>
+
+                        <p class="recaptcha-note-v1">
+                            <strong>Protección activa:</strong> este acceso utiliza reCAPTCHA v3 para reducir intentos automatizados sin afectar la experiencia del usuario.
+                        </p>
+                    </form>
+                </div>
             </div>
         </section>
     </div>
+
+    @if(config('services.recaptcha.site_key'))
+        <script>
+            document.addEventListener('DOMContentLoaded', function () {
+                const loginForm = document.getElementById('loginForm');
+                const recaptchaInput = document.getElementById('g-recaptcha-response');
+
+                if (!loginForm || !recaptchaInput || typeof grecaptcha === 'undefined') {
+                    return;
+                }
+
+                loginForm.addEventListener('submit', function (event) {
+                    event.preventDefault();
+
+                    grecaptcha.ready(function () {
+                        grecaptcha
+                            .execute('{{ config('services.recaptcha.site_key') }}', { action: 'login' })
+                            .then(function (token) {
+                                recaptchaInput.value = token;
+                                loginForm.submit();
+                            });
+                    });
+                });
+            });
+        </script>
+    @endif
 </body>
 </html>
