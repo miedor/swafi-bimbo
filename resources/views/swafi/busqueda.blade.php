@@ -4,74 +4,203 @@
 @section('page_title', 'Búsqueda avanzada')
 @section('page_subtitle', 'Localización por múltiples criterios del expediente y del activo')
 @section('breadcrumb', 'Búsqueda avanzada')
+
 @section('content')
 
 <section class="card form-card">
-  <div class="section-title">
-    <h2>Búsqueda avanzada</h2>
-    <div class="tabs">
-      <span class="tab">Consultar</span>
-      <span class="tab">Exportar Excel</span>
-      <span class="tab">Exportar PDF</span>
+  <form method="GET" action="{{ route('busqueda') }}">
+    <div class="section-title">
+      <h2>Búsqueda avanzada</h2>
+      <div class="tabs">
+        <button class="tab" type="submit">Consultar</button>
+        <a class="tab" href="{{ route('busqueda') }}">Limpiar filtros</a>
+        <button class="tab" type="submit" name="export" value="csv">Exportar CSV</button>
+      </div>
     </div>
-  </div>
 
-  <div class="query-grid query-grid-four">
-    <label><span>Folio factura</span><input value="FAC-2026"></label>
-    <label><span>Proveedor</span><input value="Proveedor industrial"></label>
-    <label><span>RFC</span><input value="PIC010101ABC"></label>
-    <label><span>Número de activo</span><input value="AF-PLT"></label>
-  </div>
+    <div class="query-grid query-grid-four">
+      <label>
+        <span>Folio factura</span>
+        <input name="folio_factura" value="{{ $filtros['folio_factura'] ?? '' }}" placeholder="Ej. FAC-000184">
+      </label>
 
-  <div class="query-grid query-grid-four">
-    <label><span>Planta</span><input value="Santa María"></label>
-    <label><span>Ubicación</span><input value="Línea 3"></label>
-    <label><span>Fecha desde</span><input type="date" value="2026-03-01"></label>
-    <label><span>Fecha hasta</span><input type="date" value="2026-03-31"></label>
-  </div>
+      <label>
+        <span>Proveedor</span>
+        <input name="proveedor" value="{{ $filtros['proveedor'] ?? '' }}" placeholder="Nombre proveedor">
+      </label>
 
-  <div class="query-grid query-grid-four">
-    <label><span>Monto desde</span><input type="number" step="0.01" value="50000"></label>
-    <label><span>Monto hasta</span><input type="number" step="0.01" value="250000"></label>
-    <label><span>Estatus documental</span><select><option>Todos</option><option selected>Completo</option><option>Incompleto</option></select></label>
-    <label><span>Serie o modelo</span><input value="TRS / Belt Pro"></label>
-  </div>
+      <label>
+        <span>RFC</span>
+        <input name="rfc" value="{{ $filtros['rfc'] ?? '' }}" placeholder="RFC proveedor">
+      </label>
 
-  <div class="action-group">
-    <span class="tab">Consultar</span>
-    <span class="tab">Limpiar filtros</span>
-    <span class="tab">Exportar consulta</span>
-  </div>
+      <label>
+        <span>Número de activo</span>
+        <input name="numero_activo" value="{{ $filtros['numero_activo'] ?? '' }}" placeholder="Ej. BIM-000001">
+      </label>
+    </div>
+
+    <div class="query-grid query-grid-four">
+      <label>
+        <span>Planta</span>
+        <select name="planta_id">
+          <option value="">Todas</option>
+          @foreach($catalogos['plantas'] as $planta)
+            <option value="{{ $planta->id }}" @selected(($filtros['planta_id'] ?? '') == $planta->id)>
+              {{ $planta->nombre }}
+            </option>
+          @endforeach
+        </select>
+      </label>
+
+      <label>
+        <span>Centro de costo</span>
+        <select name="centro_costo_id">
+          <option value="">Todos</option>
+          @foreach($catalogos['centrosCosto'] as $centro)
+            <option value="{{ $centro->id }}" @selected(($filtros['centro_costo_id'] ?? '') == $centro->id)>
+              {{ $centro->clave }} - {{ $centro->descripcion }}
+            </option>
+          @endforeach
+        </select>
+      </label>
+
+      <label>
+        <span>Fecha desde</span>
+        <input type="date" name="fecha_desde" value="{{ $filtros['fecha_desde'] ?? '' }}">
+      </label>
+
+      <label>
+        <span>Fecha hasta</span>
+        <input type="date" name="fecha_hasta" value="{{ $filtros['fecha_hasta'] ?? '' }}">
+      </label>
+    </div>
+
+    <div class="query-grid query-grid-four">
+      <label>
+        <span>Monto desde</span>
+        <input type="number" step="0.01" name="monto_desde" value="{{ $filtros['monto_desde'] ?? '' }}">
+      </label>
+
+      <label>
+        <span>Monto hasta</span>
+        <input type="number" step="0.01" name="monto_hasta" value="{{ $filtros['monto_hasta'] ?? '' }}">
+      </label>
+
+      <label>
+        <span>Estatus documental</span>
+        <select name="estatus">
+          <option value="">Todos</option>
+          <option value="completo" @selected(($filtros['estatus'] ?? '') === 'completo')>Completo</option>
+          <option value="incompleto" @selected(($filtros['estatus'] ?? '') === 'incompleto')>Incompleto</option>
+          <option value="observado" @selected(($filtros['estatus'] ?? '') === 'observado')>Observado</option>
+        </select>
+      </label>
+
+      <label>
+        <span>Registros por página</span>
+        <select name="per_page">
+          @foreach([10, 25, 50] as $size)
+            <option value="{{ $size }}" @selected(($filtros['per_page'] ?? 10) == $size)>{{ $size }}</option>
+          @endforeach
+        </select>
+      </label>
+    </div>
+
+    <div class="action-group">
+      <button class="tab" type="submit">Consultar</button>
+      <a class="tab" href="{{ route('busqueda') }}">Limpiar filtros</a>
+      <button class="tab" type="submit" name="export" value="csv">Exportar consulta</button>
+    </div>
+  </form>
 </section>
 
 <section class="card table-card" style="margin-top:20px">
-  <div class="section-title"><h2>Resultados de consulta</h2><span class="pill ok">Consulta por rango habilitada</span></div>
+  <div class="section-title">
+    <h2>Resultados de consulta</h2>
+    <span class="pill ok">Consulta dinámica con paginación</span>
+  </div>
+
   <table>
-    <thead><tr><th>Folio</th><th>Activo</th><th>Proveedor</th><th>Planta</th><th>Estatus</th><th>Acciones</th></tr></thead>
+    <thead>
+      <tr>
+        <th>Folio</th>
+        <th>Activo</th>
+        <th>Proveedor</th>
+        <th>Planta</th>
+        <th>Fecha</th>
+        <th>Monto</th>
+        <th>Estatus</th>
+        <th>Acciones</th>
+      </tr>
+    </thead>
     <tbody>
-      <tr><td>FAC-184</td><td>AF-PLT-00945</td><td>ACME Industrial</td><td>Santa María</td><td><span class="pill ok">Completo</span></td><td><div class="table-actions"><a href="{{ route('expediente') }}">Consultar</a><a href="{{ route('registro-individual') }}">Editar</a><a href="#">Eliminar</a></div></td></tr>
-      <tr><td>FAC-185</td><td>AF-PLT-00946</td><td>Equipos del Centro</td><td>Tía Rosa</td><td><span class="pill ok">Completo</span></td><td><div class="table-actions"><a href="{{ route('expediente') }}">Consultar</a><a href="{{ route('registro-individual') }}">Editar</a><a href="#">Eliminar</a></div></td></tr>
-      <tr><td>FAC-186</td><td>AF-PLT-00947</td><td>Refacciones Delta</td><td>Santa María</td><td><span class="pill warn">Incompleto</span></td><td><div class="table-actions"><a href="{{ route('expediente') }}">Consultar</a><a href="{{ route('registro-individual') }}">Editar</a><a href="#">Eliminar</a></div></td></tr>
+      @forelse($resultados as $row)
+        <tr>
+          <td>{{ $row->folio_factura }}</td>
+          <td>
+            <strong>{{ $row->numero_activo }}</strong><br>
+            <small>{{ $row->activo_descripcion }}</small>
+          </td>
+          <td>
+            {{ $row->proveedor_nombre ?? 'Sin proveedor' }}<br>
+            <small>{{ $row->proveedor_rfc }}</small>
+          </td>
+          <td>{{ $row->planta_nombre ?? 'Sin planta' }}</td>
+          <td>{{ $row->fecha_factura }}</td>
+          <td>$ {{ number_format((float) $row->monto_factura, 2) }} {{ $row->moneda }}</td>
+          <td>
+            @php
+              $pillClass = match($row->estatus) {
+                'completo' => 'ok',
+                'observado' => 'warn',
+                default => 'danger',
+              };
+            @endphp
+            <span class="pill {{ $pillClass }}">{{ ucfirst($row->estatus) }}</span>
+          </td>
+          <td>
+            <div class="table-actions">
+              <a href="{{ route('expediente', $row->expediente_id) }}">Consultar</a>
+              <a href="{{ route('registro-individual') }}">Editar</a>
+              <a href="#">Eliminar</a>
+            </div>
+          </td>
+        </tr>
+      @empty
+        <tr>
+          <td colspan="8">
+            No se encontraron expedientes con los criterios seleccionados.
+          </td>
+        </tr>
+      @endforelse
     </tbody>
   </table>
 
   <div class="table-footer">
-    <div class="table-summary">Mostrando 1–10 de 248 resultados</div>
-    <div class="table-pagination">
-      <span class="page-link disabled">Anterior</span>
-      <span class="page-link active">1</span>
-      <span class="page-link">2</span>
-      <span class="page-link">3</span>
-      <span class="page-link">Siguiente</span>
+    <div class="table-summary">
+      Mostrando {{ $resultados->firstItem() ?? 0 }}–{{ $resultados->lastItem() ?? 0 }}
+      de {{ $resultados->total() }} resultados
     </div>
+
+    <div class="table-pagination">
+      @if($resultados->onFirstPage())
+        <span class="page-link disabled">Anterior</span>
+      @else
+        <a class="page-link" href="{{ $resultados->previousPageUrl() }}">Anterior</a>
+      @endif
+
+      <span class="page-link active">{{ $resultados->currentPage() }}</span>
+
+      @if($resultados->hasMorePages())
+        <a class="page-link" href="{{ $resultados->nextPageUrl() }}">Siguiente</a>
+      @else
+        <span class="page-link disabled">Siguiente</span>
+      @endif
+    </div>
+
     <div class="table-page-size">
-      <span>Ver</span>
-      <select>
-        <option selected>10</option>
-        <option>25</option>
-        <option>50</option>
-      </select>
-      <span>registros</span>
+      <span>Consulta conectada a MySQL</span>
     </div>
   </div>
 </section>
