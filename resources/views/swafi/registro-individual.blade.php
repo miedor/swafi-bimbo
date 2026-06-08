@@ -224,6 +224,30 @@
     box-shadow: none;
 }
 
+.ri-field input[type="file"] {
+    height: auto;
+    min-height: 44px;
+    padding: 10px;
+    cursor: pointer;
+    background: #ffffff;
+}
+
+.ri-field input[type="file"]::file-selector-button {
+    margin-right: 12px;
+    padding: 8px 13px;
+    border: 0;
+    border-radius: 10px;
+    background: #154f9b;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.ri-field input[type="file"]::file-selector-button:hover {
+    background: #103f7d;
+}
+
 .ri-field textarea {
     height: 66px;
     min-height: 66px;
@@ -324,7 +348,7 @@
 @section('content')
 
 <section class="ri-shell">
-    <form method="POST" action="{{ route('registro-individual.store') }}">
+    <form method="POST" action="{{ route('registro-individual.store') }}" enctype="multipart/form-data">
         @csrf
 
         <div class="ri-header">
@@ -548,7 +572,12 @@
 
                     <label class="ri-field ri-field-wide">
                         <span>Documentos PDF/XML</span>
-                        <input name="documentos_referencia" value="{{ old('documentos_referencia') }}" placeholder="factura_184.pdf, factura_184.xml">
+                        <input
+                            type="file"
+                            name="documentos[]"
+                            multiple
+                            accept=".pdf,.xml,application/pdf,text/xml,application/xml"
+                        >
                     </label>
 
                     <label class="ri-field ri-field-wide">
@@ -558,7 +587,7 @@
                 </div>
 
                 <div class="ri-help">
-                    Un expediente se considera completo cuando tiene referencia de PDF y XML. Si falta alguno, SWAFI lo marcará como incompleto para seguimiento.
+                    Selecciona el PDF de la factura y el XML CFDI. SWAFI resguardará los archivos y registrará nombre, tipo, tamaño, ruta, versión y hash SHA-256 para trazabilidad documental.
                 </div>
             </section>
 
