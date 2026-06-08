@@ -38,12 +38,28 @@ class StoreRegistroIndividualRequest extends FormRequest
                     return $query->where('numero_activo', $this->input('numero_activo'));
                 }),
             ],
+
             'uuid_cfdi' => ['nullable', 'string', 'max:50', 'unique:expedientes,uuid_cfdi'],
             'fecha_factura' => ['required', 'date'],
             'monto_factura' => ['required', 'numeric', 'min:0'],
             'moneda' => ['required', 'string', 'max:10'],
             'observaciones' => ['nullable', 'string'],
-            'documentos_referencia' => ['nullable', 'string'],
+
+            /*
+            |--------------------------------------------------------------------------
+            | Documentos del expediente
+            |--------------------------------------------------------------------------
+            | Se permite adjuntar PDF y XML. No se obliga a capturar ambos para permitir
+            | expedientes incompletos; el sistema asignará el estatus documental según
+            | los archivos cargados.
+            */
+
+            'documentos' => ['nullable', 'array', 'max:5'],
+            'documentos.*' => [
+                'file',
+                'max:10240',
+                'mimes:pdf,xml',
+            ],
         ];
     }
 
@@ -51,8 +67,23 @@ class StoreRegistroIndividualRequest extends FormRequest
     {
         return [
             'numero_activo.required' => 'El número de activo es obligatorio.',
+            'tipo_activo_id.required' => 'El tipo de activo es obligatorio.',
+            'proveedor_id.required' => 'El proveedor es obligatorio.',
+            'centro_costo_id.required' => 'El centro de costo es obligatorio.',
+            'planta_id.required' => 'La planta o sucursal es obligatoria.',
+            'descripcion.required' => 'La descripción del bien es obligatoria.',
+            'folio_factura.required' => 'El folio de factura es obligatorio.',
             'folio_factura.unique' => 'Ya existe un expediente con ese folio para este número de activo.',
             'uuid_cfdi.unique' => 'El UUID CFDI ya está registrado.',
+            'fecha_factura.required' => 'La fecha de factura es obligatoria.',
+            'monto_factura.required' => 'El monto fiscal es obligatorio.',
+            'moneda.required' => 'La moneda es obligatoria.',
+
+            'documentos.array' => 'Los documentos deben enviarse como archivos adjuntos.',
+            'documentos.max' => 'Solo se permiten hasta 5 documentos por expediente.',
+            'documentos.*.file' => 'Cada documento debe ser un archivo válido.',
+            'documentos.*.max' => 'Cada documento no debe superar los 10 MB.',
+            'documentos.*.mimes' => 'Solo se permiten archivos PDF o XML.',
         ];
     }
 }
