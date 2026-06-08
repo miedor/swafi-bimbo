@@ -8,6 +8,8 @@ use App\Models\DocumentoExpediente;
 use App\Models\Expediente;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
 
 class RegistroIndividualController extends Controller
 {
@@ -28,8 +30,23 @@ class RegistroIndividualController extends Controller
         DB::transaction(function () use ($request) {
             $userId = auth()->id();
 
-            $documentos = $this->parseDocuments($request->input('documentos_referencia'));
+            /*
+            |--------------------------------------------------------------------------
+            | Preparación documental
+            |--------------------------------------------------------------------------
+            | Los archivos se almacenan en el disco local privado de Laravel.
+            | En MySQL se guarda la referencia documental: ruta, nombre, MIME, tamaño,
+            | hash SHA-256, versión y usuario que realizó la carga.
+            */
+
+            $documentos = $this->prepareUploadedDocuments($request);
             $estatusDocumental = $this->resolveDocumentStatus($documentos);
+
+            /*
+            |--------------------------------------------------------------------------
+            | Alta o actualización del activo
+            |--------------------------------------------------------------------------
+            */
 
             $activo = Activo::updateOrCreate(
                 ['numero_activo' => $request->numero_activo],
@@ -53,64 +70,104 @@ class RegistroIndividualController extends Controller
                 ]
             );
 
+            /*
+            |--------------------------------------------------------------------------
+            | Alta del expediente
+            |--------------------------------------------------------------------------
+            */
+
             $expediente = Expediente::create([
-                'numero_activo' => $activo->numero_activo,
-                'folio_factura' => $request->folio_factura,
-                'uuid_cfdi'     => $request->uuid_cfdi,
-                'fecha_factura' => $request->fecha_factura,
-                'monto_factura' => $request->monto_factura,
-                'moneda'        => $request->moneda,
-                'estatus'       => $estatusDocumental,
-                'observaciones' => $request->observaciones,
-                'creado_por'    => $userId,
-                'actualizado_por' => $userId,
+                'numero_activo'    => $activo->numero_activo,
+                'folio_factura'    => $request->folio_factura,
+                'uuid_cfdi'        => $request->uuid_cfdi,
+                'fecha_factura'    => $request->fecha_factura,
+                'monto_factura'    => $request->monto_factura,
+                'moneda'           => $request->moneda,
+                'estatus'          => $estatusDocumental,
+                'observaciones'    => $request->observaciones,
+                'creado_por'       => $userId,
+                'actualizado_por'  => $userId,
             ]);
+
+            /*
+            |--------------------------------------------------------------------------
+            | Alta de documentos asociados
+            |--------------------------------------------------------------------------
+            */
 
             foreach ($documentos as $doc) {
                 DocumentoExpediente::create([
-                    'expediente_id' => $expediente->id,
-                    'tipo_documento' => $doc['tipo_documento'],
-                    'nombre_archivo' => $doc['nombre_archivo'],
-                    'ruta_archivo' => 'pendiente/' . $doc['nombre_archivo'],
-                    'mime_type' => $doc['mime_type'],
-                    'tamano_bytes' => null,
-                    'hash_sha256' => null,
-                    'version' => 1,
-                    'vigente' => true,
-                    'cargado_por' => $userId,
+                    'expediente_id'   => $expediente->id,
+                    'tipo_documento'  => $doc['tipo_documento'],
+                    'nombre_archivo'  => $doc['nombre_archivo'],
+                    'ruta_archivo'    => $doc['ruta_archivo'],
+                    'mime_type'       => $doc['mime_type'],
+                    'tamano_bytes'    => $doc['tamano_bytes'],
+                    'hash_sha256'     => $doc['hash_sha256'],
+                    'version'         => 1,
+                    'vigente'         => true,
+                    'cargado_por'     => $userId,
                 ]);
             }
         });
 
         return redirect()
             ->route('registro-individual')
-            ->with('success', 'El expediente se guardó correctamente.');
+            ->with('success', 'El expediente se guardó correctamente con su soporte documental.');
     }
 
-    private function parseDocuments(?string $input): array
+    private function prepareUploadedDocuments(StoreRegistroIndividualRequest $request): array
     {
-        if (!$input) {
+        if (!$request->hasFile('documentos')) {
             return [];
         }
 
-        $items = array_filter(array_map('trim', explode(',', $input)));
         $docs = [];
 
-        foreach ($items as $item) {
-            $extension = strtolower(pathinfo($item, PATHINFO_EXTENSION));
+        $numeroActivo = Str::slug($request->numero_activo ?: 'activo-sin-numero');
+        $folioFactura = Str::slug($request->folio_factura ?: 'factura-sin-folio');
+
+        $basePath = "swafi/expedientes/{$numeroActivo}/{$folioFactura}";
+
+        foreach ($request->file('documentos') as $file) {
+            if (!$file || !$file->isValid()) {
+                continue;
+            }
+
+            $extension = strtolower($file->getClientOriginalExtension());
+
+            $tipoDocumento = match ($extension) {
+                'pdf' => 'PDF',
+                'xml' => 'XML',
+                default => 'OTRO',
+            };
+
+            $originalName = $file->getClientOriginalName();
+            $safeBaseName = Str::slug(pathinfo($originalName, PATHINFO_FILENAME));
+
+            if (!$safeBaseName) {
+                $safeBaseName = 'documento';
+            }
+
+            $storedName = now()->format('YmdHis')
+                . '_'
+                . Str::random(8)
+                . '_'
+                . $safeBaseName
+                . '.'
+                . $extension;
+
+            $path = $file->storeAs($basePath, $storedName, 'local');
+
+            $absolutePath = Storage::disk('local')->path($path);
 
             $docs[] = [
-                'nombre_archivo' => $item,
-                'tipo_documento' => match ($extension) {
-                    'pdf' => 'PDF',
-                    'xml' => 'XML',
-                    default => 'NOTA',
-                },
-                'mime_type' => match ($extension) {
-                    'pdf' => 'application/pdf',
-                    'xml' => 'application/xml',
-                    default => 'text/plain',
-                },
+                'tipo_documento' => $tipoDocumento,
+                'nombre_archivo' => $originalName,
+                'ruta_archivo'   => $path,
+                'mime_type'      => $file->getMimeType(),
+                'tamano_bytes'   => $file->getSize(),
+                'hash_sha256'    => hash_file('sha256', $absolutePath),
             ];
         }
 
@@ -119,7 +176,11 @@ class RegistroIndividualController extends Controller
 
     private function resolveDocumentStatus(array $docs): string
     {
-        $tipos = collect($docs)->pluck('tipo_documento')->unique()->values()->all();
+        $tipos = collect($docs)
+            ->pluck('tipo_documento')
+            ->unique()
+            ->values()
+            ->all();
 
         if (in_array('PDF', $tipos, true) && in_array('XML', $tipos, true)) {
             return 'completo';
