@@ -4,33 +4,387 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Hash;
 
 class SwafiCatalogSeeder extends Seeder
 {
     public function run(): void
     {
-        DB::table('roles')->insert([
-            ['nombre' => 'Administrador', 'descripcion' => 'Control total del sistema', 'activo' => 1, 'created_at' => now(), 'updated_at' => now()],
-            ['nombre' => 'Capturista', 'descripcion' => 'Alta y edición de expedientes', 'activo' => 1, 'created_at' => now(), 'updated_at' => now()],
-            ['nombre' => 'Auditor', 'descripcion' => 'Consulta y revisión', 'activo' => 1, 'created_at' => now(), 'updated_at' => now()],
-            ['nombre' => 'Consultor', 'descripcion' => 'Solo consulta', 'activo' => 1, 'created_at' => now(), 'updated_at' => now()],
-            ['nombre' => 'Supervisor', 'descripcion' => 'Validación operativa y seguimiento', 'activo' => 1, 'created_at' => now(), 'updated_at' => now()],
+        $now = now();
+
+        /*
+        |--------------------------------------------------------------------------
+        | Usuario administrador de prototipo
+        |--------------------------------------------------------------------------
+        */
+
+        DB::table('users')->updateOrInsert(
+            ['email' => 'admin.swafi@bimbo.local'],
+            [
+                'name' => 'Administrador SWAFI',
+                'password' => Hash::make('12345678'),
+                'email_verified_at' => $now,
+                'created_at' => $now,
+                'updated_at' => $now,
+            ]
+        );
+
+        /*
+        |--------------------------------------------------------------------------
+        | Roles
+        |--------------------------------------------------------------------------
+        */
+
+        $roles = [
+            ['nombre' => 'Administrador SWAFI', 'descripcion' => 'Administración general, seguridad, catálogos y bitácora.'],
+            ['nombre' => 'Usuario Captura', 'descripcion' => 'Registro individual y masivo de expedientes de activo fijo.'],
+            ['nombre' => 'Usuario Consulta / Auditoría', 'descripcion' => 'Consulta, reportes, exportación y revisión de trazabilidad.'],
+            ['nombre' => 'Usuario Planta / Inventarios', 'descripcion' => 'Consulta y seguimiento de ubicación física e inventarios.'],
+        ];
+
+        foreach ($roles as $role) {
+            DB::table('roles')->updateOrInsert(
+                ['nombre' => $role['nombre']],
+                [
+                    'descripcion' => $role['descripcion'],
+                    'activo' => 1,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Permisos
+        |--------------------------------------------------------------------------
+        */
+
+        $permissions = [
+            ['clave' => 'dashboard.ver', 'descripcion' => 'Visualizar dashboard principal.'],
+            ['clave' => 'expedientes.ver', 'descripcion' => 'Consultar expedientes.'],
+            ['clave' => 'expedientes.crear', 'descripcion' => 'Crear expedientes.'],
+            ['clave' => 'expedientes.editar', 'descripcion' => 'Editar expedientes.'],
+            ['clave' => 'expedientes.eliminar', 'descripcion' => 'Eliminar expedientes.'],
+            ['clave' => 'documentos.cargar', 'descripcion' => 'Registrar documentos PDF/XML.'],
+            ['clave' => 'valores.administrar', 'descripcion' => 'Administrar valores fiscales y financieros.'],
+            ['clave' => 'ubicaciones.administrar', 'descripcion' => 'Administrar ubicación física e inventarios.'],
+            ['clave' => 'reportes.exportar', 'descripcion' => 'Exportar consultas y reportes.'],
+            ['clave' => 'catalogos.administrar', 'descripcion' => 'Administrar catálogos base.'],
+            ['clave' => 'seguridad.administrar', 'descripcion' => 'Administrar usuarios, roles y permisos.'],
+            ['clave' => 'bitacora.ver', 'descripcion' => 'Consultar bitácora de auditoría.'],
+        ];
+
+        foreach ($permissions as $permission) {
+            DB::table('permissions')->updateOrInsert(
+                ['clave' => $permission['clave']],
+                [
+                    'descripcion' => $permission['descripcion'],
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Relación rol - permiso
+        |--------------------------------------------------------------------------
+        */
+
+        $adminRoleId = DB::table('roles')->where('nombre', 'Administrador SWAFI')->value('id');
+        $capturaRoleId = DB::table('roles')->where('nombre', 'Usuario Captura')->value('id');
+        $consultaRoleId = DB::table('roles')->where('nombre', 'Usuario Consulta / Auditoría')->value('id');
+        $plantaRoleId = DB::table('roles')->where('nombre', 'Usuario Planta / Inventarios')->value('id');
+
+        $allPermissionIds = DB::table('permissions')->pluck('id');
+
+        foreach ($allPermissionIds as $permissionId) {
+            DB::table('permission_role')->updateOrInsert([
+                'role_id' => $adminRoleId,
+                'permission_id' => $permissionId,
+            ]);
+        }
+
+        $capturaPermisos = [
+            'dashboard.ver',
+            'expedientes.ver',
+            'expedientes.crear',
+            'expedientes.editar',
+            'documentos.cargar',
+            'valores.administrar',
+        ];
+
+        $consultaPermisos = [
+            'dashboard.ver',
+            'expedientes.ver',
+            'reportes.exportar',
+            'bitacora.ver',
+        ];
+
+        $plantaPermisos = [
+            'dashboard.ver',
+            'expedientes.ver',
+            'ubicaciones.administrar',
+        ];
+
+        $this->attachPermissions($capturaRoleId, $capturaPermisos);
+        $this->attachPermissions($consultaRoleId, $consultaPermisos);
+        $this->attachPermissions($plantaRoleId, $plantaPermisos);
+
+        $adminUserId = DB::table('users')->where('email', 'admin.swafi@bimbo.local')->value('id');
+
+        DB::table('role_user')->updateOrInsert([
+            'user_id' => $adminUserId,
+            'role_id' => $adminRoleId,
         ]);
 
-        DB::table('permissions')->insert([
-            ['clave' => 'expedientes.ver', 'descripcion' => 'Consultar expedientes', 'created_at' => now(), 'updated_at' => now()],
-            ['clave' => 'expedientes.crear', 'descripcion' => 'Crear expedientes', 'created_at' => now(), 'updated_at' => now()],
-            ['clave' => 'expedientes.editar', 'descripcion' => 'Editar expedientes', 'created_at' => now(), 'updated_at' => now()],
-            ['clave' => 'expedientes.eliminar', 'descripcion' => 'Eliminar expedientes', 'created_at' => now(), 'updated_at' => now()],
-            ['clave' => 'reportes.exportar', 'descripcion' => 'Exportar reportes', 'created_at' => now(), 'updated_at' => now()],
-            ['clave' => 'catalogos.administrar', 'descripcion' => 'Administrar catálogos', 'created_at' => now(), 'updated_at' => now()],
-            ['clave' => 'seguridad.administrar', 'descripcion' => 'Administrar seguridad y accesos', 'created_at' => now(), 'updated_at' => now()],
-        ]);
+        /*
+        |--------------------------------------------------------------------------
+        | Proveedores
+        |--------------------------------------------------------------------------
+        */
 
-        DB::table('tipos_activo')->insert([
-            ['clave' => 'EQP', 'descripcion' => 'Equipo industrial', 'vida_util_meses' => 120, 'estatus' => 'activo', 'created_at' => now(), 'updated_at' => now()],
-            ['clave' => 'VEH', 'descripcion' => 'Vehículo', 'vida_util_meses' => 60, 'estatus' => 'activo', 'created_at' => now(), 'updated_at' => now()],
-            ['clave' => 'MOB', 'descripcion' => 'Mobiliario', 'vida_util_meses' => 120, 'estatus' => 'activo', 'created_at' => now(), 'updated_at' => now()],
-        ]);
+        $proveedores = [
+            ['rfc' => 'ACM010101ABC', 'nombre' => 'ACME Industrial SA de CV', 'correo' => 'contacto@acmeindustrial.local', 'telefono' => '5550001001'],
+            ['rfc' => 'EDC020202DEF', 'nombre' => 'Equipos del Centro SA de CV', 'correo' => 'ventas@equiposcentro.local', 'telefono' => '5550001002'],
+            ['rfc' => 'RDT030303GHI', 'nombre' => 'Refacciones Delta SA de CV', 'correo' => 'servicio@refaccionesdelta.local', 'telefono' => '5550001003'],
+            ['rfc' => 'SIM040404JKL', 'nombre' => 'Suministros Industriales MX SA de CV', 'correo' => 'atencion@suministrosmx.local', 'telefono' => '5550001004'],
+        ];
+
+        foreach ($proveedores as $proveedor) {
+            DB::table('proveedores')->updateOrInsert(
+                ['rfc' => $proveedor['rfc']],
+                [
+                    'nombre' => $proveedor['nombre'],
+                    'correo' => $proveedor['correo'],
+                    'telefono' => $proveedor['telefono'],
+                    'estatus' => 'activo',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Centros de costo
+        |--------------------------------------------------------------------------
+        */
+
+        $centrosCosto = [
+            ['clave' => 'CC-ADM-100', 'descripcion' => 'Administración y Control'],
+            ['clave' => 'CC-PLA-200', 'descripcion' => 'Planta Santa María'],
+            ['clave' => 'CC-MAN-300', 'descripcion' => 'Mantenimiento e Inventarios'],
+            ['clave' => 'CC-PRO-400', 'descripcion' => 'Producción'],
+        ];
+
+        foreach ($centrosCosto as $centro) {
+            DB::table('centros_costo')->updateOrInsert(
+                ['clave' => $centro['clave']],
+                [
+                    'descripcion' => $centro['descripcion'],
+                    'estatus' => 'activo',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Plantas
+        |--------------------------------------------------------------------------
+        */
+
+        $plantas = [
+            ['clave' => 'PLT-SM', 'nombre' => 'Planta Santa María', 'estado' => 'Ciudad de México'],
+            ['clave' => 'PLT-TR', 'nombre' => 'Planta Tía Rosa', 'estado' => 'Ciudad de México'],
+            ['clave' => 'PLT-BA', 'nombre' => 'Planta Barcel', 'estado' => 'Estado de México'],
+        ];
+
+        foreach ($plantas as $planta) {
+            DB::table('plantas')->updateOrInsert(
+                ['clave' => $planta['clave']],
+                [
+                    'nombre' => $planta['nombre'],
+                    'estado' => $planta['estado'],
+                    'pais' => 'México',
+                    'estatus' => 'activo',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Áreas
+        |--------------------------------------------------------------------------
+        */
+
+        $plantaSantaMariaId = DB::table('plantas')->where('clave', 'PLT-SM')->value('id');
+        $plantaTiaRosaId = DB::table('plantas')->where('clave', 'PLT-TR')->value('id');
+        $plantaBarcelId = DB::table('plantas')->where('clave', 'PLT-BA')->value('id');
+
+        $areas = [
+            ['planta_id' => $plantaSantaMariaId, 'nombre' => 'Producción'],
+            ['planta_id' => $plantaSantaMariaId, 'nombre' => 'Mantenimiento'],
+            ['planta_id' => $plantaSantaMariaId, 'nombre' => 'Almacén'],
+            ['planta_id' => $plantaTiaRosaId, 'nombre' => 'Línea de empaque'],
+            ['planta_id' => $plantaBarcelId, 'nombre' => 'Servicios generales'],
+        ];
+
+        foreach ($areas as $area) {
+            DB::table('areas')->updateOrInsert(
+                [
+                    'planta_id' => $area['planta_id'],
+                    'nombre' => $area['nombre'],
+                ],
+                [
+                    'estatus' => 'activo',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Tipos de activo
+        |--------------------------------------------------------------------------
+        */
+
+        $tiposActivo = [
+            ['clave' => 'EQP', 'descripcion' => 'Equipo industrial', 'vida_util_meses' => 120],
+            ['clave' => 'VEH', 'descripcion' => 'Vehículo utilitario', 'vida_util_meses' => 60],
+            ['clave' => 'MOB', 'descripcion' => 'Mobiliario', 'vida_util_meses' => 120],
+            ['clave' => 'CMP', 'descripcion' => 'Equipo de cómputo', 'vida_util_meses' => 36],
+            ['clave' => 'HER', 'descripcion' => 'Herramienta especializada', 'vida_util_meses' => 48],
+        ];
+
+        foreach ($tiposActivo as $tipo) {
+            DB::table('tipos_activo')->updateOrInsert(
+                ['clave' => $tipo['clave']],
+                [
+                    'descripcion' => $tipo['descripcion'],
+                    'vida_util_meses' => $tipo['vida_util_meses'],
+                    'estatus' => 'activo',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Responsables
+        |--------------------------------------------------------------------------
+        */
+
+        $responsables = [
+            ['nombre' => 'Jorge Méndez', 'correo' => 'jorge.mendez@bimbo.local', 'telefono' => '5550002001'],
+            ['nombre' => 'María Ponce', 'correo' => 'maria.ponce@bimbo.local', 'telefono' => '5550002002'],
+            ['nombre' => 'Carlos Hernández', 'correo' => 'carlos.hernandez@bimbo.local', 'telefono' => '5550002003'],
+            ['nombre' => 'Laura Torres', 'correo' => 'laura.torres@bimbo.local', 'telefono' => '5550002004'],
+        ];
+
+        foreach ($responsables as $responsable) {
+            DB::table('responsables')->updateOrInsert(
+                ['correo' => $responsable['correo']],
+                [
+                    'nombre' => $responsable['nombre'],
+                    'telefono' => $responsable['telefono'],
+                    'estatus' => 'activo',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Ubicaciones
+        |--------------------------------------------------------------------------
+        */
+
+        $areaProduccionId = DB::table('areas')->where('planta_id', $plantaSantaMariaId)->where('nombre', 'Producción')->value('id');
+        $areaMantenimientoId = DB::table('areas')->where('planta_id', $plantaSantaMariaId)->where('nombre', 'Mantenimiento')->value('id');
+        $areaAlmacenId = DB::table('areas')->where('planta_id', $plantaSantaMariaId)->where('nombre', 'Almacén')->value('id');
+        $areaEmpaqueId = DB::table('areas')->where('planta_id', $plantaTiaRosaId)->where('nombre', 'Línea de empaque')->value('id');
+
+        $ubicaciones = [
+            [
+                'codigo_interno' => 'UBI-SM-PRO-L3-PB',
+                'planta_id' => $plantaSantaMariaId,
+                'area_id' => $areaProduccionId,
+                'edificio' => 'Edificio B',
+                'piso' => 'Piso 1',
+                'pasillo' => 'Pasillo B',
+                'descripcion' => 'Línea 3 / Pasillo B',
+            ],
+            [
+                'codigo_interno' => 'UBI-SM-MAN-TALLER',
+                'planta_id' => $plantaSantaMariaId,
+                'area_id' => $areaMantenimientoId,
+                'edificio' => 'Taller de mantenimiento',
+                'piso' => 'Planta baja',
+                'pasillo' => 'Zona técnica',
+                'descripcion' => 'Taller de mantenimiento planta',
+            ],
+            [
+                'codigo_interno' => 'UBI-SM-ALM-TEMP',
+                'planta_id' => $plantaSantaMariaId,
+                'area_id' => $areaAlmacenId,
+                'edificio' => 'Almacén',
+                'piso' => 'Planta baja',
+                'pasillo' => 'Temporal',
+                'descripcion' => 'Almacén temporal',
+            ],
+            [
+                'codigo_interno' => 'UBI-TR-EMP-L1',
+                'planta_id' => $plantaTiaRosaId,
+                'area_id' => $areaEmpaqueId,
+                'edificio' => 'Nave empaque',
+                'piso' => 'Piso 1',
+                'pasillo' => 'Línea 1',
+                'descripcion' => 'Empaque línea 1',
+            ],
+        ];
+
+        foreach ($ubicaciones as $ubicacion) {
+            DB::table('ubicaciones')->updateOrInsert(
+                ['codigo_interno' => $ubicacion['codigo_interno']],
+                [
+                    'planta_id' => $ubicacion['planta_id'],
+                    'area_id' => $ubicacion['area_id'],
+                    'edificio' => $ubicacion['edificio'],
+                    'piso' => $ubicacion['piso'],
+                    'pasillo' => $ubicacion['pasillo'],
+                    'descripcion' => $ubicacion['descripcion'],
+                    'estatus' => 'activo',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+    }
+
+    private function attachPermissions(?int $roleId, array $permissionKeys): void
+    {
+        if (!$roleId) {
+            return;
+        }
+
+        $permissionIds = DB::table('permissions')
+            ->whereIn('clave', $permissionKeys)
+            ->pluck('id');
+
+        foreach ($permissionIds as $permissionId) {
+            DB::table('permission_role')->updateOrInsert([
+                'role_id' => $roleId,
+                'permission_id' => $permissionId,
+            ]);
+        }
     }
 }
