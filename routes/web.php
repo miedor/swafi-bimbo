@@ -11,31 +11,37 @@ Route::redirect('/', '/login');
 |--------------------------------------------------------------------------
 | Autenticación SWAFI
 |--------------------------------------------------------------------------
+| Estas rutas quedan públicas porque son necesarias para iniciar sesión.
 */
 
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
-Route::get('/logout', [AuthController::class, 'logout'])->name('logout');
 
 /*
 |--------------------------------------------------------------------------
-| Páginas principales SWAFI
+| Rutas internas protegidas
 |--------------------------------------------------------------------------
+| Todas estas rutas requieren que exista una sesión activa de SWAFI.
 */
 
-Route::view('/dashboard', 'swafi.dashboard')->name('dashboard');
+Route::middleware('swafi.auth')->group(function () {
 
-Route::get('/registro-individual', [RegistroIndividualController::class, 'create'])->name('registro-individual');
-Route::post('/registro-individual', [RegistroIndividualController::class, 'store'])->name('registro-individual.store');
+    Route::get('/logout', [AuthController::class, 'logout'])->name('logout');
 
-Route::view('/registro-masivo', 'swafi.registro-masivo')->name('registro-masivo');
+    Route::view('/dashboard', 'swafi.dashboard')->name('dashboard');
 
-Route::view('/valores-fiscales-financieros', 'swafi.valores')->name('valores');
-Route::view('/ubicacion-inventario', 'swafi.ubicacion')->name('ubicacion');
+    Route::get('/registro-individual', [RegistroIndividualController::class, 'create'])->name('registro-individual');
+    Route::post('/registro-individual', [RegistroIndividualController::class, 'store'])->name('registro-individual.store');
 
-Route::get('/busqueda-avanzada', [BusquedaController::class, 'index'])->name('busqueda');
-Route::get('/detalle-expediente/{expediente?}', [BusquedaController::class, 'show'])->name('expediente');
+    Route::view('/registro-masivo', 'swafi.registro-masivo')->name('registro-masivo');
 
-Route::view('/reportes', 'swafi.reportes')->name('reportes');
-Route::view('/catalogos', 'swafi.catalogos')->name('catalogos');
-Route::view('/seguridad-acceso', 'swafi.seguridad')->name('seguridad');
+    Route::view('/valores-fiscales-financieros', 'swafi.valores')->name('valores');
+    Route::view('/ubicacion-inventario', 'swafi.ubicacion')->name('ubicacion');
+
+    Route::get('/busqueda-avanzada', [BusquedaController::class, 'index'])->name('busqueda');
+    Route::get('/detalle-expediente/{expediente?}', [BusquedaController::class, 'show'])->name('expediente');
+
+    Route::view('/reportes', 'swafi.reportes')->name('reportes');
+    Route::view('/catalogos', 'swafi.catalogos')->name('catalogos');
+    Route::view('/seguridad-acceso', 'swafi.seguridad')->name('seguridad');
+});
