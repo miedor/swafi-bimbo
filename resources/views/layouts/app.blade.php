@@ -484,7 +484,7 @@
         </a>
       </div>
 
-      <a class="nav-item nav-item-logout" href="{{ route('login') }}">
+      <a class="nav-item nav-item-logout" href="{{ route('logout') }}">
         {!! $swafiIcon('logout', 'nav-icon') !!}
         <span>Cerrar sesión</span>
       </a>
