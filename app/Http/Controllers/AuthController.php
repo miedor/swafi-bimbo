@@ -4,12 +4,21 @@ namespace App\Http\Controllers;
 
 use App\Rules\RecaptchaV3;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Session;
 
 class AuthController extends Controller
 {
-    public function showLogin()
+    public function showLogin(Request $request)
     {
+        /*
+        |--------------------------------------------------------------------------
+        | Si ya existe sesión, no volver a mostrar login
+        |--------------------------------------------------------------------------
+        */
+
+        if ($request->session()->get('swafi_autenticado')) {
+            return redirect()->route('dashboard');
+        }
+
         return view('auth.login');
     }
 
@@ -26,10 +35,13 @@ class AuthController extends Controller
         ]);
 
         /*
-         * Login temporal para el prototipo SWAFI.
-         * Más adelante puede sustituirse por autenticación real
-         * contra la tabla usuarios, contraseñas cifradas y roles.
-         */
+        |--------------------------------------------------------------------------
+        | Login temporal para prototipo SWAFI
+        |--------------------------------------------------------------------------
+        | Más adelante se puede sustituir por autenticación real contra la tabla
+        | users, contraseña cifrada, roles y permisos.
+        */
+
         if ($request->usuario !== 'admin.swafi' || $request->password !== '12345678') {
             return back()
                 ->withErrors([
@@ -38,16 +50,37 @@ class AuthController extends Controller
                 ->withInput($request->only('usuario'));
         }
 
-        Session::put('swafi_usuario', $request->usuario);
-        Session::put('swafi_autenticado', true);
+        /*
+        |--------------------------------------------------------------------------
+        | Protección contra fijación de sesión
+        |--------------------------------------------------------------------------
+        | Se regenera la sesión al iniciar acceso correctamente.
+        */
+
+        $request->session()->regenerate();
+
+        $request->session()->put('swafi_usuario', $request->usuario);
+        $request->session()->put('swafi_autenticado', true);
 
         return redirect()->route('dashboard');
     }
 
-    public function logout()
+    public function logout(Request $request)
     {
-        Session::forget('swafi_usuario');
-        Session::forget('swafi_autenticado');
+        /*
+        |--------------------------------------------------------------------------
+        | Cierre seguro de sesión
+        |--------------------------------------------------------------------------
+        | Se eliminan variables de sesión y se invalida la sesión completa.
+        */
+
+        $request->session()->forget([
+            'swafi_usuario',
+            'swafi_autenticado',
+        ]);
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
 
         return redirect()->route('login');
     }
