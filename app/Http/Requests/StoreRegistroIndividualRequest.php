@@ -5,7 +5,7 @@ namespace App\Http\Requests;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
 
-class StoreRegistroIndividualRequest extends FormRequest
+class StoreValorActivoRequest extends FormRequest
 {
     public function authorize(): bool
     {
@@ -15,50 +15,55 @@ class StoreRegistroIndividualRequest extends FormRequest
     public function rules(): array
     {
         return [
-            'numero_activo' => ['required', 'string', 'max:30'],
-            'tipo_activo_id' => ['required', 'integer', 'exists:tipos_activo,id'],
-            'proveedor_id' => ['required', 'integer', 'exists:proveedores,id'],
-            'centro_costo_id' => ['required', 'integer', 'exists:centros_costo,id'],
-            'planta_id' => ['required', 'integer', 'exists:plantas,id'],
-            'ubicacion_id' => ['nullable', 'integer', 'exists:ubicaciones,id'],
-            'responsable_id' => ['nullable', 'integer', 'exists:responsables,id'],
+            'valor_id' => ['nullable', 'integer', 'exists:valores_activo,id'],
 
-            'descripcion' => ['required', 'string', 'max:255'],
-            'serie' => ['nullable', 'string', 'max:120'],
-            'marca' => ['nullable', 'string', 'max:100'],
-            'modelo' => ['nullable', 'string', 'max:100'],
-            'fecha_adquisicion' => ['nullable', 'date'],
-            'estatus_operativo' => ['required', 'string', 'max:20'],
-
-            'folio_factura' => [
+            'numero_activo' => [
                 'required',
                 'string',
-                'max:80',
-                Rule::unique('expedientes', 'folio_factura')->where(function ($query) {
-                    return $query->where('numero_activo', $this->input('numero_activo'));
-                }),
+                'max:30',
+                'exists:activos,numero_activo',
             ],
 
-            'uuid_cfdi' => ['nullable', 'string', 'max:50', 'unique:expedientes,uuid_cfdi'],
-            'fecha_factura' => ['required', 'date'],
-            'monto_factura' => ['required', 'numeric', 'min:0'],
-            'moneda' => ['required', 'string', 'max:10'],
-            'observaciones' => ['nullable', 'string'],
+            'valor_fiscal' => [
+                'required',
+                'numeric',
+                'min:0',
+            ],
 
-            /*
-            |--------------------------------------------------------------------------
-            | Documentos del expediente
-            |--------------------------------------------------------------------------
-            | Se permite adjuntar PDF y XML. No se obliga a capturar ambos para permitir
-            | expedientes incompletos; el sistema asignará el estatus documental según
-            | los archivos cargados.
-            */
+            'valor_financiero' => [
+                'required',
+                'numeric',
+                'min:0',
+            ],
 
-            'documentos' => ['nullable', 'array', 'max:5'],
-            'documentos.*' => [
-                'file',
-                'max:10240',
-                'mimes:pdf,xml',
+            'depreciacion_acumulada' => [
+                'required',
+                'numeric',
+                'min:0',
+            ],
+
+            'valor_en_libros' => [
+                'nullable',
+                'numeric',
+                'min:0',
+            ],
+
+            'vida_util_meses' => [
+                'nullable',
+                'integer',
+                'min:1',
+                'max:600',
+            ],
+
+            'estatus_contable' => [
+                'required',
+                'string',
+                Rule::in(['vigente', 'en_revision', 'baja']),
+            ],
+
+            'fecha_corte' => [
+                'required',
+                'date',
             ],
         ];
     }
@@ -67,23 +72,32 @@ class StoreRegistroIndividualRequest extends FormRequest
     {
         return [
             'numero_activo.required' => 'El número de activo es obligatorio.',
-            'tipo_activo_id.required' => 'El tipo de activo es obligatorio.',
-            'proveedor_id.required' => 'El proveedor es obligatorio.',
-            'centro_costo_id.required' => 'El centro de costo es obligatorio.',
-            'planta_id.required' => 'La planta o sucursal es obligatoria.',
-            'descripcion.required' => 'La descripción del bien es obligatoria.',
-            'folio_factura.required' => 'El folio de factura es obligatorio.',
-            'folio_factura.unique' => 'Ya existe un expediente con ese folio para este número de activo.',
-            'uuid_cfdi.unique' => 'El UUID CFDI ya está registrado.',
-            'fecha_factura.required' => 'La fecha de factura es obligatoria.',
-            'monto_factura.required' => 'El monto fiscal es obligatorio.',
-            'moneda.required' => 'La moneda es obligatoria.',
+            'numero_activo.exists' => 'El activo seleccionado no existe en la base de datos.',
 
-            'documentos.array' => 'Los documentos deben enviarse como archivos adjuntos.',
-            'documentos.max' => 'Solo se permiten hasta 5 documentos por expediente.',
-            'documentos.*.file' => 'Cada documento debe ser un archivo válido.',
-            'documentos.*.max' => 'Cada documento no debe superar los 10 MB.',
-            'documentos.*.mimes' => 'Solo se permiten archivos PDF o XML.',
+            'valor_fiscal.required' => 'El valor fiscal es obligatorio.',
+            'valor_fiscal.numeric' => 'El valor fiscal debe ser numérico.',
+            'valor_fiscal.min' => 'El valor fiscal no puede ser negativo.',
+
+            'valor_financiero.required' => 'El valor financiero es obligatorio.',
+            'valor_financiero.numeric' => 'El valor financiero debe ser numérico.',
+            'valor_financiero.min' => 'El valor financiero no puede ser negativo.',
+
+            'depreciacion_acumulada.required' => 'La depreciación acumulada es obligatoria.',
+            'depreciacion_acumulada.numeric' => 'La depreciación acumulada debe ser numérica.',
+            'depreciacion_acumulada.min' => 'La depreciación acumulada no puede ser negativa.',
+
+            'valor_en_libros.numeric' => 'El valor en libros debe ser numérico.',
+            'valor_en_libros.min' => 'El valor en libros no puede ser negativo.',
+
+            'vida_util_meses.integer' => 'La vida útil debe capturarse en meses.',
+            'vida_util_meses.min' => 'La vida útil debe ser mayor a cero.',
+            'vida_util_meses.max' => 'La vida útil capturada excede el rango permitido.',
+
+            'estatus_contable.required' => 'El estatus contable es obligatorio.',
+            'estatus_contable.in' => 'El estatus contable seleccionado no es válido.',
+
+            'fecha_corte.required' => 'La fecha de corte es obligatoria.',
+            'fecha_corte.date' => 'La fecha de corte no tiene un formato válido.',
         ];
     }
 }
