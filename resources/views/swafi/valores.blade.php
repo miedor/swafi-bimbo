@@ -25,12 +25,14 @@
     }
 
     .vf-form-grid label,
-    .vf-filter label {
+    .vf-filter label,
+    .vf-import-box label {
         display: block;
     }
 
     .vf-form-grid span,
-    .vf-filter span {
+    .vf-filter span,
+    .vf-import-box span {
         display: block;
         margin-bottom: 5px;
         color: #1d3558;
@@ -110,6 +112,55 @@
         background: #f8fbff;
     }
 
+    .vf-import-box {
+        margin-top: 14px;
+        padding: 14px;
+        border: 1px dashed #b8cbe4;
+        border-radius: 16px;
+        background: #f8fbff;
+    }
+
+    .vf-import-box h3 {
+        margin: 0 0 6px;
+        color: #12345a;
+        font-size: 15px;
+        font-weight: 900;
+    }
+
+    .vf-import-box p {
+        margin: 0 0 12px;
+        color: #64748b;
+        font-size: 12px;
+        line-height: 1.35;
+    }
+
+    .vf-import-box input[type="file"] {
+        width: 100%;
+        min-height: 42px;
+        padding: 9px;
+        border: 1px solid #d5e1ef;
+        border-radius: 11px;
+        background: #ffffff;
+        color: #16304d;
+        font-size: 13px;
+    }
+
+    .vf-import-box input[type="file"]::file-selector-button {
+        margin-right: 12px;
+        padding: 8px 13px;
+        border: 0;
+        border-radius: 10px;
+        background: #154f9b;
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 900;
+        cursor: pointer;
+    }
+
+    .vf-import-box input[type="file"]::file-selector-button:hover {
+        background: #103f7d;
+    }
+
     @media (max-width: 1100px) {
         .vf-grid {
             grid-template-columns: 1fr;
@@ -131,6 +182,26 @@
 @if (session('success'))
     <div class="vf-message vf-message-success">
         {{ session('success') }}
+    </div>
+@endif
+
+@if (session('import_summary'))
+    @php($summary = session('import_summary'))
+
+    <div class="vf-message vf-message-success">
+        <strong>Resumen de carga masiva:</strong><br>
+        Procesados: {{ $summary['procesados'] ?? 0 }} |
+        Insertados: {{ $summary['insertados'] ?? 0 }} |
+        Actualizados: {{ $summary['actualizados'] ?? 0 }} |
+        Rechazados: {{ $summary['rechazados'] ?? 0 }}
+
+        @if(!empty($summary['errores']))
+            <ul>
+                @foreach(array_slice($summary['errores'], 0, 10) as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        @endif
     </div>
 @endif
 
@@ -271,6 +342,28 @@
                 <strong>CSV</strong>
                 <span>Exportación activa</span>
             </div>
+        </div>
+
+        <div class="vf-import-box">
+            <h3>Carga masiva de valores</h3>
+            <p>
+                Importa valores fiscales y financieros desde un archivo CSV. Si el activo y la fecha de corte ya existen,
+                SWAFI actualizará el registro; si no existen, creará uno nuevo.
+            </p>
+
+            <form method="POST" action="{{ route('valores.importar') }}" enctype="multipart/form-data">
+                @csrf
+
+                <label>
+                    <span>Archivo CSV</span>
+                    <input type="file" name="archivo_csv" accept=".csv,.txt" required>
+                </label>
+
+                <div class="action-group" style="margin-top:12px">
+                    <button class="tab" type="submit">Importar CSV</button>
+                    <a class="tab" href="{{ route('valores.plantilla') }}">Descargar plantilla</a>
+                </div>
+            </form>
         </div>
     </div>
 
