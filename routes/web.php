@@ -50,9 +50,13 @@ Route::middleware('swafi.auth')->group(function () {
 
     Route::get('/valores-fiscales-financieros', [ValoresActivoController::class, 'index'])->name('valores');
     Route::post('/valores-fiscales-financieros', [ValoresActivoController::class, 'store'])->name('valores.store');
-    Route::post('/valores-fiscales-financieros/importar', [ValoresActivoController::class, 'importar'])->name('valores.importar');
+
     Route::get('/valores-fiscales-financieros/plantilla-csv', [ValoresActivoController::class, 'plantillaCsv'])->name('valores.plantilla');
-    Route::delete('/valores-fiscales-financieros/{valor}', [ValoresActivoController::class, 'destroy'])->name('valores.destroy');
+    Route::post('/valores-fiscales-financieros/importar', [ValoresActivoController::class, 'importar'])->name('valores.importar');
+
+    Route::delete('/valores-fiscales-financieros/{valor}', [ValoresActivoController::class, 'destroy'])
+        ->whereNumber('valor')
+        ->name('valores.destroy');
 
     Route::view('/ubicacion-inventario', 'swafi.ubicacion')->name('ubicacion');
 
