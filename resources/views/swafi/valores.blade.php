@@ -186,7 +186,9 @@
 @endif
 
 @if (session('import_summary'))
-    @php($summary = session('import_summary'))
+    @php
+        $summary = session('import_summary');
+    @endphp
 
     <div class="vf-message vf-message-success">
         <strong>Resumen de carga masiva:</strong><br>
@@ -195,9 +197,9 @@
         Actualizados: {{ $summary['actualizados'] ?? 0 }} |
         Rechazados: {{ $summary['rechazados'] ?? 0 }}
 
-        @if(!empty($summary['errores']))
+        @if (!empty($summary['errores']))
             <ul>
-                @foreach(array_slice($summary['errores'], 0, 10) as $error)
+                @foreach (array_slice($summary['errores'], 0, 10) as $error)
                     <li>{{ $error }}</li>
                 @endforeach
             </ul>
@@ -226,7 +228,7 @@
         <form method="POST" action="{{ route('valores.store') }}">
             @csrf
 
-            @if($valorEdit)
+            @if ($valorEdit)
                 <input type="hidden" name="valor_id" value="{{ $valorEdit->valor_id }}">
             @endif
 
@@ -235,11 +237,11 @@
                     <span>Activo fijo</span>
                     <select name="numero_activo" required>
                         <option value="">Seleccione...</option>
-                        @foreach($catalogos['activos'] as $activo)
-                            <option
-                                value="{{ $activo->numero_activo }}"
-                                @selected(old('numero_activo', $valorEdit->numero_activo ?? '') === $activo->numero_activo)
-                            >
+                        @foreach ($catalogos['activos'] as $activo)
+                            @php
+                                $activoSeleccionado = old('numero_activo', $valorEdit->numero_activo ?? '');
+                            @endphp
+                            <option value="{{ $activo->numero_activo }}" {{ $activoSeleccionado === $activo->numero_activo ? 'selected' : '' }}>
                                 {{ $activo->numero_activo }} - {{ $activo->descripcion }}
                             </option>
                         @endforeach
@@ -315,10 +317,13 @@
 
                 <label class="vf-field-wide">
                     <span>Estatus contable</span>
+                    @php
+                        $estatusSeleccionado = old('estatus_contable', $valorEdit->estatus_contable ?? 'vigente');
+                    @endphp
                     <select name="estatus_contable" required>
-                        <option value="vigente" @selected(old('estatus_contable', $valorEdit->estatus_contable ?? 'vigente') === 'vigente')>Vigente</option>
-                        <option value="en_revision" @selected(old('estatus_contable', $valorEdit->estatus_contable ?? '') === 'en_revision')>En revisión</option>
-                        <option value="baja" @selected(old('estatus_contable', $valorEdit->estatus_contable ?? '') === 'baja')>Baja</option>
+                        <option value="vigente" {{ $estatusSeleccionado === 'vigente' ? 'selected' : '' }}>Vigente</option>
+                        <option value="en_revision" {{ $estatusSeleccionado === 'en_revision' ? 'selected' : '' }}>En revisión</option>
+                        <option value="baja" {{ $estatusSeleccionado === 'baja' ? 'selected' : '' }}>Baja</option>
                     </select>
                 </label>
             </div>
@@ -334,10 +339,12 @@
                 <strong>{{ $resultados->total() }}</strong>
                 <span>Registros filtrados</span>
             </div>
+
             <div class="vf-kpi">
                 <strong>{{ $catalogos['activos']->count() }}</strong>
                 <span>Activos disponibles</span>
             </div>
+
             <div class="vf-kpi">
                 <strong>CSV</strong>
                 <span>Exportación activa</span>
@@ -384,8 +391,11 @@
                     <span>Planta</span>
                     <select name="planta_id">
                         <option value="">Todas</option>
-                        @foreach($catalogos['plantas'] as $planta)
-                            <option value="{{ $planta->id }}" @selected(($filtros['planta_id'] ?? '') == $planta->id)>
+                        @foreach ($catalogos['plantas'] as $planta)
+                            @php
+                                $plantaSeleccionada = (string) ($filtros['planta_id'] ?? '');
+                            @endphp
+                            <option value="{{ $planta->id }}" {{ $plantaSeleccionada === (string) $planta->id ? 'selected' : '' }}>
                                 {{ $planta->nombre }}
                             </option>
                         @endforeach
@@ -396,8 +406,11 @@
                     <span>Proveedor</span>
                     <select name="proveedor_id">
                         <option value="">Todos</option>
-                        @foreach($catalogos['proveedores'] as $proveedor)
-                            <option value="{{ $proveedor->id }}" @selected(($filtros['proveedor_id'] ?? '') == $proveedor->id)>
+                        @foreach ($catalogos['proveedores'] as $proveedor)
+                            @php
+                                $proveedorSeleccionado = (string) ($filtros['proveedor_id'] ?? '');
+                            @endphp
+                            <option value="{{ $proveedor->id }}" {{ $proveedorSeleccionado === (string) $proveedor->id ? 'selected' : '' }}>
                                 {{ $proveedor->nombre }}
                             </option>
                         @endforeach
@@ -408,8 +421,11 @@
                     <span>Centro de costo</span>
                     <select name="centro_costo_id">
                         <option value="">Todos</option>
-                        @foreach($catalogos['centrosCosto'] as $centro)
-                            <option value="{{ $centro->id }}" @selected(($filtros['centro_costo_id'] ?? '') == $centro->id)>
+                        @foreach ($catalogos['centrosCosto'] as $centro)
+                            @php
+                                $centroSeleccionado = (string) ($filtros['centro_costo_id'] ?? '');
+                            @endphp
+                            <option value="{{ $centro->id }}" {{ $centroSeleccionado === (string) $centro->id ? 'selected' : '' }}>
                                 {{ $centro->clave }}
                             </option>
                         @endforeach
@@ -422,8 +438,11 @@
                     <span>Tipo de activo</span>
                     <select name="tipo_activo_id">
                         <option value="">Todos</option>
-                        @foreach($catalogos['tiposActivo'] as $tipo)
-                            <option value="{{ $tipo->id }}" @selected(($filtros['tipo_activo_id'] ?? '') == $tipo->id)>
+                        @foreach ($catalogos['tiposActivo'] as $tipo)
+                            @php
+                                $tipoSeleccionado = (string) ($filtros['tipo_activo_id'] ?? '');
+                            @endphp
+                            <option value="{{ $tipo->id }}" {{ $tipoSeleccionado === (string) $tipo->id ? 'selected' : '' }}>
                                 {{ $tipo->descripcion }}
                             </option>
                         @endforeach
@@ -442,11 +461,14 @@
 
                 <label>
                     <span>Estatus</span>
+                    @php
+                        $filtroEstatus = $filtros['estatus_contable'] ?? '';
+                    @endphp
                     <select name="estatus_contable">
                         <option value="">Todos</option>
-                        <option value="vigente" @selected(($filtros['estatus_contable'] ?? '') === 'vigente')>Vigente</option>
-                        <option value="en_revision" @selected(($filtros['estatus_contable'] ?? '') === 'en_revision')>En revisión</option>
-                        <option value="baja" @selected(($filtros['estatus_contable'] ?? '') === 'baja')>Baja</option>
+                        <option value="vigente" {{ $filtroEstatus === 'vigente' ? 'selected' : '' }}>Vigente</option>
+                        <option value="en_revision" {{ $filtroEstatus === 'en_revision' ? 'selected' : '' }}>En revisión</option>
+                        <option value="baja" {{ $filtroEstatus === 'baja' ? 'selected' : '' }}>Baja</option>
                     </select>
                 </label>
             </div>
@@ -465,8 +487,13 @@
                 <label>
                     <span>Registros por página</span>
                     <select name="per_page">
-                        @foreach([10, 25, 50] as $size)
-                            <option value="{{ $size }}" @selected(($filtros['per_page'] ?? 10) == $size)>{{ $size }}</option>
+                        @foreach ([10, 25, 50] as $size)
+                            @php
+                                $perPageSeleccionado = (string) ($filtros['per_page'] ?? 10);
+                            @endphp
+                            <option value="{{ $size }}" {{ $perPageSeleccionado === (string) $size ? 'selected' : '' }}>
+                                {{ $size }}
+                            </option>
                         @endforeach
                     </select>
                 </label>
@@ -509,7 +536,7 @@
         </thead>
 
         <tbody>
-            @forelse($resultados as $row)
+            @forelse ($resultados as $row)
                 <tr>
                     <td>{{ $row->folio_factura ?? 'Sin folio' }}</td>
 
@@ -530,14 +557,19 @@
 
                     <td>
                         @php
-                            $pillClass = match($row->estatus_contable) {
-                                'vigente' => 'ok',
-                                'en_revision' => 'warn',
-                                default => 'danger',
-                            };
+                            $estatusFila = $row->estatus_contable ?? 'vigente';
+
+                            if ($estatusFila === 'vigente') {
+                                $pillClass = 'ok';
+                            } elseif ($estatusFila === 'en_revision') {
+                                $pillClass = 'warn';
+                            } else {
+                                $pillClass = 'danger';
+                            }
                         @endphp
+
                         <span class="pill {{ $pillClass }}">
-                            {{ str_replace('_', ' ', ucfirst($row->estatus_contable)) }}
+                            {{ ucfirst(str_replace('_', ' ', $estatusFila)) }}
                         </span>
                     </td>
 
@@ -584,7 +616,7 @@
         </div>
 
         <div class="table-pagination">
-            @if($resultados->onFirstPage())
+            @if ($resultados->onFirstPage())
                 <span class="page-link disabled">Anterior</span>
             @else
                 <a class="page-link" href="{{ $resultados->previousPageUrl() }}">Anterior</a>
@@ -592,7 +624,7 @@
 
             <span class="page-link active">{{ $resultados->currentPage() }}</span>
 
-            @if($resultados->hasMorePages())
+            @if ($resultados->hasMorePages())
                 <a class="page-link" href="{{ $resultados->nextPageUrl() }}">Siguiente</a>
             @else
                 <span class="page-link disabled">Siguiente</span>
