@@ -351,7 +351,7 @@
                 SWAFI actualizará el registro; si no existen, creará uno nuevo.
             </p>
 
-            <form method="POST" action="{{ route('valores.importar') }}" enctype="multipart/form-data">
+            <form method="POST" action="{{ url('/valores-fiscales-financieros/importar') }}" enctype="multipart/form-data">
                 @csrf
 
                 <label>
@@ -361,7 +361,7 @@
 
                 <div class="action-group" style="margin-top:12px">
                     <button class="tab" type="submit">Importar CSV</button>
-                    <a class="tab" href="{{ route('valores.plantilla') }}">Descargar plantilla</a>
+                    <a class="tab" href="{{ url('/valores-fiscales-financieros/plantilla-csv') }}">Descargar plantilla</a>
                 </div>
             </form>
         </div>
