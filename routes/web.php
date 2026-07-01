@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusquedaController;
 use App\Http\Controllers\RegistroIndividualController;
+use App\Http\Controllers\RegistroMasivoController;
 use App\Http\Controllers\UbicacionInventarioController;
 use App\Http\Controllers\ValoresActivoController;
 use Illuminate\Support\Facades\Route;
@@ -41,7 +42,9 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/registro-individual', [RegistroIndividualController::class, 'create'])->name('registro-individual');
     Route::post('/registro-individual', [RegistroIndividualController::class, 'store'])->name('registro-individual.store');
 
-    Route::view('/registro-masivo', 'swafi.registro-masivo')->name('registro-masivo');
+    Route::get('/registro-masivo', [RegistroMasivoController::class, 'index'])->name('registro-masivo');
+    Route::post('/registro-masivo/importar', [RegistroMasivoController::class, 'importar'])->name('registro-masivo.importar');
+    Route::get('/registro-masivo/plantilla-csv', [RegistroMasivoController::class, 'plantillaCsv'])->name('registro-masivo.plantilla');
 
     /*
     |--------------------------------------------------------------------------
