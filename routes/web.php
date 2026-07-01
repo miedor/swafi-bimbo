@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusquedaController;
 use App\Http\Controllers\RegistroIndividualController;
+use App\Http\Controllers\UbicacionInventarioController;
 use App\Http\Controllers\ValoresActivoController;
 use Illuminate\Support\Facades\Route;
 
@@ -58,7 +59,9 @@ Route::middleware('swafi.auth')->group(function () {
         ->whereNumber('valor')
         ->name('valores.destroy');
 
-    Route::view('/ubicacion-inventario', 'swafi.ubicacion')->name('ubicacion');
+    Route::get('/ubicacion-inventario', [UbicacionInventarioController::class, 'index'])->name('ubicacion');
+    Route::post('/ubicacion-inventario/movimiento', [UbicacionInventarioController::class, 'storeMovimiento'])->name('ubicacion.movimiento');
+    Route::post('/ubicacion-inventario/inventario', [UbicacionInventarioController::class, 'storeInventario'])->name('ubicacion.inventario');
 
     /*
     |--------------------------------------------------------------------------
