@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusquedaController;
 use App\Http\Controllers\RegistroIndividualController;
 use App\Http\Controllers\RegistroMasivoController;
+use App\Http\Controllers\ReportesController;
 use App\Http\Controllers\UbicacionInventarioController;
 use App\Http\Controllers\ValoresActivoController;
 use Illuminate\Support\Facades\Route;
@@ -75,7 +76,7 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/busqueda-avanzada', [BusquedaController::class, 'index'])->name('busqueda');
     Route::get('/detalle-expediente/{expediente?}', [BusquedaController::class, 'show'])->name('expediente');
 
-    Route::view('/reportes', 'swafi.reportes')->name('reportes');
+    Route::get('/reportes', [ReportesController::class, 'index'])->name('reportes');
 
     /*
     |--------------------------------------------------------------------------
