@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusquedaController;
+use App\Http\Controllers\CatalogosController;
 use App\Http\Controllers\RegistroIndividualController;
 use App\Http\Controllers\RegistroMasivoController;
 use App\Http\Controllers\ReportesController;
@@ -84,6 +85,11 @@ Route::middleware('swafi.auth')->group(function () {
     |--------------------------------------------------------------------------
     */
 
-    Route::view('/catalogos', 'swafi.catalogos')->name('catalogos');
+    Route::get('/catalogos', [CatalogosController::class, 'index'])->name('catalogos');
+    Route::post('/catalogos', [CatalogosController::class, 'store'])->name('catalogos.store');
+    Route::delete('/catalogos/{catalogo}/{id}', [CatalogosController::class, 'destroy'])
+        ->whereNumber('id')
+        ->name('catalogos.destroy');
+
     Route::view('/seguridad-acceso', 'swafi.seguridad')->name('seguridad');
 });
