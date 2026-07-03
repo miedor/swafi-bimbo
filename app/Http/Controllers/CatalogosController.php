@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 use Illuminate\Validation\Rule;
 
 class CatalogosController extends Controller
@@ -34,6 +35,7 @@ class CatalogosController extends Controller
             'filtros' => $request->all(),
             'opciones' => $this->options(),
             'kpis' => $this->buildKpis($catalogoActivo),
+            'headersLayout' => $this->headersFor($catalogoActivo),
         ]);
     }
 
@@ -90,6 +92,152 @@ class CatalogosController extends Controller
         return redirect()
             ->route('catalogos', ['catalogo' => $catalogo])
             ->with('success', $id ? 'El catálogo se actualizó correctamente.' : 'El registro se creó correctamente.');
+    }
+
+    public function importar(Request $request)
+    {
+        $catalogo = $this->normalizeCatalog($request->input('catalogo'));
+
+        $request->validate([
+            'catalogo' => ['required', Rule::in(array_keys($this->catalogs()))],
+            'archivo_csv' => ['required', 'file', 'mimes:csv,txt', 'max:10240'],
+        ], [
+            'archivo_csv.required' => 'Debes seleccionar un archivo CSV para importar.',
+            'archivo_csv.file' => 'El archivo seleccionado no es válido.',
+            'archivo_csv.mimes' => 'El archivo debe tener extensión CSV o TXT.',
+            'archivo_csv.max' => 'El archivo CSV no debe superar los 10 MB.',
+        ]);
+
+        $file = $request->file('archivo_csv');
+        $rows = file($file->getRealPath(), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+
+        if (!$rows || count($rows) < 2) {
+            return back()->withErrors([
+                'archivo_csv' => 'El archivo no contiene registros para importar.',
+            ]);
+        }
+
+        $delimiter = $this->detectDelimiter($rows[0]);
+        $headers = str_getcsv($rows[0], $delimiter);
+        $normalizedHeaders = array_map(fn ($header) => $this->normalizeHeader($header), $headers);
+
+        $requiredHeaders = $this->requiredHeadersFor($catalogo);
+        $missingHeaders = array_diff($requiredHeaders, $normalizedHeaders);
+
+        if (!empty($missingHeaders)) {
+            return back()->withErrors([
+                'archivo_csv' => 'El layout no contiene los encabezados requeridos: ' . implode(', ', $missingHeaders),
+            ]);
+        }
+
+        $headerIndexes = array_flip($normalizedHeaders);
+        $headersToRead = $this->headersFor($catalogo);
+
+        $summary = [
+            'catalogo' => $this->catalogs()[$catalogo] ?? $catalogo,
+            'procesados' => 0,
+            'insertados' => 0,
+            'actualizados' => 0,
+            'rechazados' => 0,
+            'errores' => [],
+        ];
+
+        DB::beginTransaction();
+
+        try {
+            foreach (array_slice($rows, 1) as $index => $line) {
+                $lineNumber = $index + 2;
+                $columns = str_getcsv($line, $delimiter);
+                $data = [];
+
+                foreach ($headersToRead as $header) {
+                    $data[$header] = isset($headerIndexes[$header])
+                        ? $this->normalizeCell($columns[$headerIndexes[$header]] ?? '')
+                        : '';
+                }
+
+                if ($this->isEmptyCsvRow($data)) {
+                    continue;
+                }
+
+                $summary['procesados']++;
+
+                $prepared = $this->prepareImportRow($catalogo, $data, $lineNumber, $summary);
+
+                if ($prepared === null) {
+                    continue;
+                }
+
+                $table = $this->tableFor($catalogo);
+                $existing = $this->findExistingImportRecord($catalogo, $prepared);
+                $before = $existing ? (array) $existing : null;
+                $now = now();
+
+                if ($existing) {
+                    DB::table($table)
+                        ->where('id', $existing->id)
+                        ->update(array_merge($prepared, [
+                            'updated_at' => $now,
+                        ]));
+
+                    $registroId = (string) $existing->id;
+                    $summary['actualizados']++;
+                    $accion = 'IMPORTACION_CATALOGO_ACTUALIZACION';
+                } else {
+                    $registroId = (string) DB::table($table)->insertGetId(array_merge($prepared, [
+                        'created_at' => $now,
+                        'updated_at' => $now,
+                    ]));
+
+                    $summary['insertados']++;
+                    $accion = 'IMPORTACION_CATALOGO_ALTA';
+                }
+
+                $after = DB::table($table)
+                    ->where('id', $registroId)
+                    ->first();
+
+                $this->registrarBitacora(
+                    accion: $accion,
+                    tablaAfectada: $table,
+                    registroClave: $registroId,
+                    antes: $before,
+                    despues: $after ? (array) $after : null
+                );
+            }
+
+            DB::commit();
+        } catch (\Throwable $exception) {
+            DB::rollBack();
+
+            return back()->withErrors([
+                'archivo_csv' => 'Ocurrió un error durante la importación: ' . $exception->getMessage(),
+            ]);
+        }
+
+        return redirect()
+            ->route('catalogos', ['catalogo' => $catalogo])
+            ->with('success', 'La carga masiva del catálogo fue procesada correctamente.')
+            ->with('import_summary', $summary);
+    }
+
+    public function plantillaCsv(Request $request)
+    {
+        $catalogo = $this->normalizeCatalog($request->input('catalogo', 'proveedores'));
+        $headers = $this->headersFor($catalogo);
+        $example = $this->exampleRowFor($catalogo);
+
+        return response()->streamDownload(function () use ($headers, $example) {
+            $output = fopen('php://output', 'w');
+
+            fwrite($output, "\xEF\xBB\xBF");
+            fputcsv($output, array_map(fn ($header) => Str::headline(str_replace('_', ' ', $header)), $headers));
+            fputcsv($output, $example);
+
+            fclose($output);
+        }, 'plantilla_catalogo_swafi_' . $catalogo . '.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
+        ]);
     }
 
     public function destroy(string $catalogo, int $id)
@@ -468,6 +616,297 @@ class CatalogosController extends Controller
         };
     }
 
+    private function headersFor(string $catalogo): array
+    {
+        return match ($catalogo) {
+            'proveedores' => ['rfc', 'nombre', 'correo', 'telefono', 'estatus'],
+            'plantas' => ['clave', 'nombre', 'estado', 'pais', 'estatus'],
+            'centros_costo' => ['clave', 'descripcion', 'estatus'],
+            'tipos_activo' => ['clave', 'descripcion', 'vida_util_meses', 'estatus'],
+            'areas' => ['planta_clave', 'nombre', 'estatus'],
+            'ubicaciones' => ['planta_clave', 'area_nombre', 'codigo_interno', 'edificio', 'piso', 'pasillo', 'descripcion', 'estatus'],
+            'responsables' => ['nombre', 'correo', 'telefono', 'estatus'],
+            default => [],
+        };
+    }
+
+    private function requiredHeadersFor(string $catalogo): array
+    {
+        return match ($catalogo) {
+            'proveedores' => ['rfc', 'nombre'],
+            'plantas' => ['clave', 'nombre'],
+            'centros_costo' => ['clave', 'descripcion'],
+            'tipos_activo' => ['clave', 'descripcion'],
+            'areas' => ['planta_clave', 'nombre'],
+            'ubicaciones' => ['planta_clave', 'codigo_interno'],
+            'responsables' => ['nombre'],
+            default => [],
+        };
+    }
+
+    private function exampleRowFor(string $catalogo): array
+    {
+        return match ($catalogo) {
+            'proveedores' => ['ACM010101ABC', 'Proveedor industrial del centro', 'contacto@proveedor.com', '5555555555', 'activo'],
+            'plantas' => ['PLT-SM', 'Planta Santa María', 'Ciudad de México', 'México', 'activo'],
+            'centros_costo' => ['CC-PLA-200', 'Producción línea 2', 'activo'],
+            'tipos_activo' => ['EQP', 'Equipo de producción', '120', 'activo'],
+            'areas' => ['PLT-SM', 'Producción', 'activo'],
+            'ubicaciones' => ['PLT-SM', 'Producción', 'UBI-SM-PRO-L3-PB', 'Edificio B', 'PB', 'Línea 3', 'Producción línea 3 planta baja', 'activo'],
+            'responsables' => ['Jorge Méndez', 'jorge.mendez@bimbo.local', '5555555555', 'activo'],
+            default => [],
+        };
+    }
+
+    private function prepareImportRow(string $catalogo, array $data, int $lineNumber, array &$summary): ?array
+    {
+        $estatus = $this->normalizeEstatus($data['estatus'] ?? 'activo');
+
+        if ($estatus === null) {
+            $this->rejectRow($summary, $lineNumber, 'el estatus debe ser activo o inactivo.');
+            return null;
+        }
+
+        return match ($catalogo) {
+            'proveedores' => $this->prepareProveedor($data, $lineNumber, $summary, $estatus),
+            'plantas' => $this->preparePlanta($data, $lineNumber, $summary, $estatus),
+            'centros_costo' => $this->prepareCentroCosto($data, $lineNumber, $summary, $estatus),
+            'tipos_activo' => $this->prepareTipoActivo($data, $lineNumber, $summary, $estatus),
+            'areas' => $this->prepareArea($data, $lineNumber, $summary, $estatus),
+            'ubicaciones' => $this->prepareUbicacion($data, $lineNumber, $summary, $estatus),
+            'responsables' => $this->prepareResponsable($data, $lineNumber, $summary, $estatus),
+            default => null,
+        };
+    }
+
+    private function prepareProveedor(array $data, int $lineNumber, array &$summary, string $estatus): ?array
+    {
+        $rfc = strtoupper($this->normalizeCell($data['rfc'] ?? ''));
+        $nombre = $this->normalizeCell($data['nombre'] ?? '');
+
+        if ($rfc === '' || mb_strlen($rfc) > 13) {
+            $this->rejectRow($summary, $lineNumber, 'el RFC es obligatorio y no debe superar 13 caracteres.');
+            return null;
+        }
+
+        if ($nombre === '') {
+            $this->rejectRow($summary, $lineNumber, 'el nombre del proveedor es obligatorio.');
+            return null;
+        }
+
+        return [
+            'rfc' => $rfc,
+            'nombre' => $nombre,
+            'correo' => $this->nullableString($data['correo'] ?? null, 120),
+            'telefono' => $this->nullableString($data['telefono'] ?? null, 30),
+            'estatus' => $estatus,
+        ];
+    }
+
+    private function preparePlanta(array $data, int $lineNumber, array &$summary, string $estatus): ?array
+    {
+        $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
+        $nombre = $this->normalizeCell($data['nombre'] ?? '');
+
+        if ($clave === '' || mb_strlen($clave) > 30) {
+            $this->rejectRow($summary, $lineNumber, 'la clave de planta es obligatoria y no debe superar 30 caracteres.');
+            return null;
+        }
+
+        if ($nombre === '') {
+            $this->rejectRow($summary, $lineNumber, 'el nombre de planta es obligatorio.');
+            return null;
+        }
+
+        return [
+            'clave' => $clave,
+            'nombre' => $nombre,
+            'estado' => $this->nullableString($data['estado'] ?? null, 100),
+            'pais' => $this->normalizeCell($data['pais'] ?? '') ?: 'México',
+            'estatus' => $estatus,
+        ];
+    }
+
+    private function prepareCentroCosto(array $data, int $lineNumber, array &$summary, string $estatus): ?array
+    {
+        $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
+        $descripcion = $this->normalizeCell($data['descripcion'] ?? '');
+
+        if ($clave === '' || mb_strlen($clave) > 30) {
+            $this->rejectRow($summary, $lineNumber, 'la clave de centro de costo es obligatoria y no debe superar 30 caracteres.');
+            return null;
+        }
+
+        if ($descripcion === '') {
+            $this->rejectRow($summary, $lineNumber, 'la descripción del centro de costo es obligatoria.');
+            return null;
+        }
+
+        return [
+            'clave' => $clave,
+            'descripcion' => $descripcion,
+            'estatus' => $estatus,
+        ];
+    }
+
+    private function prepareTipoActivo(array $data, int $lineNumber, array &$summary, string $estatus): ?array
+    {
+        $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
+        $descripcion = $this->normalizeCell($data['descripcion'] ?? '');
+        $vidaUtil = $this->normalizeCell($data['vida_util_meses'] ?? '');
+
+        if ($clave === '' || mb_strlen($clave) > 30) {
+            $this->rejectRow($summary, $lineNumber, 'la clave de tipo de activo es obligatoria y no debe superar 30 caracteres.');
+            return null;
+        }
+
+        if ($descripcion === '') {
+            $this->rejectRow($summary, $lineNumber, 'la descripción del tipo de activo es obligatoria.');
+            return null;
+        }
+
+        if ($vidaUtil !== '' && (!ctype_digit($vidaUtil) || (int) $vidaUtil < 1 || (int) $vidaUtil > 600)) {
+            $this->rejectRow($summary, $lineNumber, 'la vida útil debe ser un número entre 1 y 600 meses.');
+            return null;
+        }
+
+        return [
+            'clave' => $clave,
+            'descripcion' => $descripcion,
+            'vida_util_meses' => $vidaUtil !== '' ? (int) $vidaUtil : null,
+            'estatus' => $estatus,
+        ];
+    }
+
+    private function prepareArea(array $data, int $lineNumber, array &$summary, string $estatus): ?array
+    {
+        $plantaClave = strtoupper($this->normalizeCell($data['planta_clave'] ?? ''));
+        $nombre = $this->normalizeCell($data['nombre'] ?? '');
+
+        if ($plantaClave === '') {
+            $this->rejectRow($summary, $lineNumber, 'la planta_clave es obligatoria.');
+            return null;
+        }
+
+        $plantaId = DB::table('plantas')->where('clave', $plantaClave)->value('id');
+
+        if (!$plantaId) {
+            $this->rejectRow($summary, $lineNumber, "la planta {$plantaClave} no existe. Primero importa o registra la planta.");
+            return null;
+        }
+
+        if ($nombre === '') {
+            $this->rejectRow($summary, $lineNumber, 'el nombre del área es obligatorio.');
+            return null;
+        }
+
+        return [
+            'planta_id' => $plantaId,
+            'nombre' => $nombre,
+            'estatus' => $estatus,
+        ];
+    }
+
+    private function prepareUbicacion(array $data, int $lineNumber, array &$summary, string $estatus): ?array
+    {
+        $plantaClave = strtoupper($this->normalizeCell($data['planta_clave'] ?? ''));
+        $areaNombre = $this->normalizeCell($data['area_nombre'] ?? '');
+        $codigoInterno = strtoupper($this->normalizeCell($data['codigo_interno'] ?? ''));
+
+        if ($plantaClave === '') {
+            $this->rejectRow($summary, $lineNumber, 'la planta_clave es obligatoria.');
+            return null;
+        }
+
+        $plantaId = DB::table('plantas')->where('clave', $plantaClave)->value('id');
+
+        if (!$plantaId) {
+            $this->rejectRow($summary, $lineNumber, "la planta {$plantaClave} no existe. Primero importa o registra la planta.");
+            return null;
+        }
+
+        if ($codigoInterno === '') {
+            $this->rejectRow($summary, $lineNumber, 'el codigo_interno de ubicación es obligatorio para evitar duplicados.');
+            return null;
+        }
+
+        $areaId = null;
+
+        if ($areaNombre !== '') {
+            $areaId = DB::table('areas')
+                ->where('planta_id', $plantaId)
+                ->where('nombre', $areaNombre)
+                ->value('id');
+
+            if (!$areaId) {
+                $this->rejectRow($summary, $lineNumber, "el área {$areaNombre} no existe para la planta {$plantaClave}. Primero importa o registra el área.");
+                return null;
+            }
+        }
+
+        return [
+            'planta_id' => $plantaId,
+            'area_id' => $areaId,
+            'codigo_interno' => $codigoInterno,
+            'edificio' => $this->nullableString($data['edificio'] ?? null, 100),
+            'piso' => $this->nullableString($data['piso'] ?? null, 50),
+            'pasillo' => $this->nullableString($data['pasillo'] ?? null, 50),
+            'descripcion' => $this->nullableString($data['descripcion'] ?? null, 255),
+            'estatus' => $estatus,
+        ];
+    }
+
+    private function prepareResponsable(array $data, int $lineNumber, array &$summary, string $estatus): ?array
+    {
+        $nombre = $this->normalizeCell($data['nombre'] ?? '');
+
+        if ($nombre === '') {
+            $this->rejectRow($summary, $lineNumber, 'el nombre del responsable es obligatorio.');
+            return null;
+        }
+
+        return [
+            'nombre' => $nombre,
+            'correo' => $this->nullableString($data['correo'] ?? null, 120),
+            'telefono' => $this->nullableString($data['telefono'] ?? null, 30),
+            'estatus' => $estatus,
+        ];
+    }
+
+    private function findExistingImportRecord(string $catalogo, array $prepared)
+    {
+        return match ($catalogo) {
+            'proveedores' => DB::table('proveedores')->where('rfc', $prepared['rfc'])->first(),
+            'plantas' => DB::table('plantas')->where('clave', $prepared['clave'])->first(),
+            'centros_costo' => DB::table('centros_costo')->where('clave', $prepared['clave'])->first(),
+            'tipos_activo' => DB::table('tipos_activo')->where('clave', $prepared['clave'])->first(),
+            'areas' => DB::table('areas')
+                ->where('planta_id', $prepared['planta_id'])
+                ->where('nombre', $prepared['nombre'])
+                ->first(),
+            'ubicaciones' => DB::table('ubicaciones')->where('codigo_interno', $prepared['codigo_interno'])->first(),
+            'responsables' => $this->findExistingResponsable($prepared),
+            default => null,
+        };
+    }
+
+    private function findExistingResponsable(array $prepared)
+    {
+        if (!empty($prepared['correo'])) {
+            $responsable = DB::table('responsables')
+                ->where('correo', $prepared['correo'])
+                ->first();
+
+            if ($responsable) {
+                return $responsable;
+            }
+        }
+
+        return DB::table('responsables')
+            ->where('nombre', $prepared['nombre'])
+            ->first();
+    }
+
     private function messages(): array
     {
         return [
@@ -543,6 +982,78 @@ class CatalogosController extends Controller
         }, 'catalogo_swafi_' . $catalogo . '_' . now()->format('Ymd_His') . '.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    private function detectDelimiter(string $line): string
+    {
+        $candidates = [
+            ',' => substr_count($line, ','),
+            ';' => substr_count($line, ';'),
+            "\t" => substr_count($line, "\t"),
+        ];
+
+        arsort($candidates);
+
+        return array_key_first($candidates) ?: ',';
+    }
+
+    private function normalizeHeader(?string $value): string
+    {
+        $value = $this->normalizeCell($value);
+        $value = Str::ascii($value);
+        $value = Str::lower($value);
+        $value = preg_replace('/[^a-z0-9]+/', '_', $value);
+        $value = trim($value, '_');
+
+        return $value;
+    }
+
+    private function normalizeCell(?string $value): string
+    {
+        $value = (string) $value;
+        $value = str_replace("\xEF\xBB\xBF", '', $value);
+        $value = trim($value);
+
+        return $value;
+    }
+
+    private function isEmptyCsvRow(array $data): bool
+    {
+        foreach ($data as $value) {
+            if (trim((string) $value) !== '') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function normalizeEstatus(?string $value): ?string
+    {
+        $value = $this->normalizeHeader($value ?: 'activo');
+
+        return match ($value) {
+            'activo', 'activa', '1', 'si' => 'activo',
+            'inactivo', 'inactiva', '0', 'no' => 'inactivo',
+            default => null,
+        };
+    }
+
+    private function nullableString(?string $value, int $maxLength): ?string
+    {
+        $value = $this->normalizeCell($value);
+
+        if ($value === '') {
+            return null;
+        }
+
+        return mb_substr($value, 0, $maxLength);
+    }
+
+    private function rejectRow(array &$summary, int $lineNumber, string $reason): void
+    {
+        $summary['rechazados']++;
+        $summary['errores'][] = "Fila {$lineNumber}: {$reason}";
     }
 
     private function registrarBitacora(
