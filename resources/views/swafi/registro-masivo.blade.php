@@ -2,7 +2,7 @@
 
 @section('title', 'Registro masivo | SWAFI')
 @section('page_title', 'Registro masivo')
-@section('page_subtitle', 'Carga de expedientes mediante layout CSV y validación previa')
+@section('page_subtitle', 'Carga de expedientes mediante layout CSV, ZIP documental y validación previa')
 @section('breadcrumb', 'Registro masivo')
 
 @section('page_styles')
@@ -77,6 +77,16 @@
         font-size: 12px;
         font-weight: 900;
         cursor: pointer;
+    }
+
+    .rm-help {
+        margin-top: 12px;
+        padding: 10px 12px;
+        border-radius: 13px;
+        background: #eef6ff;
+        color: #385b82;
+        font-size: 12px;
+        line-height: 1.4;
     }
 
     .rm-message {
@@ -196,23 +206,35 @@
     <div class="card">
         <div class="section-title">
             <h2>Carga masiva por layout</h2>
-            <span class="pill ok">CSV validado</span>
+            <span class="pill ok">CSV + ZIP documental</span>
         </div>
 
         <div class="rm-box">
-            <h3>Importar expedientes</h3>
+            <h3>Importar expedientes con documentos físicos</h3>
             <p>
-                Carga un archivo CSV con activos y expedientes. SWAFI validará catálogos, fechas, montos,
-                folios, UUID CFDI y referencias PDF/XML antes de registrar la información.
+                Carga un archivo CSV con los datos del activo y un archivo ZIP con los documentos PDF/XML.
+                SWAFI validará catálogos, fechas, montos, folios, UUID CFDI y existencia física de documentos.
             </p>
 
             <form method="POST" action="{{ url('/registro-masivo/importar') }}" enctype="multipart/form-data">
                 @csrf
 
                 <label>
-                    <span>Archivo CSV</span>
+                    <span>Archivo CSV de datos</span>
                     <input type="file" name="archivo_csv" accept=".csv,.txt" required>
                 </label>
+
+                <label style="margin-top:12px">
+                    <span>Archivo ZIP con documentos PDF/XML</span>
+                    <input type="file" name="archivo_zip" accept=".zip" required>
+                </label>
+
+                <div class="rm-help">
+                    El CSV debe incluir las columnas <strong>Documento PDF</strong> y <strong>Documento XML</strong>.
+                    Los nombres capturados ahí deben existir dentro del ZIP. Ejemplo:
+                    <strong>factura_184.pdf</strong> y <strong>factura_184.xml</strong>.
+                    Si ambos archivos existen, el expediente quedará como completo.
+                </div>
 
                 <div class="action-group" style="margin-top:12px">
                     <button class="tab" type="submit">Procesar carga</button>
@@ -229,17 +251,17 @@
 
             <div class="rm-kpi">
                 <strong>CSV</strong>
-                <span>Layout soportado</span>
+                <span>Datos del activo</span>
             </div>
 
             <div class="rm-kpi">
-                <strong>PDF/XML</strong>
-                <span>Referencia documental</span>
+                <strong>ZIP</strong>
+                <span>PDF/XML físicos</span>
             </div>
 
             <div class="rm-kpi">
-                <strong>BIT</strong>
-                <span>Bitácora activa</span>
+                <strong>HASH</strong>
+                <span>Integridad documental</span>
             </div>
         </div>
     </div>
@@ -262,13 +284,23 @@
             </div>
 
             <div class="list-item">
+                <strong>Vinculación documental</strong>
+                <span>El sistema busca en el ZIP los archivos indicados en las columnas Documento PDF y Documento XML.</span>
+            </div>
+
+            <div class="list-item">
                 <strong>Estatus documental</strong>
-                <span>Si el layout contiene PDF y XML, el expediente queda completo; si falta alguno, queda incompleto.</span>
+                <span>El expediente queda completo solo si el PDF y el XML fueron encontrados, guardados y ligados al expediente.</span>
+            </div>
+
+            <div class="list-item">
+                <strong>Integridad</strong>
+                <span>Por cada documento físico se registra ruta privada, tamaño, MIME y hash SHA-256.</span>
             </div>
 
             <div class="list-item">
                 <strong>Errores controlados</strong>
-                <span>Las filas con catálogos inexistentes, fechas inválidas, montos inválidos o UUID duplicado se rechazan.</span>
+                <span>Las filas con catálogos inexistentes, fechas inválidas, montos inválidos, UUID duplicado o documentos faltantes se rechazan.</span>
             </div>
         </div>
     </div>
