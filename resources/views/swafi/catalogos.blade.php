@@ -25,12 +25,14 @@
     }
 
     .cat-form-grid label,
-    .cat-filter label {
+    .cat-filter label,
+    .cat-import label {
         display: block;
     }
 
     .cat-form-grid span,
-    .cat-filter span {
+    .cat-filter span,
+    .cat-import span {
         display: block;
         margin-bottom: 5px;
         color: #1d3558;
@@ -41,7 +43,8 @@
     .cat-form-grid input,
     .cat-form-grid select,
     .cat-filter input,
-    .cat-filter select {
+    .cat-filter select,
+    .cat-import input[type="file"] {
         width: 100%;
         min-height: 38px;
         padding: 8px 10px;
@@ -50,6 +53,18 @@
         background: #ffffff;
         color: #16304d;
         font-size: 13px;
+    }
+
+    .cat-import input[type="file"]::file-selector-button {
+        margin-right: 12px;
+        padding: 8px 13px;
+        border: 0;
+        border-radius: 10px;
+        background: #154f9b;
+        color: #ffffff;
+        font-size: 12px;
+        font-weight: 900;
+        cursor: pointer;
     }
 
     .cat-message {
@@ -76,11 +91,31 @@
         margin: 6px 0 0 18px;
     }
 
-    .cat-filter {
+    .cat-filter,
+    .cat-import {
         padding: 14px;
         border: 1px solid #e1eaf6;
         border-radius: 18px;
         background: #f8fbff;
+    }
+
+    .cat-import {
+        margin-top: 16px;
+        border-style: dashed;
+    }
+
+    .cat-import h3 {
+        margin: 0 0 6px;
+        color: #12345a;
+        font-size: 15px;
+        font-weight: 900;
+    }
+
+    .cat-import p {
+        margin: 0 0 12px;
+        color: #64748b;
+        font-size: 12px;
+        line-height: 1.35;
     }
 
     .cat-kpi-grid {
@@ -145,6 +180,28 @@
 @if (session('success'))
     <div class="cat-message cat-message-success">
         {{ session('success') }}
+    </div>
+@endif
+
+@if (session('import_summary'))
+    @php
+        $summary = session('import_summary');
+    @endphp
+
+    <div class="cat-message cat-message-success">
+        <strong>Resumen de carga masiva de {{ $summary['catalogo'] ?? 'catálogo' }}:</strong><br>
+        Procesados: {{ $summary['procesados'] ?? 0 }} |
+        Insertados: {{ $summary['insertados'] ?? 0 }} |
+        Actualizados: {{ $summary['actualizados'] ?? 0 }} |
+        Rechazados: {{ $summary['rechazados'] ?? 0 }}
+
+        @if (!empty($summary['errores']))
+            <ul>
+                @foreach (array_slice($summary['errores'], 0, 12) as $error)
+                    <li>{{ $error }}</li>
+                @endforeach
+            </ul>
+        @endif
     </div>
 @endif
 
@@ -378,6 +435,38 @@
             </div>
         </form>
 
+        <div class="cat-import">
+            <h3>Carga masiva del catálogo actual</h3>
+            <p>
+                Importa registros desde un archivo CSV. Si la clave principal ya existe, SWAFI actualizará el registro;
+                si no existe, lo creará como nuevo.
+            </p>
+
+            <form method="POST" action="{{ route('catalogos.importar') }}" enctype="multipart/form-data">
+                @csrf
+
+                <input type="hidden" name="catalogo" value="{{ $catalogoActivo }}">
+
+                <label>
+                    <span>Archivo CSV</span>
+                    <input type="file" name="archivo_csv" accept=".csv,.txt" required>
+                </label>
+
+                <div class="cat-help">
+                    Encabezados esperados para este catálogo:
+                    <strong>{{ implode(', ', $headersLayout) }}</strong>.
+                    Guarda el archivo desde Excel como CSV UTF-8.
+                </div>
+
+                <div class="action-group" style="margin-top:12px">
+                    <button class="tab" type="submit">Importar catálogo</button>
+                    <a class="tab" href="{{ route('catalogos.plantilla', ['catalogo' => $catalogoActivo]) }}">
+                        Descargar plantilla
+                    </a>
+                </div>
+            </form>
+        </div>
+
         <div class="cat-help">
             La eliminación se maneja como <strong>desactivación</strong> para conservar trazabilidad y evitar borrar catálogos
             ya relacionados con activos, expedientes, ubicaciones o reportes.
@@ -408,7 +497,7 @@
 
             <div class="cat-kpi">
                 <strong>CSV</strong>
-                <span>Exportación activa</span>
+                <span>Importación / exportación</span>
             </div>
         </div>
 
@@ -521,7 +610,7 @@
 <section class="card table-card" style="margin-top:20px">
     <div class="section-title">
         <h2>Consulta de {{ $catalogosDisponibles[$catalogoActivo] ?? 'catálogo' }}</h2>
-        <span class="pill ok">CRUD funcional</span>
+        <span class="pill ok">CRUD + carga masiva</span>
     </div>
 
     <div class="cat-table-scroll">
