@@ -9,7 +9,10 @@ use App\Models\Expediente;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\File;
+use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use ZipArchive;
 
 class RegistroMasivoController extends Controller
 {
@@ -37,12 +40,24 @@ class RegistroMasivoController extends Controller
 
     public function importar(ImportRegistroMasivoRequest $request)
     {
-        $file = $request->file('archivo_csv');
-        $rows = file($file->getRealPath(), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+        $csvFile = $request->file('archivo_csv');
+        $zipFile = $request->file('archivo_zip');
+
+        $rows = file($csvFile->getRealPath(), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
 
         if (!$rows || count($rows) < 2) {
             return back()->withErrors([
                 'archivo_csv' => 'El archivo no contiene registros para importar.',
+            ]);
+        }
+
+        $zipTempDirectory = null;
+
+        try {
+            [$zipIndex, $zipTempDirectory] = $this->buildZipIndex($zipFile->getRealPath());
+        } catch (\Throwable $exception) {
+            return back()->withErrors([
+                'archivo_zip' => 'No fue posible leer el archivo ZIP: ' . $exception->getMessage(),
             ]);
         }
 
@@ -84,6 +99,8 @@ class RegistroMasivoController extends Controller
         $missingHeaders = array_diff($requiredHeaders, $normalizedHeaders);
 
         if (!empty($missingHeaders)) {
+            $this->deleteDirectoryIfExists($zipTempDirectory);
+
             return back()->withErrors([
                 'archivo_csv' => 'El archivo no contiene los encabezados requeridos: ' . implode(', ', $missingHeaders),
             ]);
@@ -129,8 +146,7 @@ class RegistroMasivoController extends Controller
                     ->value('id');
 
                 if (!$proveedorId) {
-                    $summary['rechazados']++;
-                    $summary['errores'][] = "Fila {$lineNumber}: el RFC de proveedor {$data['proveedor_rfc']} no existe.";
+                    $this->rejectRow($summary, $lineNumber, "el RFC de proveedor {$data['proveedor_rfc']} no existe.");
                     continue;
                 }
 
@@ -139,8 +155,7 @@ class RegistroMasivoController extends Controller
                     ->value('id');
 
                 if (!$tipoActivoId) {
-                    $summary['rechazados']++;
-                    $summary['errores'][] = "Fila {$lineNumber}: el tipo de activo {$data['tipo_activo_clave']} no existe.";
+                    $this->rejectRow($summary, $lineNumber, "el tipo de activo {$data['tipo_activo_clave']} no existe.");
                     continue;
                 }
 
@@ -149,8 +164,7 @@ class RegistroMasivoController extends Controller
                     ->value('id');
 
                 if (!$centroCostoId) {
-                    $summary['rechazados']++;
-                    $summary['errores'][] = "Fila {$lineNumber}: el centro de costo {$data['centro_costo_clave']} no existe.";
+                    $this->rejectRow($summary, $lineNumber, "el centro de costo {$data['centro_costo_clave']} no existe.");
                     continue;
                 }
 
@@ -159,8 +173,7 @@ class RegistroMasivoController extends Controller
                     ->value('id');
 
                 if (!$plantaId) {
-                    $summary['rechazados']++;
-                    $summary['errores'][] = "Fila {$lineNumber}: la planta {$data['planta_clave']} no existe.";
+                    $this->rejectRow($summary, $lineNumber, "la planta {$data['planta_clave']} no existe.");
                     continue;
                 }
 
@@ -172,8 +185,7 @@ class RegistroMasivoController extends Controller
                         ->value('id');
 
                     if (!$ubicacionId) {
-                        $summary['rechazados']++;
-                        $summary['errores'][] = "Fila {$lineNumber}: la ubicación {$data['ubicacion_codigo']} no existe.";
+                        $this->rejectRow($summary, $lineNumber, "la ubicación {$data['ubicacion_codigo']} no existe.");
                         continue;
                     }
                 }
@@ -186,8 +198,7 @@ class RegistroMasivoController extends Controller
                         ->value('id');
 
                     if (!$responsableId) {
-                        $summary['rechazados']++;
-                        $summary['errores'][] = "Fila {$lineNumber}: el responsable {$data['responsable_correo']} no existe.";
+                        $this->rejectRow($summary, $lineNumber, "el responsable {$data['responsable_correo']} no existe.");
                         continue;
                     }
                 }
@@ -195,26 +206,22 @@ class RegistroMasivoController extends Controller
                 $fechaFactura = $this->parseDate($data['fecha_factura']);
 
                 if (!$fechaFactura) {
-                    $summary['rechazados']++;
-                    $summary['errores'][] = "Fila {$lineNumber}: la fecha de factura no tiene un formato válido.";
+                    $this->rejectRow($summary, $lineNumber, 'la fecha de factura no tiene un formato válido.');
                     continue;
                 }
 
                 $fechaAdquisicion = $this->parseDate($data['fecha_adquisicion']);
-
                 $montoFactura = $this->toDecimal($data['monto_factura']);
 
                 if ($montoFactura === null) {
-                    $summary['rechazados']++;
-                    $summary['errores'][] = "Fila {$lineNumber}: el monto de factura debe ser numérico.";
+                    $this->rejectRow($summary, $lineNumber, 'el monto de factura debe ser numérico.');
                     continue;
                 }
 
                 $moneda = $this->normalizeMoneda($data['moneda']);
 
                 if (!$moneda) {
-                    $summary['rechazados']++;
-                    $summary['errores'][] = "Fila {$lineNumber}: la moneda debe ser MXN, USD o EUR.";
+                    $this->rejectRow($summary, $lineNumber, 'la moneda debe ser MXN, USD o EUR.');
                     continue;
                 }
 
@@ -232,20 +239,27 @@ class RegistroMasivoController extends Controller
                         ->exists();
 
                     if ($uuidConflict) {
-                        $summary['rechazados']++;
-                        $summary['errores'][] = "Fila {$lineNumber}: el UUID CFDI {$uuidCfdi} ya está registrado en otro expediente.";
+                        $this->rejectRow($summary, $lineNumber, "el UUID CFDI {$uuidCfdi} ya está registrado en otro expediente.");
                         continue;
                     }
                 }
 
-                $documentos = $this->prepareDocumentReferences(
+                $documentosPendientes = $this->resolveDocumentsFromZip(
+                    zipIndex: $zipIndex,
                     numeroActivo: $numeroActivo,
                     folioFactura: $folioFactura,
                     pdfName: $data['documento_pdf'],
                     xmlName: $data['documento_xml']
                 );
 
-                $estatusDocumental = $this->resolveDocumentStatus($documentos);
+                if (!empty($documentosPendientes['errores'])) {
+                    foreach ($documentosPendientes['errores'] as $error) {
+                        $this->rejectRow($summary, $lineNumber, $error);
+                    }
+
+                    continue;
+                }
+
                 $estatusOperativo = $this->normalizeEstatusOperativo($data['estatus_operativo']);
 
                 $activoAntes = Activo::where('numero_activo', $numeroActivo)->first();
@@ -266,7 +280,7 @@ class RegistroMasivoController extends Controller
                         'modelo' => $data['modelo'] ?: null,
                         'fecha_adquisicion' => $fechaAdquisicion,
                         'estatus_operativo' => $estatusOperativo,
-                        'estatus_documental' => $estatusDocumental,
+                        'estatus_documental' => 'incompleto',
                         'activo' => true,
                         'creado_por' => $activoAntes ? $activoAntes->creado_por : auth()->id(),
                         'actualizado_por' => auth()->id(),
@@ -283,31 +297,31 @@ class RegistroMasivoController extends Controller
                         'fecha_factura' => $fechaFactura,
                         'monto_factura' => $montoFactura,
                         'moneda' => $moneda,
-                        'estatus' => $estatusDocumental,
+                        'estatus' => 'incompleto',
                         'observaciones' => $data['observaciones'] ?: null,
                         'creado_por' => $expedienteExistente ? $expedienteExistente->creado_por : auth()->id(),
                         'actualizado_por' => auth()->id(),
                     ]
                 );
 
-                foreach ($documentos as $doc) {
-                    DocumentoExpediente::updateOrCreate(
-                        [
-                            'expediente_id' => $expediente->id,
-                            'tipo_documento' => $doc['tipo_documento'],
-                        ],
-                        [
-                            'nombre_archivo' => $doc['nombre_archivo'],
-                            'ruta_archivo' => $doc['ruta_archivo'],
-                            'mime_type' => $doc['mime_type'],
-                            'tamano_bytes' => null,
-                            'hash_sha256' => null,
-                            'version' => 1,
-                            'vigente' => true,
-                            'cargado_por' => auth()->id(),
-                        ]
-                    );
-                }
+                $documentosGuardados = $this->storeDocumentsForExpediente(
+                    expediente: $expediente,
+                    documentos: $documentosPendientes['documentos'],
+                    numeroActivo: $numeroActivo,
+                    folioFactura: $folioFactura
+                );
+
+                $estatusDocumental = $this->resolveDocumentStatusFromDatabase($expediente->id);
+
+                $expediente->update([
+                    'estatus' => $estatusDocumental,
+                    'actualizado_por' => auth()->id(),
+                ]);
+
+                $activo->update([
+                    'estatus_documental' => $estatusDocumental,
+                    'actualizado_por' => auth()->id(),
+                ]);
 
                 if ($expediente->wasRecentlyCreated) {
                     $summary['insertados']++;
@@ -329,7 +343,7 @@ class RegistroMasivoController extends Controller
                     despues: [
                         'activo' => $activo->fresh()->toArray(),
                         'expediente' => $expediente->fresh()->toArray(),
-                        'documentos' => $documentos,
+                        'documentos_guardados' => $documentosGuardados,
                     ]
                 );
             }
@@ -337,11 +351,14 @@ class RegistroMasivoController extends Controller
             DB::commit();
         } catch (\Throwable $exception) {
             DB::rollBack();
+            $this->deleteDirectoryIfExists($zipTempDirectory);
 
             return back()->withErrors([
                 'archivo_csv' => 'Ocurrió un error durante la importación: ' . $exception->getMessage(),
             ]);
         }
+
+        $this->deleteDirectoryIfExists($zipTempDirectory);
 
         return redirect()
             ->route('registro-masivo')
@@ -401,7 +418,7 @@ class RegistroMasivoController extends Controller
                 'en_operacion',
                 'factura_184.pdf',
                 'factura_184.xml',
-                'Carga masiva de expediente de activo fijo.',
+                'Carga masiva de expediente de activo fijo con documentos físicos en ZIP.',
             ]);
 
             fclose($output);
@@ -558,44 +575,200 @@ class RegistroMasivoController extends Controller
         ]);
     }
 
-    private function prepareDocumentReferences(
+    private function buildZipIndex(string $zipPath): array
+    {
+        if (!class_exists(ZipArchive::class)) {
+            throw new \RuntimeException('La extensión ZIP de PHP no está disponible en el servidor.');
+        }
+
+        $zip = new ZipArchive();
+        $openResult = $zip->open($zipPath);
+
+        if ($openResult !== true) {
+            throw new \RuntimeException('El archivo ZIP no pudo abrirse o está dañado.');
+        }
+
+        $tempDirectory = storage_path('app/tmp/swafi_import_' . (string) Str::uuid());
+
+        if (!File::exists($tempDirectory)) {
+            File::makeDirectory($tempDirectory, 0755, true);
+        }
+
+        $index = [];
+
+        for ($i = 0; $i < $zip->numFiles; $i++) {
+            $entryName = $zip->getNameIndex($i);
+
+            if (!$entryName || str_ends_with($entryName, '/')) {
+                continue;
+            }
+
+            $baseName = basename(str_replace('\\', '/', $entryName));
+
+            if ($baseName === '' || $baseName === '.' || $baseName === '..') {
+                continue;
+            }
+
+            $stream = $zip->getStream($entryName);
+
+            if (!$stream) {
+                continue;
+            }
+
+            $extension = strtolower(pathinfo($baseName, PATHINFO_EXTENSION));
+
+            if (!in_array($extension, ['pdf', 'xml'], true)) {
+                fclose($stream);
+                continue;
+            }
+
+            $safeBaseName = $this->safeFileName($baseName, $extension);
+            $tempFile = $tempDirectory . DIRECTORY_SEPARATOR . Str::random(10) . '_' . $safeBaseName;
+
+            file_put_contents($tempFile, stream_get_contents($stream));
+            fclose($stream);
+
+            $index[$this->normalizeZipKey($baseName)] = [
+                'original_name' => $baseName,
+                'temp_path' => $tempFile,
+                'extension' => $extension,
+                'size' => filesize($tempFile),
+                'hash_sha256' => hash_file('sha256', $tempFile),
+            ];
+        }
+
+        $zip->close();
+
+        return [$index, $tempDirectory];
+    }
+
+    private function resolveDocumentsFromZip(
+        array $zipIndex,
         string $numeroActivo,
         string $folioFactura,
         ?string $pdfName,
         ?string $xmlName
     ): array {
-        $docs = [];
+        $documentos = [];
+        $errores = [];
 
-        $basePath = 'carga_masiva/referencias/'
+        if ($pdfName !== null && trim($pdfName) !== '') {
+            $pdf = $this->findFileInZip($zipIndex, $pdfName);
+
+            if (!$pdf) {
+                $errores[] = "el PDF {$pdfName} no existe dentro del ZIP.";
+            } elseif ($pdf['extension'] !== 'pdf') {
+                $errores[] = "el archivo {$pdfName} no tiene extensión PDF.";
+            } else {
+                $documentos[] = [
+                    'tipo_documento' => 'PDF',
+                    'nombre_archivo' => basename($pdfName),
+                    'source_path' => $pdf['temp_path'],
+                    'mime_type' => 'application/pdf',
+                    'tamano_bytes' => $pdf['size'],
+                    'hash_sha256' => $pdf['hash_sha256'],
+                ];
+            }
+        }
+
+        if ($xmlName !== null && trim($xmlName) !== '') {
+            $xml = $this->findFileInZip($zipIndex, $xmlName);
+
+            if (!$xml) {
+                $errores[] = "el XML {$xmlName} no existe dentro del ZIP.";
+            } elseif ($xml['extension'] !== 'xml') {
+                $errores[] = "el archivo {$xmlName} no tiene extensión XML.";
+            } else {
+                $documentos[] = [
+                    'tipo_documento' => 'XML',
+                    'nombre_archivo' => basename($xmlName),
+                    'source_path' => $xml['temp_path'],
+                    'mime_type' => 'application/xml',
+                    'tamano_bytes' => $xml['size'],
+                    'hash_sha256' => $xml['hash_sha256'],
+                ];
+            }
+        }
+
+        return [
+            'documentos' => $documentos,
+            'errores' => $errores,
+        ];
+    }
+
+    private function storeDocumentsForExpediente(
+        Expediente $expediente,
+        array $documentos,
+        string $numeroActivo,
+        string $folioFactura
+    ): array {
+        $guardados = [];
+
+        foreach ($documentos as $doc) {
+            $storedPath = $this->storeDocumentFile(
+                sourcePath: $doc['source_path'],
+                numeroActivo: $numeroActivo,
+                folioFactura: $folioFactura,
+                originalName: $doc['nombre_archivo']
+            );
+
+            $documento = DocumentoExpediente::updateOrCreate(
+                [
+                    'expediente_id' => $expediente->id,
+                    'tipo_documento' => $doc['tipo_documento'],
+                ],
+                [
+                    'nombre_archivo' => $doc['nombre_archivo'],
+                    'ruta_archivo' => $storedPath,
+                    'mime_type' => $doc['mime_type'],
+                    'tamano_bytes' => $doc['tamano_bytes'],
+                    'hash_sha256' => $doc['hash_sha256'],
+                    'version' => 1,
+                    'vigente' => true,
+                    'cargado_por' => auth()->id(),
+                ]
+            );
+
+            $guardados[] = $documento->fresh()->toArray();
+        }
+
+        return $guardados;
+    }
+
+    private function storeDocumentFile(
+        string $sourcePath,
+        string $numeroActivo,
+        string $folioFactura,
+        string $originalName
+    ): string {
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
+        $safeName = $this->safeFileName($originalName, $extension ?: 'dat');
+
+        $basePath = 'swafi/expedientes/'
             . Str::slug($numeroActivo)
             . '/'
             . Str::slug($folioFactura);
 
-        if ($pdfName) {
-            $docs[] = [
-                'tipo_documento' => 'PDF',
-                'nombre_archivo' => $pdfName,
-                'ruta_archivo' => $basePath . '/' . $this->safeFileName($pdfName, 'pdf'),
-                'mime_type' => 'application/pdf',
-            ];
-        }
+        $storedName = now()->format('YmdHis')
+            . '_'
+            . Str::random(8)
+            . '_'
+            . $safeName;
 
-        if ($xmlName) {
-            $docs[] = [
-                'tipo_documento' => 'XML',
-                'nombre_archivo' => $xmlName,
-                'ruta_archivo' => $basePath . '/' . $this->safeFileName($xmlName, 'xml'),
-                'mime_type' => 'application/xml',
-            ];
-        }
+        $storedPath = $basePath . '/' . $storedName;
 
-        return $docs;
+        Storage::disk('local')->put($storedPath, file_get_contents($sourcePath));
+
+        return $storedPath;
     }
 
-    private function resolveDocumentStatus(array $docs): string
+    private function resolveDocumentStatusFromDatabase(int $expedienteId): string
     {
-        $tipos = collect($docs)
+        $tipos = DB::table('documentos_expediente')
+            ->where('expediente_id', $expedienteId)
+            ->where('vigente', true)
             ->pluck('tipo_documento')
+            ->map(fn ($tipo) => strtoupper((string) $tipo))
             ->unique()
             ->values()
             ->all();
@@ -605,6 +778,20 @@ class RegistroMasivoController extends Controller
         }
 
         return 'incompleto';
+    }
+
+    private function findFileInZip(array $zipIndex, string $fileName): ?array
+    {
+        $key = $this->normalizeZipKey($fileName);
+
+        return $zipIndex[$key] ?? null;
+    }
+
+    private function normalizeZipKey(string $value): string
+    {
+        $value = basename(str_replace('\\', '/', $this->normalizeCell($value)));
+
+        return Str::lower($value);
     }
 
     private function safeFileName(string $name, string $defaultExtension): string
@@ -706,7 +893,7 @@ class RegistroMasivoController extends Controller
             try {
                 return Carbon::createFromFormat($format, $value)->format('Y-m-d');
             } catch (\Throwable $exception) {
-                //
+                // Intenta con el siguiente formato.
             }
         }
 
@@ -734,6 +921,19 @@ class RegistroMasivoController extends Controller
             'en_operacion', 'operacion', 'activo' => 'en_operacion',
             default => 'en_operacion',
         };
+    }
+
+    private function rejectRow(array &$summary, int $lineNumber, string $reason): void
+    {
+        $summary['rechazados']++;
+        $summary['errores'][] = "Fila {$lineNumber}: {$reason}";
+    }
+
+    private function deleteDirectoryIfExists(?string $directory): void
+    {
+        if ($directory && File::exists($directory)) {
+            File::deleteDirectory($directory);
+        }
     }
 
     private function registrarBitacora(
