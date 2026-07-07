@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusquedaController;
 use App\Http\Controllers\CatalogosController;
+use App\Http\Controllers\DocumentoExpedienteController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\RegistroIndividualController;
 use App\Http\Controllers\RegistroMasivoController;
@@ -49,6 +50,19 @@ Route::middleware('swafi.auth')->group(function () {
     Route::post('/ubicacion-inventario/inventario', [UbicacionInventarioController::class, 'storeInventario'])->name('ubicacion.inventario');
 
     Route::get('/busqueda-avanzada', [BusquedaController::class, 'index'])->name('busqueda');
+
+    Route::get('/documentos-expediente/{documento}/ver', [DocumentoExpedienteController::class, 'show'])
+        ->whereNumber('documento')
+        ->name('documentos.ver');
+
+    Route::get('/documentos-expediente/{documento}/descargar', [DocumentoExpedienteController::class, 'download'])
+        ->whereNumber('documento')
+        ->name('documentos.descargar');
+
+    Route::get('/expedientes/{expediente}/documentos/descargar', [DocumentoExpedienteController::class, 'downloadAll'])
+        ->whereNumber('expediente')
+        ->name('documentos.descargar-todos');
+
     Route::get('/detalle-expediente/{expediente?}', [BusquedaController::class, 'show'])->name('expediente');
 
     Route::get('/reportes', [ReportesController::class, 'index'])->name('reportes');
