@@ -124,13 +124,19 @@
                 </div>
 
                 <div>
-                    @if ($errors->any())
-                        <div class="login-alert-v1">
-                            @foreach ($errors->all() as $error)
-                                <p>{{ $error }}</p>
-                            @endforeach
-                        </div>
-                    @endif
+                   @if (session('status'))
+    <div class="login-alert-v1" style="background:#e8f7ea;border-color:#b9e5bf;color:#1f6b2a;">
+        <p>{{ session('status') }}</p>
+    </div>
+@endif
+
+@if ($errors->any())
+    <div class="login-alert-v1">
+        @foreach ($errors->all() as $error)
+            <p>{{ $error }}</p>
+        @endforeach
+    </div>
+@endif
 
                     <form id="loginForm" class="login-form-v1 login-form-executive" action="{{ route('login.post') }}" method="POST">
                         @csrf
