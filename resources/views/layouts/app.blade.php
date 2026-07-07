@@ -23,6 +23,22 @@
     return '<svg class="'.$class.'" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'.$paths.'</svg>';
   };
 
+  $swafiRoles = session('swafi_roles', []);
+  $swafiPermissions = session('swafi_permissions', []);
+
+  $swafiCan = function (string $permission) use ($swafiRoles, $swafiPermissions): bool {
+    if (in_array('Administrador SWAFI', $swafiRoles, true)) {
+      return true;
+    }
+
+    return in_array($permission, $swafiPermissions, true);
+  };
+
+  $showM01 = $swafiCan('expedientes.ver') || $swafiCan('expedientes.crear');
+  $showM02 = $swafiCan('valores.administrar') || $swafiCan('ubicaciones.administrar');
+  $showM03 = $swafiCan('expedientes.ver') || $swafiCan('reportes.exportar');
+  $showM04 = $swafiCan('catalogos.administrar') || $swafiCan('seguridad.administrar') || $swafiCan('bitacora.ver');
+
   $pageIcon = match (true) {
     request()->routeIs('dashboard') => 'dashboard',
     request()->routeIs('registro-individual') => 'file-plus',
@@ -33,6 +49,7 @@
     request()->routeIs('busqueda') => 'search',
     request()->routeIs('reportes') => 'chart',
     request()->routeIs('catalogos') => 'settings',
+    request()->routeIs('seguridad') && request('tab') === 'bitacora' => 'file-search',
     request()->routeIs('seguridad') => 'shield',
     default => 'dashboard',
   };
@@ -133,14 +150,6 @@
       font-size: 12px !important;
     }
 
-    /*
-      Ajuste final menú lateral:
-      - Nombres de módulos visibles completos.
-      - Texto permitido en dos líneas.
-      - Flecha desplegable siempre visible.
-      - No altera rutas, controladores, modelos ni vistas internas.
-    */
-
     .nav-group {
       overflow-x: visible !important;
     }
@@ -153,34 +162,25 @@
       width: calc(100% - 26px) !important;
       min-height: 48px !important;
       box-sizing: border-box !important;
-
       display: flex !important;
       align-items: center !important;
       justify-content: space-between !important;
-
       gap: 7px !important;
       padding: 8px 8px 8px 11px !important;
-
       margin: 8px 30px 6px -4px !important;
-
       border: 1px solid rgba(255, 255, 255, .42) !important;
       border-radius: 13px !important;
-
       background: linear-gradient(135deg, rgba(255,255,255,.98), rgba(242,247,255,.94)) !important;
       color: #172033 !important;
-
       font-family: inherit !important;
       font-size: 13px !important;
       font-weight: 850 !important;
       line-height: 1.12 !important;
       text-align: left !important;
-
       cursor: pointer !important;
-
       box-shadow:
         0 8px 16px rgba(2, 20, 48, .12),
         inset 0 1px 0 rgba(255,255,255,.78) !important;
-
       transition:
         transform .16s ease,
         background .16s ease,
@@ -192,7 +192,6 @@
       transform: translateY(-1px);
       background: linear-gradient(135deg, #ffffff, #edf4ff) !important;
       border-color: rgba(255, 255, 255, .58) !important;
-
       box-shadow:
         0 10px 20px rgba(2, 20, 48, .16),
         inset 0 1px 0 rgba(255,255,255,.88) !important;
@@ -201,7 +200,6 @@
     .nav-module-button.is-open {
       background: linear-gradient(135deg, #ffffff, #e9f2ff) !important;
       border-color: rgba(255, 255, 255, .68) !important;
-
       box-shadow:
         0 10px 22px rgba(2, 20, 48, .18),
         inset 4px 0 0 #2b74d6 !important;
@@ -212,7 +210,6 @@
       grid-template-columns: 18px minmax(0, 1fr) !important;
       align-items: center !important;
       column-gap: 8px !important;
-
       min-width: 0 !important;
       flex: 1 1 auto !important;
       overflow: visible !important;
@@ -222,11 +219,9 @@
       display: block !important;
       min-width: 0 !important;
       max-width: 132px !important;
-
       white-space: normal !important;
       overflow: visible !important;
       text-overflow: clip !important;
-
       line-height: 1.12 !important;
       word-break: normal !important;
       overflow-wrap: normal !important;
@@ -250,18 +245,13 @@
       height: 24px !important;
       min-width: 24px !important;
       flex: 0 0 24px !important;
-
       padding: 4px !important;
       box-sizing: border-box !important;
-
       border-radius: 999px !important;
       color: #ffffff !important;
       background: #174f9a !important;
-
       box-shadow: 0 4px 10px rgba(23, 79, 154, .26) !important;
-
       transform: rotate(-90deg) !important;
-
       transition:
         transform .18s ease,
         background .18s ease,
@@ -277,18 +267,14 @@
     .nav-submenu {
       width: calc(100% - 26px) !important;
       box-sizing: border-box !important;
-
       display: grid !important;
       gap: 6px !important;
-
       padding-left: 0 !important;
       margin: 6px 30px 10px -4px !important;
-
       overflow: hidden !important;
       max-height: 0 !important;
       opacity: 0 !important;
       visibility: hidden !important;
-
       transition:
         max-height .22s ease,
         opacity .18s ease,
@@ -379,110 +365,148 @@
     </div>
 
     <nav class="nav-group">
-      <a class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}">
-        {!! $swafiIcon('dashboard', 'nav-icon') !!}
-        <span>Dashboard</span>
-      </a>
+      @if ($swafiCan('dashboard.ver'))
+        <a class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}">
+          {!! $swafiIcon('dashboard', 'nav-icon') !!}
+          <span>Dashboard</span>
+        </a>
+      @endif
 
-      <button
-        type="button"
-        class="nav-module-button {{ $m01Open ? 'is-open' : '' }}"
-        data-nav-toggle="m01"
-        aria-expanded="{{ $m01Open ? 'true' : 'false' }}"
-      >
-        <span class="nav-module-label">
-          {!! $swafiIcon('folder', 'nav-icon nav-icon-module') !!}
-          <span>M01 Expedientes</span>
-        </span>
-        {!! $swafiIcon('chevron', 'nav-module-arrow-icon') !!}
-      </button>
+      @if ($showM01)
+        <button
+          type="button"
+          class="nav-module-button {{ $m01Open ? 'is-open' : '' }}"
+          data-nav-toggle="m01"
+          aria-expanded="{{ $m01Open ? 'true' : 'false' }}"
+        >
+          <span class="nav-module-label">
+            {!! $swafiIcon('folder', 'nav-icon nav-icon-module') !!}
+            <span>M01 Expedientes</span>
+          </span>
+          {!! $swafiIcon('chevron', 'nav-module-arrow-icon') !!}
+        </button>
 
-      <div class="nav-submenu {{ $m01Open ? 'is-open' : '' }}" data-nav-group="m01">
-        <a class="nav-item {{ request()->routeIs('registro-individual') ? 'active' : '' }}" href="{{ route('registro-individual') }}">
-          {!! $swafiIcon('file-plus', 'nav-icon') !!}
-          <span>Registro individual</span>
-        </a>
-        <a class="nav-item {{ request()->routeIs('registro-masivo') ? 'active' : '' }}" href="{{ route('registro-masivo') }}">
-          {!! $swafiIcon('upload', 'nav-icon') !!}
-          <span>Registro masivo</span>
-        </a>
-        <a class="nav-item {{ request()->routeIs('expediente') ? 'active' : '' }}" href="{{ route('expediente') }}">
-          {!! $swafiIcon('file-search', 'nav-icon') !!}
-          <span>Detalle de expediente</span>
-        </a>
-      </div>
+        <div class="nav-submenu {{ $m01Open ? 'is-open' : '' }}" data-nav-group="m01">
+          @if ($swafiCan('expedientes.crear'))
+            <a class="nav-item {{ request()->routeIs('registro-individual') ? 'active' : '' }}" href="{{ route('registro-individual') }}">
+              {!! $swafiIcon('file-plus', 'nav-icon') !!}
+              <span>Registro individual</span>
+            </a>
 
-      <button
-        type="button"
-        class="nav-module-button {{ $m02Open ? 'is-open' : '' }}"
-        data-nav-toggle="m02"
-        aria-expanded="{{ $m02Open ? 'true' : 'false' }}"
-      >
-        <span class="nav-module-label">
-          {!! $swafiIcon('coins', 'nav-icon nav-icon-module') !!}
-          <span>M02 Control activo</span>
-        </span>
-        {!! $swafiIcon('chevron', 'nav-module-arrow-icon') !!}
-      </button>
+            <a class="nav-item {{ request()->routeIs('registro-masivo') ? 'active' : '' }}" href="{{ route('registro-masivo') }}">
+              {!! $swafiIcon('upload', 'nav-icon') !!}
+              <span>Registro masivo</span>
+            </a>
+          @endif
 
-      <div class="nav-submenu {{ $m02Open ? 'is-open' : '' }}" data-nav-group="m02">
-        <a class="nav-item {{ request()->routeIs('valores') ? 'active' : '' }}" href="{{ route('valores') }}">
-          {!! $swafiIcon('coins', 'nav-icon') !!}
-          <span>Valores fiscales y financieros</span>
-        </a>
-        <a class="nav-item {{ request()->routeIs('ubicacion') ? 'active' : '' }}" href="{{ route('ubicacion') }}">
-          {!! $swafiIcon('map-pin', 'nav-icon') !!}
-          <span>Ubicación e inventario</span>
-        </a>
-      </div>
+          @if ($swafiCan('expedientes.ver'))
+            <a class="nav-item {{ request()->routeIs('expediente') ? 'active' : '' }}" href="{{ route('expediente') }}">
+              {!! $swafiIcon('file-search', 'nav-icon') !!}
+              <span>Detalle de expediente</span>
+            </a>
+          @endif
+        </div>
+      @endif
 
-      <button
-        type="button"
-        class="nav-module-button {{ $m03Open ? 'is-open' : '' }}"
-        data-nav-toggle="m03"
-        aria-expanded="{{ $m03Open ? 'true' : 'false' }}"
-      >
-        <span class="nav-module-label">
-          {!! $swafiIcon('search', 'nav-icon nav-icon-module') !!}
-          <span>M03 Consultas</span>
-        </span>
-        {!! $swafiIcon('chevron', 'nav-module-arrow-icon') !!}
-      </button>
+      @if ($showM02)
+        <button
+          type="button"
+          class="nav-module-button {{ $m02Open ? 'is-open' : '' }}"
+          data-nav-toggle="m02"
+          aria-expanded="{{ $m02Open ? 'true' : 'false' }}"
+        >
+          <span class="nav-module-label">
+            {!! $swafiIcon('coins', 'nav-icon nav-icon-module') !!}
+            <span>M02 Control activo</span>
+          </span>
+          {!! $swafiIcon('chevron', 'nav-module-arrow-icon') !!}
+        </button>
 
-      <div class="nav-submenu {{ $m03Open ? 'is-open' : '' }}" data-nav-group="m03">
-        <a class="nav-item {{ request()->routeIs('busqueda') ? 'active' : '' }}" href="{{ route('busqueda') }}">
-          {!! $swafiIcon('search', 'nav-icon') !!}
-          <span>Búsqueda avanzada</span>
-        </a>
-        <a class="nav-item {{ request()->routeIs('reportes') ? 'active' : '' }}" href="{{ route('reportes') }}">
-          {!! $swafiIcon('chart', 'nav-icon') !!}
-          <span>Reportes ad hoc</span>
-        </a>
-      </div>
+        <div class="nav-submenu {{ $m02Open ? 'is-open' : '' }}" data-nav-group="m02">
+          @if ($swafiCan('valores.administrar'))
+            <a class="nav-item {{ request()->routeIs('valores') ? 'active' : '' }}" href="{{ route('valores') }}">
+              {!! $swafiIcon('coins', 'nav-icon') !!}
+              <span>Valores fiscales y financieros</span>
+            </a>
+          @endif
 
-      <button
-        type="button"
-        class="nav-module-button {{ $m04Open ? 'is-open' : '' }}"
-        data-nav-toggle="m04"
-        aria-expanded="{{ $m04Open ? 'true' : 'false' }}"
-      >
-        <span class="nav-module-label">
-          {!! $swafiIcon('shield', 'nav-icon nav-icon-module') !!}
-          <span>M04 Administración</span>
-        </span>
-        {!! $swafiIcon('chevron', 'nav-module-arrow-icon') !!}
-      </button>
+          @if ($swafiCan('ubicaciones.administrar'))
+            <a class="nav-item {{ request()->routeIs('ubicacion') ? 'active' : '' }}" href="{{ route('ubicacion') }}">
+              {!! $swafiIcon('map-pin', 'nav-icon') !!}
+              <span>Ubicación e inventario</span>
+            </a>
+          @endif
+        </div>
+      @endif
 
-      <div class="nav-submenu {{ $m04Open ? 'is-open' : '' }}" data-nav-group="m04">
-        <a class="nav-item {{ request()->routeIs('catalogos') ? 'active' : '' }}" href="{{ route('catalogos') }}">
-          {!! $swafiIcon('settings', 'nav-icon') !!}
-          <span>Catálogos base</span>
-        </a>
-        <a class="nav-item {{ request()->routeIs('seguridad') ? 'active' : '' }}" href="{{ route('seguridad') }}">
-          {!! $swafiIcon('shield', 'nav-icon') !!}
-          <span>Seguridad y acceso</span>
-        </a>
-      </div>
+      @if ($showM03)
+        <button
+          type="button"
+          class="nav-module-button {{ $m03Open ? 'is-open' : '' }}"
+          data-nav-toggle="m03"
+          aria-expanded="{{ $m03Open ? 'true' : 'false' }}"
+        >
+          <span class="nav-module-label">
+            {!! $swafiIcon('search', 'nav-icon nav-icon-module') !!}
+            <span>M03 Consultas</span>
+          </span>
+          {!! $swafiIcon('chevron', 'nav-module-arrow-icon') !!}
+        </button>
+
+        <div class="nav-submenu {{ $m03Open ? 'is-open' : '' }}" data-nav-group="m03">
+          @if ($swafiCan('expedientes.ver'))
+            <a class="nav-item {{ request()->routeIs('busqueda') ? 'active' : '' }}" href="{{ route('busqueda') }}">
+              {!! $swafiIcon('search', 'nav-icon') !!}
+              <span>Búsqueda avanzada</span>
+            </a>
+          @endif
+
+          @if ($swafiCan('reportes.exportar'))
+            <a class="nav-item {{ request()->routeIs('reportes') ? 'active' : '' }}" href="{{ route('reportes') }}">
+              {!! $swafiIcon('chart', 'nav-icon') !!}
+              <span>Reportes ad hoc</span>
+            </a>
+          @endif
+        </div>
+      @endif
+
+      @if ($showM04)
+        <button
+          type="button"
+          class="nav-module-button {{ $m04Open ? 'is-open' : '' }}"
+          data-nav-toggle="m04"
+          aria-expanded="{{ $m04Open ? 'true' : 'false' }}"
+        >
+          <span class="nav-module-label">
+            {!! $swafiIcon('shield', 'nav-icon nav-icon-module') !!}
+            <span>M04 Administración</span>
+          </span>
+          {!! $swafiIcon('chevron', 'nav-module-arrow-icon') !!}
+        </button>
+
+        <div class="nav-submenu {{ $m04Open ? 'is-open' : '' }}" data-nav-group="m04">
+          @if ($swafiCan('catalogos.administrar'))
+            <a class="nav-item {{ request()->routeIs('catalogos') ? 'active' : '' }}" href="{{ route('catalogos') }}">
+              {!! $swafiIcon('settings', 'nav-icon') !!}
+              <span>Catálogos base</span>
+            </a>
+          @endif
+
+          @if ($swafiCan('seguridad.administrar'))
+            <a class="nav-item {{ request()->routeIs('seguridad') && request('tab', 'usuarios') !== 'bitacora' ? 'active' : '' }}" href="{{ route('seguridad', ['tab' => 'usuarios']) }}">
+              {!! $swafiIcon('shield', 'nav-icon') !!}
+              <span>Seguridad y acceso</span>
+            </a>
+          @endif
+
+          @if ($swafiCan('bitacora.ver'))
+            <a class="nav-item {{ request()->routeIs('seguridad') && request('tab') === 'bitacora' ? 'active' : '' }}" href="{{ route('seguridad', ['tab' => 'bitacora']) }}">
+              {!! $swafiIcon('file-search', 'nav-icon') !!}
+              <span>Bitácora</span>
+            </a>
+          @endif
+        </div>
+      @endif
 
       <a class="nav-item nav-item-logout" href="{{ route('logout') }}">
         {!! $swafiIcon('logout', 'nav-icon') !!}
@@ -505,10 +529,12 @@
         </div>
 
         <div class="swafi-dashboard-slot">
-          <a class="global-dashboard-btn" href="{{ route('dashboard') }}">
-            {!! $swafiIcon('home', 'button-icon') !!}
-            <span>Dashboard</span>
-          </a>
+          @if ($swafiCan('dashboard.ver'))
+            <a class="global-dashboard-btn" href="{{ route('dashboard') }}">
+              {!! $swafiIcon('home', 'button-icon') !!}
+              <span>Dashboard</span>
+            </a>
+          @endif
         </div>
 
         <div class="swafi-user-slot">
