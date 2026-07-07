@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusquedaController;
 use App\Http\Controllers\CatalogosController;
+use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\RegistroIndividualController;
 use App\Http\Controllers\RegistroMasivoController;
 use App\Http\Controllers\ReportesController;
@@ -15,6 +16,11 @@ Route::redirect('/', '/login');
 
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
+
+Route::get('/olvide-contrasena', [PasswordResetController::class, 'showForgotForm'])->name('password.request');
+Route::post('/olvide-contrasena', [PasswordResetController::class, 'sendResetLink'])->name('password.email');
+Route::get('/restablecer-contrasena/{token}', [PasswordResetController::class, 'showResetForm'])->name('password.reset');
+Route::post('/restablecer-contrasena', [PasswordResetController::class, 'resetPassword'])->name('password.update');
 
 Route::middleware('swafi.auth')->group(function () {
 
