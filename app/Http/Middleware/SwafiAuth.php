@@ -4,42 +4,259 @@ namespace App\Http\Middleware;
 
 use Closure;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\Response;
 
 class SwafiAuth
 {
     public function handle(Request $request, Closure $next): Response
     {
-        /*
-        |--------------------------------------------------------------------------
-        | Validación de sesión SWAFI
-        |--------------------------------------------------------------------------
-        | Este middleware protege las rutas internas del prototipo.
-        | Si el usuario no inició sesión correctamente, se redirige al login.
-        */
-
         if (!$request->session()->get('swafi_autenticado')) {
+            if (Auth::check()) {
+                $user = Auth::user();
+
+                if (!$user || !$this->isUserActive((int) $user->id)) {
+                    $this->invalidateSession($request);
+
+                    return redirect()
+                        ->route('login')
+                        ->withErrors([
+                            'usuario' => 'La sesión ya no es válida o el usuario fue desactivado.',
+                        ]);
+                }
+
+                $this->hydrateSwafiSession($request, (int) $user->id);
+            } else {
+                return redirect()
+                    ->route('login')
+                    ->withErrors([
+                        'usuario' => 'Debes iniciar sesión para acceder al sistema SWAFI.',
+                    ]);
+            }
+        }
+
+        $userId = (int) $request->session()->get('swafi_user_id');
+
+        if ($userId > 0 && !$this->isUserActive($userId)) {
+            $this->invalidateSession($request);
+
             return redirect()
                 ->route('login')
                 ->withErrors([
-                    'usuario' => 'Debes iniciar sesión para acceder al sistema SWAFI.',
+                    'usuario' => 'La sesión ya no es válida o el usuario fue desactivado.',
+                ]);
+        }
+
+        $routeName = $request->route()?->getName();
+        $requiredPermission = $this->requiredPermissionFor($request, $routeName);
+
+        if ($requiredPermission && !$this->can($request, $requiredPermission)) {
+            $this->registrarAccesoDenegado($request, $requiredPermission, $routeName);
+
+            return redirect()
+                ->route('dashboard')
+                ->withErrors([
+                    'permisos' => 'Tu usuario no tiene permiso para acceder a esa funcionalidad.',
                 ]);
         }
 
         $response = $next($request);
-
-        /*
-        |--------------------------------------------------------------------------
-        | Evitar caché de pantallas internas
-        |--------------------------------------------------------------------------
-        | Esto ayuda a que después de cerrar sesión el navegador no conserve vistas
-        | internas al regresar con el botón "Atrás".
-        */
 
         $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
         $response->headers->set('Pragma', 'no-cache');
         $response->headers->set('Expires', 'Sat, 01 Jan 2000 00:00:00 GMT');
 
         return $response;
+    }
+
+    private function requiredPermissionFor(Request $request, ?string $routeName): ?string
+    {
+        if (!$routeName) {
+            return null;
+        }
+
+        if ($routeName === 'logout') {
+            return null;
+        }
+
+        if ($routeName === 'seguridad') {
+            $tab = (string) $request->input('tab', 'usuarios');
+
+            return $tab === 'bitacora'
+                ? 'bitacora.ver'
+                : 'seguridad.administrar';
+        }
+
+        return match ($routeName) {
+            'dashboard' => 'dashboard.ver',
+
+            'registro-individual',
+            'registro-individual.store',
+            'registro-masivo',
+            'registro-masivo.importar',
+            'registro-masivo.plantilla' => 'expedientes.crear',
+
+            'busqueda',
+            'expediente' => 'expedientes.ver',
+
+            'valores',
+            'valores.store',
+            'valores.plantilla',
+            'valores.importar',
+            'valores.destroy' => 'valores.administrar',
+
+            'ubicacion',
+            'ubicacion.movimiento',
+            'ubicacion.inventario' => 'ubicaciones.administrar',
+
+            'reportes' => 'reportes.exportar',
+
+            'catalogos',
+            'catalogos.store',
+            'catalogos.importar',
+            'catalogos.plantilla',
+            'catalogos.destroy' => 'catalogos.administrar',
+
+            'seguridad.usuarios.store',
+            'seguridad.usuarios.destroy',
+            'seguridad.roles.store',
+            'seguridad.roles.destroy',
+            'seguridad.permisos.store' => 'seguridad.administrar',
+
+            default => null,
+        };
+    }
+
+    private function can(Request $request, string $permission): bool
+    {
+        $roles = $request->session()->get('swafi_roles', []);
+        $permissions = $request->session()->get('swafi_permissions', []);
+
+        if (in_array('Administrador SWAFI', $roles, true)) {
+            return true;
+        }
+
+        return in_array($permission, $permissions, true);
+    }
+
+    private function hydrateSwafiSession(Request $request, int $userId): void
+    {
+        $user = DB::table('users')
+            ->where('id', $userId)
+            ->first();
+
+        if (!$user) {
+            return;
+        }
+
+        $roles = $this->rolesForUser($userId);
+        $permissions = $this->permissionsForUser($userId);
+
+        $request->session()->put('swafi_user_id', $user->id);
+        $request->session()->put('swafi_usuario', $user->usuario ?: $user->email);
+        $request->session()->put('swafi_nombre', $user->name);
+        $request->session()->put('swafi_roles', $roles);
+        $request->session()->put('swafi_permissions', $permissions);
+        $request->session()->put('swafi_autenticado', true);
+    }
+
+    private function isUserActive(int $userId): bool
+    {
+        if (!Schema::hasTable('users')) {
+            return false;
+        }
+
+        $user = DB::table('users')
+            ->where('id', $userId)
+            ->first();
+
+        if (!$user) {
+            return false;
+        }
+
+        return ($user->estatus ?? 'activo') === 'activo';
+    }
+
+    private function rolesForUser(int $userId): array
+    {
+        if (!Schema::hasTable('roles') || !Schema::hasTable('role_user')) {
+            return [];
+        }
+
+        return DB::table('roles as r')
+            ->join('role_user as ru', 'ru.role_id', '=', 'r.id')
+            ->where('ru.user_id', $userId)
+            ->where('r.activo', 1)
+            ->pluck('r.nombre')
+            ->all();
+    }
+
+    private function permissionsForUser(int $userId): array
+    {
+        if (
+            !Schema::hasTable('permissions') ||
+            !Schema::hasTable('permission_role') ||
+            !Schema::hasTable('role_user')
+        ) {
+            return [];
+        }
+
+        return DB::table('permissions as p')
+            ->join('permission_role as pr', 'pr.permission_id', '=', 'p.id')
+            ->join('role_user as ru', 'ru.role_id', '=', 'pr.role_id')
+            ->join('roles as r', 'r.id', '=', 'ru.role_id')
+            ->where('ru.user_id', $userId)
+            ->where('r.activo', 1)
+            ->distinct()
+            ->pluck('p.clave')
+            ->all();
+    }
+
+    private function invalidateSession(Request $request): void
+    {
+        Auth::logout();
+
+        $request->session()->forget([
+            'swafi_user_id',
+            'swafi_usuario',
+            'swafi_nombre',
+            'swafi_roles',
+            'swafi_permissions',
+            'swafi_autenticado',
+        ]);
+
+        $request->session()->invalidate();
+        $request->session()->regenerateToken();
+    }
+
+    private function registrarAccesoDenegado(Request $request, string $permission, ?string $routeName): void
+    {
+        try {
+            if (!Schema::hasTable('bitacora_auditoria')) {
+                return;
+            }
+
+            DB::table('bitacora_auditoria')->insert([
+                'numero_activo' => null,
+                'user_id' => $request->session()->get('swafi_user_id'),
+                'modulo' => 'M04 Administración y seguridad del sistema',
+                'accion' => 'ACCESO_DENEGADO',
+                'tabla_afectada' => 'routes',
+                'registro_clave' => $routeName,
+                'antes' => null,
+                'despues' => json_encode([
+                    'permiso_requerido' => $permission,
+                    'url' => $request->fullUrl(),
+                ], JSON_UNESCAPED_UNICODE),
+                'ip' => $request->ip(),
+                'fecha_evento' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Throwable $exception) {
+            // Un error de bitácora no debe bloquear la navegación.
+        }
     }
 }
