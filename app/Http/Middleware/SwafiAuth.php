@@ -99,7 +99,10 @@ class SwafiAuth
             'registro-masivo.plantilla' => 'expedientes.crear',
 
             'busqueda',
-            'expediente' => 'expedientes.ver',
+            'expediente',
+            'documentos.ver',
+            'documentos.descargar',
+            'documentos.descargar-todos' => 'expedientes.ver',
 
             'valores',
             'valores.store',
