@@ -175,9 +175,14 @@
 
                         <div class="login-options-v1">
                             <label class="check-v1">
-                                <input type="checkbox" checked>
+                                <input
+                                 type="checkbox"
+                                 name="remember"
+                                value="1"
+                                {{ old('remember') ? 'checked' : '' }}
+                                >
                                 <span>Recordar sesión</span>
-                            </label>
+                        </label>
                             <a href="{{ route('password.request') }}">¿Olvidaste tu contraseña?</a>
                         </div>
 
