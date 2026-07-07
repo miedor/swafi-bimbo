@@ -7,13 +7,23 @@
 
 @section('content')
 
+@if ($errors->any())
+  <div style="margin-bottom:14px;padding:12px 14px;border-radius:14px;background:#fff4d6;border:1px solid #facc15;color:#7a4b00;font-weight:800;">
+    @foreach ($errors->all() as $error)
+      <div>{{ $error }}</div>
+    @endforeach
+  </div>
+@endif
+
 @if(!$expediente)
   <section class="card">
     <div class="section-title">
       <h2>Detalle de expediente</h2>
       <span class="pill warn">Sin registros</span>
     </div>
+
     <p>No existen expedientes registrados todavía. Primero registra un expediente individual.</p>
+
     <div class="action-group">
       <a class="tab" href="{{ route('registro-individual') }}">Ir a registro individual</a>
       <a class="tab" href="{{ route('busqueda') }}">Ir a búsqueda avanzada</a>
@@ -28,9 +38,16 @@
   </div>
 
   <div class="action-group action-group-spaced">
-    <a class="tab" href="{{ route('registro-individual') }}">Editar</a>
+    <a class="tab" href="{{ route('registro-individual') }}">Nuevo registro</a>
     <a class="tab" href="{{ route('busqueda') }}">Regresar a búsqueda</a>
-    <span class="tab">Descargar</span>
+
+    @if($documentos->count() > 0)
+      <a class="tab" href="{{ route('documentos.descargar-todos', $expediente->expediente_id) }}">
+        Descargar documentos ZIP
+      </a>
+    @else
+      <span class="tab">Sin documentos para descargar</span>
+    @endif
   </div>
 
   <div class="tabs">
@@ -72,12 +89,15 @@
       <strong>Estatus documental</strong>
       <div>
         @php
-          $pillClass = match($expediente->expediente_estatus) {
-            'completo' => 'ok',
-            'observado' => 'warn',
-            default => 'danger',
-          };
+          $pillClass = 'danger';
+
+          if ($expediente->expediente_estatus === 'completo') {
+              $pillClass = 'ok';
+          } elseif ($expediente->expediente_estatus === 'observado') {
+              $pillClass = 'warn';
+          }
         @endphp
+
         <span class="pill {{ $pillClass }}">{{ ucfirst($expediente->expediente_estatus) }}</span>
       </div>
     </div>
@@ -128,15 +148,26 @@
       <strong>Ubicación física</strong>
       <div>
         {{ $expediente->ubicacion_descripcion ?? 'Sin ubicación' }}
-        @if($expediente->codigo_interno ?? false)
-          <br><small>{{ $expediente->codigo_interno }}</small>
+
+        @if($expediente->ubicacion_codigo ?? false)
+          <br><small>{{ $expediente->ubicacion_codigo }}</small>
+        @endif
+
+        @if($expediente->area_nombre ?? false)
+          <br><small>Área: {{ $expediente->area_nombre }}</small>
         @endif
       </div>
     </div>
 
     <div class="meta-box">
       <strong>Responsable</strong>
-      <div>{{ $expediente->responsable_nombre ?? 'Sin responsable' }}</div>
+      <div>
+        {{ $expediente->responsable_nombre ?? 'Sin responsable' }}
+
+        @if($expediente->responsable_correo ?? false)
+          <br><small>{{ $expediente->responsable_correo }}</small>
+        @endif
+      </div>
     </div>
   </div>
 </section>
@@ -178,22 +209,80 @@
     </span>
   </div>
 
-  <div class="list">
-    @forelse($documentos as $documento)
-      <div class="list-item">
-        <strong>{{ $documento->tipo_documento }} · {{ $documento->nombre_archivo }}</strong>
-        <span>
-          Versión {{ $documento->version }}
-          · {{ $documento->vigente ? 'Vigente' : 'No vigente' }}
-          · {{ $documento->hash_sha256 ? 'Hash registrado' : 'Hash pendiente' }}
-        </span>
-      </div>
-    @empty
-      <div class="list-item">
-        <strong>Sin documentos registrados</strong>
-        <span>El expediente aún no cuenta con referencias PDF/XML.</span>
-      </div>
-    @endforelse
+  <div class="table-card">
+    <table>
+      <thead>
+        <tr>
+          <th>Documento</th>
+          <th>Tipo</th>
+          <th>Versión</th>
+          <th>Estatus</th>
+          <th>Tamaño</th>
+          <th>Integridad</th>
+          <th>Acciones</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        @forelse($documentos as $documento)
+          <tr>
+            <td>
+              <strong>{{ $documento->nombre_archivo }}</strong><br>
+              <small>{{ $documento->mime_type ?: 'MIME no registrado' }}</small>
+            </td>
+
+            <td>{{ $documento->tipo_documento }}</td>
+
+            <td>v{{ $documento->version }}</td>
+
+            <td>
+              <span class="pill {{ $documento->vigente ? 'ok' : 'warn' }}">
+                {{ $documento->vigente ? 'Vigente' : 'No vigente' }}
+              </span>
+            </td>
+
+            <td>
+              @if($documento->tamano_bytes)
+                {{ number_format(((float) $documento->tamano_bytes) / 1024, 2) }} KB
+              @else
+                No registrado
+              @endif
+            </td>
+
+            <td>
+              @if($documento->hash_sha256)
+                <span class="pill ok">Hash SHA-256</span><br>
+                <small>{{ substr($documento->hash_sha256, 0, 16) }}...</small>
+              @else
+                <span class="pill warn">Hash pendiente</span>
+              @endif
+            </td>
+
+            <td>
+              <div class="table-actions">
+                <a href="{{ route('documentos.ver', $documento->id) }}" target="_blank" rel="noopener">
+                  Ver
+                </a>
+
+                <a href="{{ route('documentos.descargar', $documento->id) }}">
+                  Descargar
+                </a>
+              </div>
+            </td>
+          </tr>
+        @empty
+          <tr>
+            <td colspan="7">
+              El expediente aún no cuenta con documentos PDF/XML asociados.
+            </td>
+          </tr>
+        @endforelse
+      </tbody>
+    </table>
+  </div>
+
+  <div class="footer-note" style="margin-top:12px">
+    Los documentos se entregan desde almacenamiento privado. Antes de abrir o descargar, SWAFI valida existencia del archivo y coincidencia del hash SHA-256 registrado.
   </div>
 </section>
 
