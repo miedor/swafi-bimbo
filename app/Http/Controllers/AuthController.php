@@ -18,6 +18,16 @@ class AuthController extends Controller
             return redirect()->route('dashboard');
         }
 
+        if (Auth::check() && Auth::user() instanceof User && $this->isUserActive(Auth::user())) {
+            $this->hydrateSwafiSession($request, Auth::user());
+
+            return redirect()->route('dashboard');
+        }
+
+        if (Auth::check()) {
+            Auth::logout();
+        }
+
         return view('auth.login');
     }
 
@@ -26,6 +36,7 @@ class AuthController extends Controller
         $request->validate([
             'usuario' => ['required', 'string', 'max:120'],
             'password' => ['required', 'string', 'max:120'],
+            'remember' => ['nullable', 'boolean'],
             'g-recaptcha-response' => ['required', new RecaptchaV3('login')],
         ], [
             'usuario.required' => 'El usuario es obligatorio.',
@@ -35,6 +46,7 @@ class AuthController extends Controller
 
         $identity = trim($request->input('usuario'));
         $password = (string) $request->input('password');
+        $remember = $request->boolean('remember');
 
         $this->ensureDefaultAdmin();
 
@@ -47,21 +59,13 @@ class AuthController extends Controller
                 ->withErrors([
                     'usuario' => 'Usuario o contraseña incorrectos, o usuario inactivo.',
                 ])
-                ->withInput($request->only('usuario'));
+                ->withInput($request->only('usuario', 'remember'));
         }
 
-        Auth::login($user);
+        Auth::login($user, $remember);
         $request->session()->regenerate();
 
-        $roles = $this->rolesForUser($user->id);
-        $permissions = $this->permissionsForUser($user->id);
-
-        $request->session()->put('swafi_user_id', $user->id);
-        $request->session()->put('swafi_usuario', $user->usuario ?: $user->email);
-        $request->session()->put('swafi_nombre', $user->name);
-        $request->session()->put('swafi_roles', $roles);
-        $request->session()->put('swafi_permissions', $permissions);
-        $request->session()->put('swafi_autenticado', true);
+        $this->hydrateSwafiSession($request, $user);
 
         $this->updateLastAccess($user->id, $request->ip());
         $this->registrarBitacoraLogin($user->id, 'INICIO_SESION', $identity, $request->ip());
@@ -95,6 +99,19 @@ class AuthController extends Controller
         $request->session()->regenerateToken();
 
         return redirect()->route('login');
+    }
+
+    private function hydrateSwafiSession(Request $request, User $user): void
+    {
+        $roles = $this->rolesForUser($user->id);
+        $permissions = $this->permissionsForUser($user->id);
+
+        $request->session()->put('swafi_user_id', $user->id);
+        $request->session()->put('swafi_usuario', $user->usuario ?: $user->email);
+        $request->session()->put('swafi_nombre', $user->name);
+        $request->session()->put('swafi_roles', $roles);
+        $request->session()->put('swafi_permissions', $permissions);
+        $request->session()->put('swafi_autenticado', true);
     }
 
     private function findUserByIdentity(string $identity): ?User
@@ -139,7 +156,6 @@ class AuthController extends Controller
         $payload = [
             'name' => 'Administrador SWAFI',
             'email' => 'admin.swafi@bimbo.local',
-            'password' => Hash::make('12345678'),
             'email_verified_at' => $now,
             'updated_at' => $now,
         ];
@@ -159,7 +175,9 @@ class AuthController extends Controller
 
             $adminUserId = $admin->id;
         } else {
+            $payload['password'] = Hash::make('12345678');
             $payload['created_at'] = $now;
+
             $adminUserId = DB::table('users')->insertGetId($payload);
         }
 
@@ -199,7 +217,6 @@ class AuthController extends Controller
                 [
                     'descripcion' => $role['descripcion'],
                     'activo' => 1,
-                    'created_at' => $now,
                     'updated_at' => $now,
                 ]
             );
@@ -224,7 +241,6 @@ class AuthController extends Controller
                 ['clave' => $permission['clave']],
                 [
                     'descripcion' => $permission['descripcion'],
-                    'created_at' => $now,
                     'updated_at' => $now,
                 ]
             );
@@ -237,6 +253,10 @@ class AuthController extends Controller
         $adminRoleId = DB::table('roles')
             ->where('nombre', 'Administrador SWAFI')
             ->value('id');
+
+        if (!$adminRoleId) {
+            return;
+        }
 
         $permissionIds = DB::table('permissions')->pluck('id');
 
