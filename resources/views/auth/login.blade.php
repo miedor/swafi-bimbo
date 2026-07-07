@@ -178,7 +178,7 @@
                                 <input type="checkbox" checked>
                                 <span>Recordar sesión</span>
                             </label>
-                            <a href="#">¿Olvidaste tu contraseña?</a>
+                            <a href="{{ route('password.request') }}">¿Olvidaste tu contraseña?</a>
                         </div>
 
                         <button type="submit" class="btn-login-v1 btn-login-executive">
