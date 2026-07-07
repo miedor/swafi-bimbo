@@ -6,6 +6,7 @@ use App\Http\Controllers\CatalogosController;
 use App\Http\Controllers\RegistroIndividualController;
 use App\Http\Controllers\RegistroMasivoController;
 use App\Http\Controllers\ReportesController;
+use App\Http\Controllers\SeguridadController;
 use App\Http\Controllers\UbicacionInventarioController;
 use App\Http\Controllers\ValoresActivoController;
 use Illuminate\Support\Facades\Route;
@@ -55,5 +56,17 @@ Route::middleware('swafi.auth')->group(function () {
         ->whereNumber('id')
         ->name('catalogos.destroy');
 
-    Route::view('/seguridad-acceso', 'swafi.seguridad')->name('seguridad');
+    Route::get('/seguridad-acceso', [SeguridadController::class, 'index'])->name('seguridad');
+
+    Route::post('/seguridad-acceso/usuarios', [SeguridadController::class, 'storeUser'])->name('seguridad.usuarios.store');
+    Route::delete('/seguridad-acceso/usuarios/{user}', [SeguridadController::class, 'destroyUser'])
+        ->whereNumber('user')
+        ->name('seguridad.usuarios.destroy');
+
+    Route::post('/seguridad-acceso/roles', [SeguridadController::class, 'storeRole'])->name('seguridad.roles.store');
+    Route::delete('/seguridad-acceso/roles/{role}', [SeguridadController::class, 'destroyRole'])
+        ->whereNumber('role')
+        ->name('seguridad.roles.destroy');
+
+    Route::post('/seguridad-acceso/permisos', [SeguridadController::class, 'storePermission'])->name('seguridad.permisos.store');
 });
