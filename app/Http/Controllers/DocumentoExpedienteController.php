@@ -12,11 +12,15 @@ use ZipArchive;
 
 class DocumentoExpedienteController extends Controller
 {
-    public function show(int $documento): BinaryFileResponse
+    public function show(int $documento): BinaryFileResponse|RedirectResponse
     {
         [$documentoData, $expediente] = $this->findDocumentContext($documento);
 
-        $absolutePath = $this->validatedDocumentPath($documentoData, $expediente);
+        $pathResult = $this->resolveDocumentPath($documentoData, $expediente);
+
+        if (!$pathResult['ok']) {
+            return $this->redirectWithDocumentError($expediente, $pathResult['message']);
+        }
 
         $this->registrarBitacora(
             numeroActivo: $expediente->numero_activo,
@@ -36,8 +40,8 @@ class DocumentoExpedienteController extends Controller
             'documento_' . $documentoData->id
         );
 
-        return response()->file($absolutePath, [
-            'Content-Type' => $this->mimeType($documentoData, $absolutePath),
+        return response()->file($pathResult['path'], [
+            'Content-Type' => $this->mimeType($documentoData, $pathResult['path']),
             'Content-Disposition' => 'inline; filename="' . $fileName . '"',
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
@@ -45,11 +49,15 @@ class DocumentoExpedienteController extends Controller
         ]);
     }
 
-    public function download(int $documento): BinaryFileResponse
+    public function download(int $documento): BinaryFileResponse|RedirectResponse
     {
         [$documentoData, $expediente] = $this->findDocumentContext($documento);
 
-        $absolutePath = $this->validatedDocumentPath($documentoData, $expediente);
+        $pathResult = $this->resolveDocumentPath($documentoData, $expediente);
+
+        if (!$pathResult['ok']) {
+            return $this->redirectWithDocumentError($expediente, $pathResult['message']);
+        }
 
         $this->registrarBitacora(
             numeroActivo: $expediente->numero_activo,
@@ -69,8 +77,8 @@ class DocumentoExpedienteController extends Controller
             'documento_' . $documentoData->id
         );
 
-        return response()->download($absolutePath, $fileName, [
-            'Content-Type' => $this->mimeType($documentoData, $absolutePath),
+        return response()->download($pathResult['path'], $fileName, [
+            'Content-Type' => $this->mimeType($documentoData, $pathResult['path']),
             'X-Content-Type-Options' => 'nosniff',
             'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
             'Pragma' => 'no-cache',
@@ -93,23 +101,54 @@ class DocumentoExpedienteController extends Controller
             ->get();
 
         if ($documentos->isEmpty()) {
-            return redirect()
-                ->route('expediente', $expedienteData->id)
-                ->withErrors([
-                    'documentos' => 'El expediente no tiene documentos vigentes para descargar.',
-                ]);
+            return $this->redirectWithDocumentError(
+                $expedienteData,
+                'El expediente no tiene documentos vigentes para descargar.'
+            );
+        }
+
+        if (!class_exists(ZipArchive::class)) {
+            return $this->redirectWithDocumentError(
+                $expedienteData,
+                'La extensión ZIP de PHP no está disponible en el servidor.'
+            );
         }
 
         $preparedFiles = [];
+        $missingFiles = [];
 
         foreach ($documentos as $documentoData) {
-            $absolutePath = $this->validatedDocumentPath($documentoData, $expedienteData);
+            $pathResult = $this->resolveDocumentPath($documentoData, $expedienteData);
+
+            if (!$pathResult['ok']) {
+                $missingFiles[] = $documentoData->nombre_archivo . ' - ' . $pathResult['message'];
+                continue;
+            }
 
             $preparedFiles[] = [
                 'documento' => $documentoData,
-                'absolute_path' => $absolutePath,
+                'absolute_path' => $pathResult['path'],
                 'zip_name' => $this->zipEntryName($documentoData),
             ];
+        }
+
+        if (!empty($missingFiles)) {
+            $this->registrarBitacora(
+                numeroActivo: $expedienteData->numero_activo,
+                accion: 'DESCARGA_ZIP_INCOMPLETA',
+                tablaAfectada: 'documentos_expediente',
+                registroClave: (string) $expedienteData->id,
+                detalle: [
+                    'expediente_id' => $expedienteData->id,
+                    'folio_factura' => $expedienteData->folio_factura,
+                    'archivos_no_localizados' => $missingFiles,
+                ]
+            );
+
+            return $this->redirectWithDocumentError(
+                $expedienteData,
+                'No fue posible generar el ZIP porque uno o más archivos físicos no existen en el almacenamiento privado. Revisa o vuelve a cargar los documentos del expediente.'
+            );
         }
 
         $tempDirectory = storage_path('app/private/swafi/temp');
@@ -128,11 +167,10 @@ class DocumentoExpedienteController extends Controller
         $zip = new ZipArchive();
 
         if ($zip->open($zipPath, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            return redirect()
-                ->route('expediente', $expedienteData->id)
-                ->withErrors([
-                    'documentos' => 'No fue posible generar el archivo ZIP del expediente.',
-                ]);
+            return $this->redirectWithDocumentError(
+                $expedienteData,
+                'No fue posible generar el archivo ZIP del expediente.'
+            );
         }
 
         foreach ($preparedFiles as $preparedFile) {
@@ -181,13 +219,31 @@ class DocumentoExpedienteController extends Controller
         return [$documentoData, $expediente];
     }
 
-    private function validatedDocumentPath(object $documentoData, object $expediente): string
+    private function resolveDocumentPath(object $documentoData, object $expediente): array
     {
-        if (!$documentoData->vigente) {
-            abort(404, 'El documento no se encuentra vigente.');
+        if (!(bool) $documentoData->vigente) {
+            $this->registrarBitacora(
+                numeroActivo: $expediente->numero_activo,
+                accion: 'DOCUMENTO_NO_VIGENTE',
+                tablaAfectada: 'documentos_expediente',
+                registroClave: (string) $documentoData->id,
+                detalle: [
+                    'expediente_id' => $expediente->id,
+                    'folio_factura' => $expediente->folio_factura,
+                    'nombre_archivo' => $documentoData->nombre_archivo,
+                ]
+            );
+
+            return [
+                'ok' => false,
+                'path' => null,
+                'message' => 'El documento no se encuentra vigente.',
+            ];
         }
 
-        if (!$documentoData->ruta_archivo || !Storage::disk('local')->exists($documentoData->ruta_archivo)) {
+        $absolutePath = $this->locatePhysicalFile($documentoData->ruta_archivo);
+
+        if (!$absolutePath) {
             $this->registrarBitacora(
                 numeroActivo: $expediente->numero_activo,
                 accion: 'ARCHIVO_NO_LOCALIZADO',
@@ -201,12 +257,14 @@ class DocumentoExpedienteController extends Controller
                 ]
             );
 
-            abort(404, 'El archivo físico no fue localizado en el almacenamiento privado.');
+            return [
+                'ok' => false,
+                'path' => null,
+                'message' => 'El registro existe en MySQL, pero el archivo físico no fue localizado en el almacenamiento privado.',
+            ];
         }
 
-        $absolutePath = Storage::disk('local')->path($documentoData->ruta_archivo);
-
-        if ($documentoData->hash_sha256) {
+        if (!empty($documentoData->hash_sha256)) {
             $currentHash = hash_file('sha256', $absolutePath);
 
             if (!hash_equals(strtolower($documentoData->hash_sha256), strtolower($currentHash))) {
@@ -224,11 +282,67 @@ class DocumentoExpedienteController extends Controller
                     ]
                 );
 
-                abort(409, 'La integridad del documento no coincide con el hash registrado.');
+                return [
+                    'ok' => false,
+                    'path' => null,
+                    'message' => 'La integridad del documento no coincide con el hash SHA-256 registrado.',
+                ];
             }
         }
 
-        return $absolutePath;
+        return [
+            'ok' => true,
+            'path' => $absolutePath,
+            'message' => null,
+        ];
+    }
+
+    private function locatePhysicalFile(?string $rutaArchivo): ?string
+    {
+        $rutaArchivo = trim((string) $rutaArchivo);
+
+        if ($rutaArchivo === '') {
+            return null;
+        }
+
+        $normalizedPath = str_replace('\\', '/', $rutaArchivo);
+        $normalizedPath = ltrim($normalizedPath, '/');
+
+        $candidates = [
+            Storage::disk('local')->path($normalizedPath),
+            storage_path('app/private/' . $normalizedPath),
+            storage_path('app/' . $normalizedPath),
+            storage_path('app/public/' . $normalizedPath),
+        ];
+
+        if (Str::startsWith($normalizedPath, 'private/')) {
+            $candidates[] = storage_path('app/' . $normalizedPath);
+        }
+
+        if (Str::startsWith($normalizedPath, 'storage/app/private/')) {
+            $candidates[] = base_path($normalizedPath);
+        }
+
+        if (Str::startsWith($normalizedPath, 'storage/app/')) {
+            $candidates[] = base_path($normalizedPath);
+        }
+
+        foreach (array_unique($candidates) as $candidate) {
+            if ($candidate && is_file($candidate)) {
+                return $candidate;
+            }
+        }
+
+        return null;
+    }
+
+    private function redirectWithDocumentError(object $expediente, string $message): RedirectResponse
+    {
+        return redirect()
+            ->route('expediente', $expediente->id)
+            ->withErrors([
+                'documentos' => $message,
+            ]);
     }
 
     private function mimeType(object $documentoData, string $absolutePath): string
