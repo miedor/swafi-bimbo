@@ -94,7 +94,9 @@ class BusquedaController extends Controller
 
         $documentos = DB::table('documentos_expediente')
             ->where('expediente_id', $detalle->expediente_id)
+            ->where('vigente', true)
             ->orderBy('tipo_documento')
+            ->orderBy('nombre_archivo')
             ->orderByDesc('version')
             ->get();
 
