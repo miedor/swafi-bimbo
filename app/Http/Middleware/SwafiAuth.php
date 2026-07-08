@@ -104,6 +104,10 @@ class SwafiAuth
             'documentos.descargar',
             'documentos.descargar-todos' => 'expedientes.ver',
 
+            'expedientes.editar',
+            'expedientes.actualizar',
+            'expedientes.eliminar' => 'expedientes.editar',
+
             'documentos.store',
             'documentos.eliminar' => 'documentos.cargar',
 
