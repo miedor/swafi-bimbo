@@ -7,6 +7,28 @@
 
 @section('content')
 
+@php
+  $swafiRoles = session('swafi_roles', []);
+  $swafiPermissions = session('swafi_permissions', []);
+
+  $isAdminSwafi = in_array('Administrador SWAFI', $swafiRoles, true);
+  $canEditExpedientes = $isAdminSwafi || in_array('expedientes.editar', $swafiPermissions, true);
+@endphp
+
+@if (session('success'))
+  <div style="margin-bottom:14px;padding:12px 14px;border-radius:14px;background:#e8f7ea;border:1px solid #b9e5bf;color:#1f6b2a;font-weight:800;">
+    {{ session('success') }}
+  </div>
+@endif
+
+@if ($errors->any())
+  <div style="margin-bottom:14px;padding:12px 14px;border-radius:14px;background:#fff4d6;border:1px solid #facc15;color:#7a4b00;font-weight:800;">
+    @foreach ($errors->all() as $error)
+      <div>{{ $error }}</div>
+    @endforeach
+  </div>
+@endif
+
 <section class="card form-card">
   <form method="GET" action="{{ route('busqueda') }}">
     <div class="section-title">
@@ -46,7 +68,7 @@
         <select name="planta_id">
           <option value="">Todas</option>
           @foreach($catalogos['plantas'] as $planta)
-            <option value="{{ $planta->id }}" @selected(($filtros['planta_id'] ?? '') == $planta->id)>
+            <option value="{{ $planta->id }}" {{ (($filtros['planta_id'] ?? '') == $planta->id) ? 'selected' : '' }}>
               {{ $planta->nombre }}
             </option>
           @endforeach
@@ -58,7 +80,7 @@
         <select name="centro_costo_id">
           <option value="">Todos</option>
           @foreach($catalogos['centrosCosto'] as $centro)
-            <option value="{{ $centro->id }}" @selected(($filtros['centro_costo_id'] ?? '') == $centro->id)>
+            <option value="{{ $centro->id }}" {{ (($filtros['centro_costo_id'] ?? '') == $centro->id) ? 'selected' : '' }}>
               {{ $centro->clave }} - {{ $centro->descripcion }}
             </option>
           @endforeach
@@ -91,9 +113,9 @@
         <span>Estatus documental</span>
         <select name="estatus">
           <option value="">Todos</option>
-          <option value="completo" @selected(($filtros['estatus'] ?? '') === 'completo')>Completo</option>
-          <option value="incompleto" @selected(($filtros['estatus'] ?? '') === 'incompleto')>Incompleto</option>
-          <option value="observado" @selected(($filtros['estatus'] ?? '') === 'observado')>Observado</option>
+          <option value="completo" {{ (($filtros['estatus'] ?? '') === 'completo') ? 'selected' : '' }}>Completo</option>
+          <option value="incompleto" {{ (($filtros['estatus'] ?? '') === 'incompleto') ? 'selected' : '' }}>Incompleto</option>
+          <option value="observado" {{ (($filtros['estatus'] ?? '') === 'observado') ? 'selected' : '' }}>Observado</option>
         </select>
       </label>
 
@@ -101,7 +123,7 @@
         <span>Registros por página</span>
         <select name="per_page">
           @foreach([10, 25, 50] as $size)
-            <option value="{{ $size }}" @selected(($filtros['per_page'] ?? 10) == $size)>{{ $size }}</option>
+            <option value="{{ $size }}" {{ (($filtros['per_page'] ?? 10) == $size) ? 'selected' : '' }}>{{ $size }}</option>
           @endforeach
         </select>
       </label>
@@ -151,19 +173,40 @@
           <td>$ {{ number_format((float) $row->monto_factura, 2) }} {{ $row->moneda }}</td>
           <td>
             @php
-              $pillClass = match($row->estatus) {
-                'completo' => 'ok',
-                'observado' => 'warn',
-                default => 'danger',
-              };
+              $pillClass = 'danger';
+
+              if ($row->estatus === 'completo') {
+                  $pillClass = 'ok';
+              } elseif ($row->estatus === 'observado') {
+                  $pillClass = 'warn';
+              }
             @endphp
             <span class="pill {{ $pillClass }}">{{ ucfirst($row->estatus) }}</span>
           </td>
           <td>
             <div class="table-actions">
               <a href="{{ route('expediente', $row->expediente_id) }}">Consultar</a>
-              <a href="{{ route('registro-individual') }}">Editar</a>
-              <a href="#">Eliminar</a>
+
+              @if($canEditExpedientes)
+                <a href="{{ route('expedientes.editar', $row->expediente_id) }}">Editar</a>
+
+                <form
+                  method="POST"
+                  action="{{ route('expedientes.eliminar', $row->expediente_id) }}"
+                  style="display:inline"
+                  onsubmit="return confirm('¿Deseas eliminar este expediente? El activo fijo permanecerá registrado y la acción se guardará en bitácora.');"
+                >
+                  @csrf
+                  @method('DELETE')
+
+                  <button
+                    type="submit"
+                    style="border:0;background:none;color:#b42318;font-weight:800;cursor:pointer;padding:0"
+                  >
+                    Eliminar
+                  </button>
+                </form>
+              @endif
             </div>
           </td>
         </tr>
