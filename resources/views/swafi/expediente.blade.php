@@ -7,6 +7,12 @@
 
 @section('content')
 
+@if (session('success'))
+  <div style="margin-bottom:14px;padding:12px 14px;border-radius:14px;background:#e8f7ea;border:1px solid #b9e5bf;color:#1f6b2a;font-weight:800;">
+    {{ session('success') }}
+  </div>
+@endif
+
 @if ($errors->any())
   <div style="margin-bottom:14px;padding:12px 14px;border-radius:14px;background:#fff4d6;border:1px solid #facc15;color:#7a4b00;font-weight:800;">
     @foreach ($errors->all() as $error)
@@ -15,6 +21,20 @@
   </div>
 @endif
 
+@php
+  $swafiRoles = session('swafi_roles', []);
+  $swafiPermissions = session('swafi_permissions', []);
+
+  $isAdminSwafi = in_array('Administrador SWAFI', $swafiRoles, true);
+
+  $canCreateExpedientes = $isAdminSwafi
+      || in_array('expedientes.crear', $swafiPermissions, true);
+
+  $canManageDocuments = $isAdminSwafi
+      || in_array('documentos.cargar', $swafiPermissions, true)
+      || in_array('expedientes.editar', $swafiPermissions, true);
+@endphp
+
 @if(!$expediente)
   <section class="card">
     <div class="section-title">
@@ -22,10 +42,13 @@
       <span class="pill warn">Sin registros</span>
     </div>
 
-    <p>No existen expedientes registrados todavía. Primero registra un expediente individual.</p>
+    <p>No existen expedientes registrados todavía.</p>
 
     <div class="action-group">
-      <a class="tab" href="{{ route('registro-individual') }}">Ir a registro individual</a>
+      @if($canCreateExpedientes)
+        <a class="tab" href="{{ route('registro-individual') }}">Ir a registro individual</a>
+      @endif
+
       <a class="tab" href="{{ route('busqueda') }}">Ir a búsqueda avanzada</a>
     </div>
   </section>
@@ -38,7 +61,10 @@
   </div>
 
   <div class="action-group action-group-spaced">
-    <a class="tab" href="{{ route('registro-individual') }}">Nuevo registro</a>
+    @if($canCreateExpedientes)
+      <a class="tab" href="{{ route('registro-individual') }}">Nuevo registro</a>
+    @endif
+
     <a class="tab" href="{{ route('busqueda') }}">Regresar a búsqueda</a>
 
     @if($documentos->count() > 0)
@@ -205,9 +231,45 @@
   <div class="section-title">
     <h2>Documentos asociados</h2>
     <span class="pill {{ $documentos->count() > 0 ? 'ok' : 'warn' }}">
-      {{ $documentos->count() }} documento(s)
+      {{ $documentos->count() }} documento(s) vigente(s)
     </span>
   </div>
+
+  @if($canManageDocuments)
+    <form
+      method="POST"
+      action="{{ route('documentos.store', $expediente->expediente_id) }}"
+      enctype="multipart/form-data"
+      style="margin:14px 0 18px;padding:14px;border:1px dashed #b8cbe4;border-radius:16px;background:#f8fbff;"
+    >
+      @csrf
+
+      <label style="display:block;margin-bottom:10px;">
+        <strong style="display:block;margin-bottom:6px;color:#1d3558;font-size:13px;">
+          Agregar o reemplazar documentos PDF/XML
+        </strong>
+
+        <input
+          type="file"
+          name="documentos[]"
+          accept=".pdf,.xml"
+          multiple
+          required
+          style="width:100%;min-height:40px;padding:8px;border:1px solid #d5e1ef;border-radius:11px;background:#fff;"
+        >
+      </label>
+
+      <div class="footer-note" style="margin-bottom:10px;">
+        Puedes seleccionar uno o varios documentos. Si cargas un archivo con el mismo nombre o mismo contenido,
+        SWAFI lo sustituirá como una nueva versión. Si el documento es diferente, se sumará al expediente.
+        El número de activo <strong>{{ $expediente->numero_activo }}</strong> no se duplica.
+      </div>
+
+      <button class="tab" type="submit">
+        Ligar documentos al expediente
+      </button>
+    </form>
+  @endif
 
   <div class="table-card">
     <table>
@@ -267,13 +329,32 @@
                 <a href="{{ route('documentos.descargar', $documento->id) }}">
                   Descargar
                 </a>
+
+                @if($canManageDocuments)
+                  <form
+                    method="POST"
+                    action="{{ route('documentos.eliminar', $documento->id) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('¿Deseas eliminar este documento del expediente? Se conservará la trazabilidad en bitácora.');"
+                  >
+                    @csrf
+                    @method('DELETE')
+
+                    <button
+                      type="submit"
+                      style="border:0;background:none;color:#b42318;font-weight:800;cursor:pointer;padding:0"
+                    >
+                      Eliminar
+                    </button>
+                  </form>
+                @endif
               </div>
             </td>
           </tr>
         @empty
           <tr>
             <td colspan="7">
-              El expediente aún no cuenta con documentos PDF/XML asociados.
+              El expediente aún no cuenta con documentos PDF/XML vigentes asociados.
             </td>
           </tr>
         @endforelse
@@ -283,6 +364,7 @@
 
   <div class="footer-note" style="margin-top:12px">
     Los documentos se entregan desde almacenamiento privado. Antes de abrir o descargar, SWAFI valida existencia del archivo y coincidencia del hash SHA-256 registrado.
+    La eliminación es lógica: el documento deja de aparecer como vigente, pero se conserva la trazabilidad en bitácora.
   </div>
 </section>
 
