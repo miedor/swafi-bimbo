@@ -367,65 +367,65 @@ class RegistroMasivoController extends Controller
     }
 
     public function plantillaCsv()
-{
-    return response()->streamDownload(function () {
-        $output = fopen('php://output', 'w');
+    {
+        return response()->streamDownload(function () {
+            $output = fopen('php://output', 'w');
 
-        fwrite($output, "\xEF\xBB\xBF");
+            fwrite($output, "\xEF\xBB\xBF");
 
-        fputcsv($output, [
-            'Numero activo',
-            'Descripcion',
-            'Folio factura',
-            'UUID CFDI',
-            'Fecha factura',
-            'Monto factura',
-            'Moneda',
-            'Proveedor RFC',
-            'Tipo activo clave',
-            'Centro costo clave',
-            'Planta clave',
-            'Ubicacion codigo',
-            'Responsable correo',
-            'Serie',
-            'Marca',
-            'Modelo',
-            'Fecha adquisicion',
-            'Estatus operativo',
-            'Documento PDF',
-            'Documento XML',
-            'Observaciones',
+            fputcsv($output, [
+                'Numero activo',
+                'Descripcion',
+                'Folio factura',
+                'UUID CFDI',
+                'Fecha factura',
+                'Monto factura',
+                'Moneda',
+                'Proveedor RFC',
+                'Tipo activo clave',
+                'Centro costo clave',
+                'Planta clave',
+                'Ubicacion codigo',
+                'Responsable correo',
+                'Serie',
+                'Marca',
+                'Modelo',
+                'Fecha adquisicion',
+                'Estatus operativo',
+                'Documento PDF',
+                'Documento XML',
+                'Observaciones',
+            ]);
+
+            fputcsv($output, [
+                'BIM-537028',
+                'ARTESA N° 1',
+                'FAC-000184',
+                'A1B2C3D4-E5F6-7890-ABCD-000000000184',
+                '25/06/2026',
+                '602700',
+                'MXN',
+                'ACM010101ABC',
+                'EQP',
+                'CC-PLA-200',
+                'PLT-SM',
+                'UBI-SM-PRO-L3-PB',
+                'jorge.mendez@bimbo.local',
+                'SER-537028',
+                'Bimbo Industrial',
+                'ART-2026',
+                '25/06/2026',
+                'en_operacion',
+                'factura_184.pdf|evidencia_recepcion_184.pdf',
+                'factura_184.xml|complemento_184.xml',
+                'Carga masiva de expediente con varios documentos PDF/XML separados por pipe.',
+            ]);
+
+            fclose($output);
+        }, 'plantilla_registro_masivo_expedientes_swafi.csv', [
+            'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
-
-        fputcsv($output, [
-            'BIM-537028',
-            'ARTESA N° 1',
-            'FAC-000184',
-            'A1B2C3D4-E5F6-7890-ABCD-000000000184',
-            '25/06/2026',
-            '602700',
-            'MXN',
-            'ACM010101ABC',
-            'EQP',
-            'CC-PLA-200',
-            'PLT-SM',
-            'UBI-SM-PRO-L3-PB',
-            'jorge.mendez@bimbo.local',
-            'SER-537028',
-            'Bimbo Industrial',
-            'ART-2026',
-            '25/06/2026',
-            'en_operacion',
-            'factura_184.pdf|evidencia_recepcion_184.pdf',
-            'factura_184.xml|complemento_184.xml',
-            'Carga masiva de expediente con varios documentos PDF/XML separados por pipe.',
-        ]);
-
-        fclose($output);
-    }, 'plantilla_registro_masivo_expedientes_swafi.csv', [
-        'Content-Type' => 'text/csv; charset=UTF-8',
-    ]);
-}
+    }
 
     private function baseQuery()
     {
@@ -652,42 +652,50 @@ class RegistroMasivoController extends Controller
         $documentos = [];
         $errores = [];
 
-        if ($pdfName !== null && trim($pdfName) !== '') {
-            $pdf = $this->findFileInZip($zipIndex, $pdfName);
+        foreach ($this->splitDocumentNames($pdfName) as $pdfFileName) {
+            $pdf = $this->findFileInZip($zipIndex, $pdfFileName);
 
             if (!$pdf) {
-                $errores[] = "el PDF {$pdfName} no existe dentro del ZIP.";
-            } elseif ($pdf['extension'] !== 'pdf') {
-                $errores[] = "el archivo {$pdfName} no tiene extensión PDF.";
-            } else {
-                $documentos[] = [
-                    'tipo_documento' => 'PDF',
-                    'nombre_archivo' => basename($pdfName),
-                    'source_path' => $pdf['temp_path'],
-                    'mime_type' => 'application/pdf',
-                    'tamano_bytes' => $pdf['size'],
-                    'hash_sha256' => $pdf['hash_sha256'],
-                ];
+                $errores[] = "el PDF {$pdfFileName} no existe dentro del ZIP.";
+                continue;
             }
+
+            if ($pdf['extension'] !== 'pdf') {
+                $errores[] = "el archivo {$pdfFileName} no tiene extensión PDF.";
+                continue;
+            }
+
+            $documentos[] = [
+                'tipo_documento' => 'PDF',
+                'nombre_archivo' => basename($pdfFileName),
+                'source_path' => $pdf['temp_path'],
+                'mime_type' => 'application/pdf',
+                'tamano_bytes' => $pdf['size'],
+                'hash_sha256' => $pdf['hash_sha256'],
+            ];
         }
 
-        if ($xmlName !== null && trim($xmlName) !== '') {
-            $xml = $this->findFileInZip($zipIndex, $xmlName);
+        foreach ($this->splitDocumentNames($xmlName) as $xmlFileName) {
+            $xml = $this->findFileInZip($zipIndex, $xmlFileName);
 
             if (!$xml) {
-                $errores[] = "el XML {$xmlName} no existe dentro del ZIP.";
-            } elseif ($xml['extension'] !== 'xml') {
-                $errores[] = "el archivo {$xmlName} no tiene extensión XML.";
-            } else {
-                $documentos[] = [
-                    'tipo_documento' => 'XML',
-                    'nombre_archivo' => basename($xmlName),
-                    'source_path' => $xml['temp_path'],
-                    'mime_type' => 'application/xml',
-                    'tamano_bytes' => $xml['size'],
-                    'hash_sha256' => $xml['hash_sha256'],
-                ];
+                $errores[] = "el XML {$xmlFileName} no existe dentro del ZIP.";
+                continue;
             }
+
+            if ($xml['extension'] !== 'xml') {
+                $errores[] = "el archivo {$xmlFileName} no tiene extensión XML.";
+                continue;
+            }
+
+            $documentos[] = [
+                'tipo_documento' => 'XML',
+                'nombre_archivo' => basename($xmlFileName),
+                'source_path' => $xml['temp_path'],
+                'mime_type' => 'application/xml',
+                'tamano_bytes' => $xml['size'],
+                'hash_sha256' => $xml['hash_sha256'],
+            ];
         }
 
         return [
@@ -712,24 +720,17 @@ class RegistroMasivoController extends Controller
                 originalName: $doc['nombre_archivo']
             );
 
-            $documento = DocumentoExpediente::updateOrCreate(
-                [
-                    'expediente_id' => $expediente->id,
-                    'tipo_documento' => $doc['tipo_documento'],
-                ],
-                [
-                    'nombre_archivo' => $doc['nombre_archivo'],
-                    'ruta_archivo' => $storedPath,
-                    'mime_type' => $doc['mime_type'],
-                    'tamano_bytes' => $doc['tamano_bytes'],
-                    'hash_sha256' => $doc['hash_sha256'],
-                    'version' => 1,
-                    'vigente' => true,
-                    'cargado_por' => auth()->id(),
-                ]
+            $resultado = $this->storeOrReplaceDocumentRecord(
+                expediente: $expediente,
+                tipoDocumento: $doc['tipo_documento'],
+                nombreArchivo: $doc['nombre_archivo'],
+                rutaArchivo: $storedPath,
+                mimeType: $doc['mime_type'],
+                tamanoBytes: $doc['tamano_bytes'],
+                hashSha256: $doc['hash_sha256']
             );
 
-            $guardados[] = $documento->fresh()->toArray();
+            $guardados[] = $resultado;
         }
 
         return $guardados;
@@ -760,6 +761,111 @@ class RegistroMasivoController extends Controller
         Storage::disk('local')->put($storedPath, file_get_contents($sourcePath));
 
         return $storedPath;
+    }
+
+    private function storeOrReplaceDocumentRecord(
+        Expediente $expediente,
+        string $tipoDocumento,
+        string $nombreArchivo,
+        string $rutaArchivo,
+        ?string $mimeType,
+        ?int $tamanoBytes,
+        ?string $hashSha256
+    ): array {
+        $normalizedName = $this->normalizeDocumentIdentity($nombreArchivo);
+
+        $existingDocument = DocumentoExpediente::where('expediente_id', $expediente->id)
+            ->where('tipo_documento', $tipoDocumento)
+            ->where(function ($query) use ($normalizedName, $hashSha256) {
+                $query->whereRaw('LOWER(nombre_archivo) = ?', [$normalizedName]);
+
+                if (!empty($hashSha256)) {
+                    $query->orWhere('hash_sha256', $hashSha256);
+                }
+            })
+            ->orderByDesc('version')
+            ->first();
+
+        if ($existingDocument) {
+            DocumentoExpediente::where('expediente_id', $expediente->id)
+                ->where('tipo_documento', $tipoDocumento)
+                ->where(function ($query) use ($normalizedName, $hashSha256) {
+                    $query->whereRaw('LOWER(nombre_archivo) = ?', [$normalizedName]);
+
+                    if (!empty($hashSha256)) {
+                        $query->orWhere('hash_sha256', $hashSha256);
+                    }
+                })
+                ->update([
+                    'vigente' => false,
+                    'updated_at' => now(),
+                ]);
+
+            $version = ((int) $existingDocument->version) + 1;
+            $accion = 'reemplazado';
+        } else {
+            $version = 1;
+            $accion = 'agregado';
+        }
+
+        $documento = DocumentoExpediente::create([
+            'expediente_id' => $expediente->id,
+            'tipo_documento' => $tipoDocumento,
+            'nombre_archivo' => $nombreArchivo,
+            'ruta_archivo' => $rutaArchivo,
+            'mime_type' => $mimeType,
+            'tamano_bytes' => $tamanoBytes,
+            'hash_sha256' => $hashSha256,
+            'version' => $version,
+            'vigente' => true,
+            'cargado_por' => auth()->id(),
+        ]);
+
+        return [
+            'accion' => $accion,
+            'documento_id' => $documento->id,
+            'tipo_documento' => $documento->tipo_documento,
+            'nombre_archivo' => $documento->nombre_archivo,
+            'version' => $documento->version,
+            'hash_sha256' => $documento->hash_sha256,
+        ];
+    }
+
+    private function splitDocumentNames(?string $value): array
+    {
+        $value = $this->normalizeCell($value);
+
+        if ($value === '') {
+            return [];
+        }
+
+        $parts = preg_split('/\s*\|\s*/', $value);
+        $files = [];
+        $seen = [];
+
+        foreach ($parts as $part) {
+            $fileName = trim((string) $part);
+
+            if ($fileName === '') {
+                continue;
+            }
+
+            $key = $this->normalizeZipKey($fileName);
+
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $files[] = $fileName;
+        }
+
+        return $files;
+    }
+
+    private function normalizeDocumentIdentity(string $fileName): string
+    {
+        return Str::lower(trim(basename(str_replace('\\', '/', $fileName))));
     }
 
     private function resolveDocumentStatusFromDatabase(int $expedienteId): string
