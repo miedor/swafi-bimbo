@@ -54,6 +54,13 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/documentos-expediente/{documento}/ver', [DocumentoExpedienteController::class, 'show'])
         ->whereNumber('documento')
         ->name('documentos.ver');
+    Route::post('/expedientes/{expediente}/documentos', [DocumentoExpedienteController::class, 'store'])
+    ->whereNumber('expediente')
+    ->name('documentos.store');
+
+    Route::delete('/documentos-expediente/{documento}', [DocumentoExpedienteController::class, 'destroy'])
+    ->whereNumber('documento')
+    ->name('documentos.eliminar');
 
     Route::get('/documentos-expediente/{documento}/descargar', [DocumentoExpedienteController::class, 'download'])
         ->whereNumber('documento')
