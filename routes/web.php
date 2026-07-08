@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusquedaController;
 use App\Http\Controllers\CatalogosController;
 use App\Http\Controllers\DocumentoExpedienteController;
+use App\Http\Controllers\ExpedienteGestionController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\RegistroIndividualController;
 use App\Http\Controllers\RegistroMasivoController;
@@ -69,6 +70,19 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/expedientes/{expediente}/documentos/descargar', [DocumentoExpedienteController::class, 'downloadAll'])
         ->whereNumber('expediente')
         ->name('documentos.descargar-todos');
+
+
+    Route::get('/expedientes/{expediente}/editar', [ExpedienteGestionController::class, 'edit'])
+        ->whereNumber('expediente')
+        ->name('expedientes.editar');
+
+    Route::put('/expedientes/{expediente}', [ExpedienteGestionController::class, 'update'])
+        ->whereNumber('expediente')
+        ->name('expedientes.actualizar');
+
+    Route::delete('/expedientes/{expediente}', [ExpedienteGestionController::class, 'destroy'])
+        ->whereNumber('expediente')
+        ->name('expedientes.eliminar');
 
     Route::get('/detalle-expediente/{expediente?}', [BusquedaController::class, 'show'])->name('expediente');
 
