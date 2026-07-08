@@ -2,7 +2,9 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\DocumentoExpediente;
 use Illuminate\Http\RedirectResponse;
+use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Facades\Storage;
@@ -147,7 +149,7 @@ class DocumentoExpedienteController extends Controller
 
             return $this->redirectWithDocumentError(
                 $expedienteData,
-                'No fue posible generar el ZIP porque uno o más archivos físicos no existen en el almacenamiento privado. Revisa o vuelve a cargar los documentos del expediente.'
+                'No fue posible generar el ZIP porque uno o más archivos físicos no existen en el almacenamiento privado.'
             );
         }
 
@@ -202,6 +204,248 @@ class DocumentoExpedienteController extends Controller
             ->deleteFileAfterSend(true);
     }
 
+    public function store(Request $request, int $expediente): RedirectResponse
+    {
+        $expedienteData = DB::table('expedientes')
+            ->where('id', $expediente)
+            ->first();
+
+        abort_if(!$expedienteData, 404, 'El expediente solicitado no existe.');
+
+        $request->validate([
+            'documentos' => ['required', 'array', 'min:1', 'max:20'],
+            'documentos.*' => ['required', 'file', 'mimes:pdf,xml', 'max:20480'],
+        ], [
+            'documentos.required' => 'Debes seleccionar al menos un documento PDF o XML.',
+            'documentos.array' => 'La carga de documentos no tiene un formato válido.',
+            'documentos.*.file' => 'Uno de los documentos seleccionados no es válido.',
+            'documentos.*.mimes' => 'Solo se permiten archivos PDF o XML.',
+            'documentos.*.max' => 'Cada documento no debe superar los 20 MB.',
+        ]);
+
+        $guardados = [];
+
+        DB::transaction(function () use ($request, $expedienteData, &$guardados) {
+            foreach ($request->file('documentos', []) as $file) {
+                $extension = strtolower($file->getClientOriginalExtension());
+                $tipoDocumento = strtoupper($extension);
+
+                $originalName = $file->getClientOriginalName();
+                $hashSha256 = hash_file('sha256', $file->getRealPath());
+
+                $storedPath = $this->storeUploadedDocumentFile(
+                    sourcePath: $file->getRealPath(),
+                    numeroActivo: $expedienteData->numero_activo,
+                    folioFactura: $expedienteData->folio_factura,
+                    originalName: $originalName
+                );
+
+                $resultado = $this->storeOrReplaceDocumentRecord(
+                    expedienteId: (int) $expedienteData->id,
+                    tipoDocumento: $tipoDocumento,
+                    nombreArchivo: $originalName,
+                    rutaArchivo: $storedPath,
+                    mimeType: $file->getMimeType() ?: $this->mimeTypeFromExtension($extension),
+                    tamanoBytes: $file->getSize(),
+                    hashSha256: $hashSha256
+                );
+
+                $guardados[] = $resultado;
+
+                $this->registrarBitacora(
+                    numeroActivo: $expedienteData->numero_activo,
+                    accion: $resultado['accion'] === 'reemplazado' ? 'DOCUMENTO_REEMPLAZADO' : 'DOCUMENTO_AGREGADO',
+                    tablaAfectada: 'documentos_expediente',
+                    registroClave: (string) $resultado['documento_id'],
+                    detalle: [
+                        'expediente_id' => $expedienteData->id,
+                        'folio_factura' => $expedienteData->folio_factura,
+                        'tipo_documento' => $tipoDocumento,
+                        'nombre_archivo' => $originalName,
+                        'version' => $resultado['version'],
+                    ]
+                );
+            }
+
+            $this->updateDocumentalStatus((int) $expedienteData->id, $expedienteData->numero_activo);
+        });
+
+        return redirect()
+            ->route('expediente', $expedienteData->id)
+            ->with('success', 'Los documentos fueron ligados correctamente al expediente. Agregados/Reemplazados: ' . count($guardados));
+    }
+
+    public function destroy(int $documento): RedirectResponse
+    {
+        [$documentoData, $expediente] = $this->findDocumentContext($documento);
+
+        if (!(bool) $documentoData->vigente) {
+            return redirect()
+                ->route('expediente', $expediente->id)
+                ->withErrors([
+                    'documentos' => 'El documento seleccionado ya se encuentra eliminado del expediente.',
+                ]);
+        }
+
+        DB::transaction(function () use ($documentoData, $expediente) {
+            DB::table('documentos_expediente')
+                ->where('id', $documentoData->id)
+                ->update([
+                    'vigente' => false,
+                    'updated_at' => now(),
+                ]);
+
+            $this->updateDocumentalStatus((int) $expediente->id, $expediente->numero_activo);
+
+            $this->registrarBitacora(
+                numeroActivo: $expediente->numero_activo,
+                accion: 'DOCUMENTO_ELIMINADO',
+                tablaAfectada: 'documentos_expediente',
+                registroClave: (string) $documentoData->id,
+                detalle: [
+                    'expediente_id' => $expediente->id,
+                    'folio_factura' => $expediente->folio_factura,
+                    'tipo_documento' => $documentoData->tipo_documento,
+                    'nombre_archivo' => $documentoData->nombre_archivo,
+                    'eliminacion' => 'Baja lógica. El archivo físico se conserva para trazabilidad.',
+                ]
+            );
+        });
+
+        return redirect()
+            ->route('expediente', $expediente->id)
+            ->with('success', 'El documento fue eliminado del expediente. Se conserva trazabilidad en bitácora.');
+    }
+
+    private function storeUploadedDocumentFile(
+        string $sourcePath,
+        string $numeroActivo,
+        string $folioFactura,
+        string $originalName
+    ): string {
+        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION)) ?: 'dat';
+        $safeName = $this->safeFileName($originalName, $extension);
+
+        $basePath = 'swafi/expedientes/'
+            . Str::slug($numeroActivo)
+            . '/'
+            . Str::slug($folioFactura);
+
+        $storedName = now()->format('YmdHis')
+            . '_'
+            . Str::random(8)
+            . '_'
+            . $safeName;
+
+        $storedPath = $basePath . '/' . $storedName;
+
+        Storage::disk('local')->put($storedPath, file_get_contents($sourcePath));
+
+        return $storedPath;
+    }
+
+    private function storeOrReplaceDocumentRecord(
+        int $expedienteId,
+        string $tipoDocumento,
+        string $nombreArchivo,
+        string $rutaArchivo,
+        ?string $mimeType,
+        ?int $tamanoBytes,
+        ?string $hashSha256
+    ): array {
+        $normalizedName = $this->normalizeDocumentIdentity($nombreArchivo);
+
+        $existingDocument = DocumentoExpediente::where('expediente_id', $expedienteId)
+            ->where('tipo_documento', $tipoDocumento)
+            ->where(function ($query) use ($normalizedName, $hashSha256) {
+                $query->whereRaw('LOWER(nombre_archivo) = ?', [$normalizedName]);
+
+                if (!empty($hashSha256)) {
+                    $query->orWhere('hash_sha256', $hashSha256);
+                }
+            })
+            ->orderByDesc('version')
+            ->first();
+
+        if ($existingDocument) {
+            DocumentoExpediente::where('expediente_id', $expedienteId)
+                ->where('tipo_documento', $tipoDocumento)
+                ->where(function ($query) use ($normalizedName, $hashSha256) {
+                    $query->whereRaw('LOWER(nombre_archivo) = ?', [$normalizedName]);
+
+                    if (!empty($hashSha256)) {
+                        $query->orWhere('hash_sha256', $hashSha256);
+                    }
+                })
+                ->update([
+                    'vigente' => false,
+                    'updated_at' => now(),
+                ]);
+
+            $version = ((int) $existingDocument->version) + 1;
+            $accion = 'reemplazado';
+        } else {
+            $version = 1;
+            $accion = 'agregado';
+        }
+
+        $documento = DocumentoExpediente::create([
+            'expediente_id' => $expedienteId,
+            'tipo_documento' => $tipoDocumento,
+            'nombre_archivo' => $nombreArchivo,
+            'ruta_archivo' => $rutaArchivo,
+            'mime_type' => $mimeType,
+            'tamano_bytes' => $tamanoBytes,
+            'hash_sha256' => $hashSha256,
+            'version' => $version,
+            'vigente' => true,
+            'cargado_por' => auth()->id(),
+        ]);
+
+        return [
+            'accion' => $accion,
+            'documento_id' => $documento->id,
+            'tipo_documento' => $documento->tipo_documento,
+            'nombre_archivo' => $documento->nombre_archivo,
+            'version' => $documento->version,
+            'hash_sha256' => $documento->hash_sha256,
+        ];
+    }
+
+    private function updateDocumentalStatus(int $expedienteId, string $numeroActivo): string
+    {
+        $tipos = DB::table('documentos_expediente')
+            ->where('expediente_id', $expedienteId)
+            ->where('vigente', true)
+            ->pluck('tipo_documento')
+            ->map(fn ($tipo) => strtoupper((string) $tipo))
+            ->unique()
+            ->values()
+            ->all();
+
+        $estatus = in_array('PDF', $tipos, true) && in_array('XML', $tipos, true)
+            ? 'completo'
+            : 'incompleto';
+
+        DB::table('expedientes')
+            ->where('id', $expedienteId)
+            ->update([
+                'estatus' => $estatus,
+                'actualizado_por' => auth()->id(),
+                'updated_at' => now(),
+            ]);
+
+        DB::table('activos')
+            ->where('numero_activo', $numeroActivo)
+            ->update([
+                'estatus_documental' => $estatus,
+                'actualizado_por' => auth()->id(),
+                'updated_at' => now(),
+            ]);
+
+        return $estatus;
+    }
+
     private function findDocumentContext(int $documento): array
     {
         $documentoData = DB::table('documentos_expediente')
@@ -222,18 +466,6 @@ class DocumentoExpedienteController extends Controller
     private function resolveDocumentPath(object $documentoData, object $expediente): array
     {
         if (!(bool) $documentoData->vigente) {
-            $this->registrarBitacora(
-                numeroActivo: $expediente->numero_activo,
-                accion: 'DOCUMENTO_NO_VIGENTE',
-                tablaAfectada: 'documentos_expediente',
-                registroClave: (string) $documentoData->id,
-                detalle: [
-                    'expediente_id' => $expediente->id,
-                    'folio_factura' => $expediente->folio_factura,
-                    'nombre_archivo' => $documentoData->nombre_archivo,
-                ]
-            );
-
             return [
                 'ok' => false,
                 'path' => null,
@@ -315,18 +547,6 @@ class DocumentoExpedienteController extends Controller
             storage_path('app/public/' . $normalizedPath),
         ];
 
-        if (Str::startsWith($normalizedPath, 'private/')) {
-            $candidates[] = storage_path('app/' . $normalizedPath);
-        }
-
-        if (Str::startsWith($normalizedPath, 'storage/app/private/')) {
-            $candidates[] = base_path($normalizedPath);
-        }
-
-        if (Str::startsWith($normalizedPath, 'storage/app/')) {
-            $candidates[] = base_path($normalizedPath);
-        }
-
         foreach (array_unique($candidates) as $candidate) {
             if ($candidate && is_file($candidate)) {
                 return $candidate;
@@ -353,10 +573,15 @@ class DocumentoExpedienteController extends Controller
 
         $extension = strtolower(pathinfo($documentoData->nombre_archivo ?? '', PATHINFO_EXTENSION));
 
-        return match ($extension) {
+        return $this->mimeTypeFromExtension($extension) ?: (mime_content_type($absolutePath) ?: 'application/octet-stream');
+    }
+
+    private function mimeTypeFromExtension(string $extension): string
+    {
+        return match (strtolower($extension)) {
             'pdf' => 'application/pdf',
             'xml' => 'application/xml',
-            default => mime_content_type($absolutePath) ?: 'application/octet-stream',
+            default => 'application/octet-stream',
         };
     }
 
@@ -382,6 +607,16 @@ class DocumentoExpedienteController extends Controller
             : $safeBaseName;
     }
 
+    private function safeFileName(string $name, string $defaultExtension): string
+    {
+        $baseName = pathinfo($name, PATHINFO_FILENAME);
+        $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION)) ?: $defaultExtension;
+
+        $safeBaseName = Str::slug($baseName) ?: 'documento';
+
+        return $safeBaseName . '.' . $extension;
+    }
+
     private function zipEntryName(object $documentoData): string
     {
         $tipo = Str::slug($documentoData->tipo_documento ?: 'documento');
@@ -389,6 +624,11 @@ class DocumentoExpedienteController extends Controller
         $name = $this->safeDownloadName($documentoData->nombre_archivo, 'documento_' . $documentoData->id);
 
         return $tipo . '_v' . $version . '_' . $name;
+    }
+
+    private function normalizeDocumentIdentity(string $fileName): string
+    {
+        return Str::lower(trim(basename(str_replace('\\', '/', $fileName))));
     }
 
     private function registrarBitacora(
@@ -414,7 +654,7 @@ class DocumentoExpedienteController extends Controller
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // La descarga o visualización no debe fallar por un error de bitácora.
+            // La descarga, carga o eliminación no debe fallar por un error de bitácora.
         }
     }
 }
