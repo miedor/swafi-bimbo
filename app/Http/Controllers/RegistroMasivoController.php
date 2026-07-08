@@ -367,65 +367,65 @@ class RegistroMasivoController extends Controller
     }
 
     public function plantillaCsv()
-    {
-        return response()->streamDownload(function () {
-            $output = fopen('php://output', 'w');
+{
+    return response()->streamDownload(function () {
+        $output = fopen('php://output', 'w');
 
-            fwrite($output, "\xEF\xBB\xBF");
+        fwrite($output, "\xEF\xBB\xBF");
 
-            fputcsv($output, [
-                'Numero activo',
-                'Descripcion',
-                'Folio factura',
-                'UUID CFDI',
-                'Fecha factura',
-                'Monto factura',
-                'Moneda',
-                'Proveedor RFC',
-                'Tipo activo clave',
-                'Centro costo clave',
-                'Planta clave',
-                'Ubicacion codigo',
-                'Responsable correo',
-                'Serie',
-                'Marca',
-                'Modelo',
-                'Fecha adquisicion',
-                'Estatus operativo',
-                'Documento PDF',
-                'Documento XML',
-                'Observaciones',
-            ]);
-
-            fputcsv($output, [
-                'BIM-537028',
-                'ARTESA N° 1',
-                'FAC-000184',
-                'A1B2C3D4-E5F6-7890-ABCD-000000000184',
-                '25/06/2026',
-                '602700',
-                'MXN',
-                'ACM010101ABC',
-                'EQP',
-                'CC-PLA-200',
-                'PLT-SM',
-                'UBI-SM-PRO-L3-PB',
-                'jorge.mendez@bimbo.local',
-                'SER-537028',
-                'Bimbo Industrial',
-                'ART-2026',
-                '25/06/2026',
-                'en_operacion',
-                'factura_184.pdf',
-                'factura_184.xml',
-                'Carga masiva de expediente de activo fijo con documentos físicos en ZIP.',
-            ]);
-
-            fclose($output);
-        }, 'plantilla_registro_masivo_expedientes_swafi.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+        fputcsv($output, [
+            'Numero activo',
+            'Descripcion',
+            'Folio factura',
+            'UUID CFDI',
+            'Fecha factura',
+            'Monto factura',
+            'Moneda',
+            'Proveedor RFC',
+            'Tipo activo clave',
+            'Centro costo clave',
+            'Planta clave',
+            'Ubicacion codigo',
+            'Responsable correo',
+            'Serie',
+            'Marca',
+            'Modelo',
+            'Fecha adquisicion',
+            'Estatus operativo',
+            'Documento PDF',
+            'Documento XML',
+            'Observaciones',
         ]);
-    }
+
+        fputcsv($output, [
+            'BIM-537028',
+            'ARTESA N° 1',
+            'FAC-000184',
+            'A1B2C3D4-E5F6-7890-ABCD-000000000184',
+            '25/06/2026',
+            '602700',
+            'MXN',
+            'ACM010101ABC',
+            'EQP',
+            'CC-PLA-200',
+            'PLT-SM',
+            'UBI-SM-PRO-L3-PB',
+            'jorge.mendez@bimbo.local',
+            'SER-537028',
+            'Bimbo Industrial',
+            'ART-2026',
+            '25/06/2026',
+            'en_operacion',
+            'factura_184.pdf|evidencia_recepcion_184.pdf',
+            'factura_184.xml|complemento_184.xml',
+            'Carga masiva de expediente con varios documentos PDF/XML separados por pipe.',
+        ]);
+
+        fclose($output);
+    }, 'plantilla_registro_masivo_expedientes_swafi.csv', [
+        'Content-Type' => 'text/csv; charset=UTF-8',
+    ]);
+}
 
     private function baseQuery()
     {
