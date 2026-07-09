@@ -106,13 +106,16 @@ class SwafiAuth
 
             'expedientes.editar',
             'expedientes.actualizar',
-            'expedientes.eliminar',
-            'observaciones.store',
-            'observaciones.actualizar',
-            'observaciones.cancelar' => 'expedientes.editar',
+            'expedientes.eliminar' => 'expedientes.editar',
 
             'documentos.store',
             'documentos.eliminar' => 'documentos.cargar',
+
+            'observaciones.store',
+            'observaciones.tomar',
+            'observaciones.atender',
+            'observaciones.validar',
+            'observaciones.cancelar' => 'expedientes.ver',
 
             'valores',
             'valores.store',
