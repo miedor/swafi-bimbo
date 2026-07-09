@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class BusquedaController extends Controller
 {
@@ -39,6 +40,7 @@ class BusquedaController extends Controller
                     'expediente' => null,
                     'documentos' => collect(),
                     'valor' => null,
+                    'observaciones' => collect(),
                     'bitacora' => collect(),
                 ]);
             }
@@ -106,6 +108,34 @@ class BusquedaController extends Controller
             ->orderByDesc('id')
             ->first();
 
+        $observaciones = collect();
+
+        if (Schema::hasTable('expediente_observaciones')) {
+            $observaciones = DB::table('expediente_observaciones as eo')
+                ->leftJoin('users as creador', 'creador.id', '=', 'eo.creado_por')
+                ->leftJoin('users as cierre', 'cierre.id', '=', 'eo.cerrado_por')
+                ->where('eo.expediente_id', $detalle->expediente_id)
+                ->select([
+                    'eo.id',
+                    'eo.expediente_id',
+                    'eo.numero_activo',
+                    'eo.tipo_observacion',
+                    'eo.prioridad',
+                    'eo.estatus',
+                    'eo.descripcion',
+                    'eo.respuesta',
+                    'eo.fecha_cierre',
+                    'eo.created_at',
+                    'eo.updated_at',
+                    'creador.name as creado_por_nombre',
+                    'cierre.name as cerrado_por_nombre',
+                ])
+                ->orderByRaw("CASE eo.estatus WHEN 'abierta' THEN 1 WHEN 'en_proceso' THEN 2 WHEN 'cerrada' THEN 3 ELSE 4 END")
+                ->orderByRaw("CASE eo.prioridad WHEN 'critica' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END")
+                ->orderByDesc('eo.created_at')
+                ->get();
+        }
+
         $bitacora = DB::table('bitacora_auditoria')
             ->where('numero_activo', $detalle->numero_activo)
             ->orderByDesc('fecha_evento')
@@ -134,6 +164,7 @@ class BusquedaController extends Controller
             'expediente' => $detalle,
             'documentos' => $documentos,
             'valor' => $valor,
+            'observaciones' => $observaciones,
             'bitacora' => $bitacora,
         ]);
     }
