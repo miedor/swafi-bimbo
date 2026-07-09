@@ -13,15 +13,15 @@ class DashboardController extends Controller
         $fechaDesde = $request->input('fecha_desde');
         $fechaHasta = $request->input('fecha_hasta');
 
-        $kpis = $this->buildKpis($plantaId, $fechaDesde, $fechaHasta);
+        $expedientesAtencion = $this->expedientesAtencion($plantaId, $fechaDesde, $fechaHasta);
 
         return view('swafi.dashboard', [
             'filtros' => $request->all(),
             'catalogos' => $this->catalogos(),
-            'kpis' => $kpis,
+            'kpis' => $this->buildKpis($plantaId, $fechaDesde, $fechaHasta),
             'estatusDocumental' => $this->estatusDocumental($plantaId, $fechaDesde, $fechaHasta),
             'activosPorPlanta' => $this->activosPorPlanta(),
-            'expedientesAtencion' => $this->expedientesAtencion($plantaId, $fechaDesde, $fechaHasta),
+            'expedientesAtencion' => $expedientesAtencion,
             'actividadReciente' => $this->actividadReciente(),
             'ultimosDocumentos' => $this->ultimosDocumentos($plantaId),
         ]);
@@ -70,6 +70,8 @@ class DashboardController extends Controller
 
         $eventosAuditoria = DB::table('bitacora_auditoria')->count();
 
+        $totalAtencion = $this->expedientesAtencionTotal($plantaId, $fechaDesde, $fechaHasta);
+
         return [
             'total_activos' => $totalActivos,
             'total_expedientes' => $totalExpedientes,
@@ -81,6 +83,7 @@ class DashboardController extends Controller
             'documentos_pdf' => $documentosPdf,
             'documentos_xml' => $documentosXml,
             'eventos_auditoria' => $eventosAuditoria,
+            'total_atencion' => $totalAtencion,
             'porcentaje_completos' => $totalExpedientes > 0
                 ? round(($expedientesCompletos / $totalExpedientes) * 100, 1)
                 : 0,
@@ -116,6 +119,20 @@ class DashboardController extends Controller
 
     private function expedientesAtencion(?int $plantaId, ?string $fechaDesde, ?string $fechaHasta)
     {
+        return $this->expedientesAtencionQuery($plantaId, $fechaDesde, $fechaHasta)
+            ->orderByDesc('e.updated_at')
+            ->orderByDesc('e.created_at')
+            ->limit(8)
+            ->get();
+    }
+
+    private function expedientesAtencionTotal(?int $plantaId, ?string $fechaDesde, ?string $fechaHasta): int
+    {
+        return $this->expedientesAtencionQuery($plantaId, $fechaDesde, $fechaHasta)->count();
+    }
+
+    private function expedientesAtencionQuery(?int $plantaId, ?string $fechaDesde, ?string $fechaHasta)
+    {
         $documentCounts = DB::table('documentos_expediente')
             ->select(
                 'expediente_id',
@@ -124,6 +141,13 @@ class DashboardController extends Controller
             )
             ->groupBy('expediente_id');
 
+        $valorCounts = DB::table('valores_activo')
+            ->select(
+                'numero_activo',
+                DB::raw('COUNT(*) as total_valores')
+            )
+            ->groupBy('numero_activo');
+
         $query = DB::table('expedientes as e')
             ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
             ->leftJoin('proveedores as p', 'p.id', '=', 'a.proveedor_id')
@@ -131,16 +155,15 @@ class DashboardController extends Controller
             ->leftJoinSub($documentCounts, 'dc', function ($join) {
                 $join->on('dc.expediente_id', '=', 'e.id');
             })
+            ->leftJoinSub($valorCounts, 'vc', function ($join) {
+                $join->on('vc.numero_activo', '=', 'e.numero_activo');
+            })
             ->where(function ($query) {
                 $query->whereIn('e.estatus', ['incompleto', 'observado'])
                     ->orWhereRaw('COALESCE(dc.total_pdf, 0) = 0')
                     ->orWhereRaw('COALESCE(dc.total_xml, 0) = 0')
                     ->orWhereNull('a.ubicacion_id')
-                    ->orWhereNotExists(function ($subquery) {
-                        $subquery->select(DB::raw(1))
-                            ->from('valores_activo as v')
-                            ->whereColumn('v.numero_activo', 'a.numero_activo');
-                    });
+                    ->orWhereRaw('COALESCE(vc.total_valores, 0) = 0');
             })
             ->select([
                 'e.id as expediente_id',
@@ -152,8 +175,11 @@ class DashboardController extends Controller
                 'pl.nombre as planta_nombre',
                 DB::raw('COALESCE(dc.total_pdf, 0) as total_pdf'),
                 DB::raw('COALESCE(dc.total_xml, 0) as total_xml'),
+                DB::raw('COALESCE(vc.total_valores, 0) as total_valores'),
                 'a.ubicacion_id',
+                'e.fecha_factura',
                 'e.created_at',
+                'e.updated_at',
             ]);
 
         if ($plantaId) {
@@ -168,10 +194,7 @@ class DashboardController extends Controller
             $query->whereDate('e.fecha_factura', '<=', $fechaHasta);
         }
 
-        return $query
-            ->orderByDesc('e.created_at')
-            ->limit(8)
-            ->get();
+        return $query;
     }
 
     private function actividadReciente()
