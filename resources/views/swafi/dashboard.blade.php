@@ -2,145 +2,124 @@
 
 @section('title', 'Dashboard principal | SWAFI')
 @section('page_title', 'Dashboard principal')
-@section('page_subtitle', 'Resumen ejecutivo del control documental, financiero y operativo')
+@section('page_subtitle', 'Vista ejecutiva del control documental, financiero y operativo')
 @section('breadcrumb', 'Dashboard')
 
 @section('page_styles')
 <style>
-  .dash-compact-shell {
+  .dash-exec-shell {
     display: grid;
-    gap: 14px;
+    gap: 12px;
   }
 
-  .dash-hero {
+  .dash-top-row {
     display: grid;
-    grid-template-columns: minmax(270px, 360px) 1fr;
-    gap: 14px;
+    grid-template-columns: 260px 1fr;
+    gap: 12px;
     align-items: stretch;
   }
 
-  .dash-hero-card {
-    position: relative;
-    overflow: hidden;
-    min-height: 188px;
+  .dash-health-mini {
+    display: grid;
+    gap: 10px;
+    padding: 14px;
     border: 1px solid #dbe7f6;
-    border-radius: 24px;
+    border-radius: 22px;
     background:
-      radial-gradient(circle at 12% 18%, rgba(47, 116, 214, .22), transparent 32%),
-      linear-gradient(135deg, #ffffff 0%, #f5f9ff 52%, #edf5ff 100%);
-    box-shadow: 0 16px 36px rgba(15, 23, 42, .08);
+      radial-gradient(circle at 0% 0%, rgba(34, 197, 94, .13), transparent 32%),
+      linear-gradient(135deg, #ffffff 0%, #f5f9ff 100%);
+    box-shadow: 0 12px 26px rgba(15, 23, 42, .06);
   }
 
-  .dash-hero-card::after {
-    content: "";
-    position: absolute;
-    right: -60px;
-    top: -80px;
-    width: 210px;
-    height: 210px;
-    border-radius: 999px;
-    background: rgba(31, 90, 166, .08);
-  }
-
-  .dash-hero-main {
-    position: relative;
-    z-index: 1;
-    display: grid;
-    grid-template-columns: 118px 1fr;
-    gap: 18px;
-    align-items: center;
-    height: 100%;
-    padding: 22px;
-  }
-
-  .dash-ring {
-    --value: 0;
-    width: 112px;
-    height: 112px;
-    display: grid;
-    place-items: center;
-    border-radius: 999px;
-    background:
-      radial-gradient(circle closest-side, #ffffff 68%, transparent 70% 100%),
-      conic-gradient(#1f7a3d calc(var(--value) * 1%), #dbe7f6 0);
-    box-shadow: inset 0 0 0 1px #dce8f6, 0 12px 24px rgba(15, 23, 42, .08);
-  }
-
-  .dash-ring strong {
-    color: #12345c;
-    font-size: 25px;
-    font-weight: 950;
-    letter-spacing: -.7px;
-  }
-
-  .dash-hero-title {
-    margin: 0 0 6px;
-    color: #122a4a;
-    font-size: 20px;
-    font-weight: 950;
-    line-height: 1.05;
-  }
-
-  .dash-hero-text {
-    margin: 0;
-    color: #64748b;
-    font-size: 13px;
-    font-weight: 750;
-    line-height: 1.35;
-  }
-
-  .dash-hero-pills {
+  .dash-health-title {
     display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-    margin-top: 12px;
-  }
-
-  .dash-chip {
-    display: inline-flex;
+    justify-content: space-between;
+    gap: 10px;
     align-items: center;
-    gap: 7px;
-    min-height: 28px;
-    padding: 6px 10px;
-    border-radius: 999px;
-    border: 1px solid #d9e6f7;
-    background: #ffffff;
-    color: #174f9a;
-    font-size: 12px;
+  }
+
+  .dash-health-title span {
+    color: #64748b;
+    font-size: 11px;
     font-weight: 900;
-    white-space: nowrap;
+    line-height: 1.15;
   }
 
-  .dash-chip::before {
-    content: "";
-    width: 7px;
-    height: 7px;
+  .dash-health-title strong {
+    color: #12345c;
+    font-size: 30px;
+    font-weight: 950;
+    letter-spacing: -1px;
+    line-height: 1;
+  }
+
+  .dash-health-bar {
+    height: 12px;
+    overflow: hidden;
     border-radius: 999px;
-    background: currentColor;
+    background: #e5edf7;
   }
 
-  .dash-filter-card {
-    padding: 18px;
+  .dash-health-fill {
+    height: 100%;
+    border-radius: 999px;
+    background: linear-gradient(90deg, #1f7a3d, #22c55e);
   }
 
-  .dash-filter-header {
+  .dash-health-meta {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 7px;
+  }
+
+  .dash-health-meta div {
+    padding: 8px;
+    border: 1px solid #dfe9f7;
+    border-radius: 14px;
+    background: #ffffff;
+  }
+
+  .dash-health-meta span {
+    display: block;
+    color: #64748b;
+    font-size: 10.5px;
+    font-weight: 850;
+  }
+
+  .dash-health-meta strong {
+    display: block;
+    margin-top: 2px;
+    color: #12345c;
+    font-size: 17px;
+    font-weight: 950;
+  }
+
+  .dash-filter-compact {
+    padding: 14px;
+    border: 1px solid #dbe7f6;
+    border-radius: 22px;
+    background: #ffffff;
+    box-shadow: 0 12px 26px rgba(15, 23, 42, .06);
+  }
+
+  .dash-filter-head {
     display: flex;
     justify-content: space-between;
     gap: 12px;
     align-items: center;
-    margin-bottom: 12px;
+    margin-bottom: 10px;
   }
 
-  .dash-filter-header h2 {
+  .dash-filter-head h2 {
     margin: 0;
     color: #152f52;
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 950;
   }
 
   .dash-filter-form {
     display: grid;
-    grid-template-columns: minmax(220px, 1.2fr) minmax(150px, .85fr) minmax(150px, .85fr) auto;
+    grid-template-columns: minmax(200px, 1.1fr) minmax(140px, .8fr) minmax(140px, .8fr) auto;
     gap: 10px;
     align-items: end;
   }
@@ -149,7 +128,7 @@
     display: block;
     margin-bottom: 5px;
     color: #1d3558;
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 900;
   }
 
@@ -175,108 +154,80 @@
 
   .dash-actions .tab {
     min-height: 38px;
+    padding: 9px 13px;
   }
 
-  .dash-top-kpis {
+  .dash-kpi-row {
     display: grid;
-    grid-template-columns: repeat(4, minmax(150px, 1fr));
-    gap: 12px;
+    grid-template-columns: repeat(6, minmax(130px, 1fr));
+    gap: 10px;
   }
 
-  .dash-kpi-pro {
+  .dash-kpi {
     position: relative;
     overflow: hidden;
-    min-height: 118px;
-    padding: 16px;
+    min-height: 86px;
+    padding: 12px;
     border: 1px solid #dbe7f6;
-    border-radius: 22px;
+    border-radius: 18px;
     background: #ffffff;
-    box-shadow: 0 13px 28px rgba(15, 23, 42, .06);
+    box-shadow: 0 10px 22px rgba(15, 23, 42, .05);
   }
 
-  .dash-kpi-pro::after {
+  .dash-kpi::after {
     content: "";
     position: absolute;
-    right: -24px;
-    top: -24px;
-    width: 82px;
-    height: 82px;
+    right: -22px;
+    top: -28px;
+    width: 70px;
+    height: 70px;
     border-radius: 999px;
     background: #f0f6ff;
   }
 
-  .dash-kpi-pro .dash-kpi-label {
+  .dash-kpi span {
     position: relative;
     z-index: 1;
+    display: block;
     color: #64748b;
-    font-size: 12px;
+    font-size: 11.5px;
     font-weight: 850;
+    line-height: 1.18;
   }
 
-  .dash-kpi-pro .dash-kpi-value {
+  .dash-kpi strong {
     position: relative;
     z-index: 1;
+    display: block;
     margin-top: 7px;
     color: #12345c;
-    font-size: 28px;
+    font-size: 23px;
     font-weight: 950;
-    letter-spacing: -.9px;
+    letter-spacing: -.6px;
     line-height: 1;
   }
 
-  .dash-kpi-pro .dash-kpi-status {
+  .dash-kpi small {
     position: relative;
     z-index: 1;
-    margin-top: 7px;
+    display: block;
+    margin-top: 6px;
     color: #174f9a;
-    font-size: 12px;
-    font-weight: 850;
-  }
-
-  .dash-kpi-pro.warn .dash-kpi-status {
-    color: #9a5b00;
-  }
-
-  .dash-kpi-pro.danger .dash-kpi-status {
-    color: #b42318;
-  }
-
-  .dash-kpi-pro.ok .dash-kpi-status {
-    color: #1f7a3d;
-  }
-
-  .dash-micro-grid {
-    display: grid;
-    grid-template-columns: repeat(5, minmax(130px, 1fr));
-    gap: 10px;
-  }
-
-  .dash-micro {
-    display: flex;
-    justify-content: space-between;
-    gap: 10px;
-    align-items: center;
-    min-height: 58px;
-    padding: 10px 12px;
-    border: 1px solid #dfe9f7;
-    border-radius: 18px;
-    background: #ffffff;
-    box-shadow: 0 10px 22px rgba(15, 23, 42, .045);
-  }
-
-  .dash-micro span {
-    color: #64748b;
     font-size: 11px;
     font-weight: 850;
     line-height: 1.15;
   }
 
-  .dash-micro strong {
-    color: #12345c;
-    font-size: 18px;
-    font-weight: 950;
-    text-align: right;
-    white-space: nowrap;
+  .dash-kpi.ok small {
+    color: #1f7a3d;
+  }
+
+  .dash-kpi.warn small {
+    color: #9a5b00;
+  }
+
+  .dash-kpi.danger small {
+    color: #b42318;
   }
 
   .dash-tabs-card {
@@ -295,8 +246,8 @@
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    min-height: 38px;
-    padding: 9px 14px;
+    min-height: 36px;
+    padding: 8px 13px;
     border: 1px solid #d7e4f4;
     border-radius: 999px;
     background: #ffffff;
@@ -322,7 +273,7 @@
 
   .dash-tab-panel {
     display: none;
-    padding-top: 14px;
+    padding-top: 12px;
   }
 
   .dash-tab-panel.is-active {
@@ -331,21 +282,14 @@
 
   .dash-panel-grid {
     display: grid;
-    grid-template-columns: .9fr 1.1fr;
-    gap: 14px;
-    align-items: start;
-  }
-
-  .dash-panel-grid-three {
-    display: grid;
-    grid-template-columns: .85fr 1.15fr 1fr;
-    gap: 14px;
+    grid-template-columns: .86fr 1.14fr;
+    gap: 12px;
     align-items: start;
   }
 
   .dash-panel {
-    min-height: 304px;
-    padding: 15px;
+    min-height: 274px;
+    padding: 14px;
     border: 1px solid #dbe7f6;
     border-radius: 20px;
     background: #ffffff;
@@ -356,7 +300,7 @@
     justify-content: space-between;
     align-items: center;
     gap: 12px;
-    margin-bottom: 12px;
+    margin-bottom: 11px;
   }
 
   .dash-panel-header h3 {
@@ -367,24 +311,26 @@
   }
 
   .dash-scroll-panel {
-    max-height: 258px;
+    max-height: 228px;
     overflow-y: auto;
     padding-right: 4px;
   }
 
-  .dash-scroll-panel::-webkit-scrollbar {
+  .dash-scroll-panel::-webkit-scrollbar,
+  .dash-table-wrap::-webkit-scrollbar {
     width: 8px;
     height: 8px;
   }
 
-  .dash-scroll-panel::-webkit-scrollbar-thumb {
+  .dash-scroll-panel::-webkit-scrollbar-thumb,
+  .dash-table-wrap::-webkit-scrollbar-thumb {
     border-radius: 999px;
     background: #c8d7ea;
   }
 
   .dash-progress-list {
     display: grid;
-    gap: 11px;
+    gap: 10px;
   }
 
   .dash-progress-item {
@@ -409,7 +355,7 @@
   }
 
   .dash-progress-track {
-    height: 12px;
+    height: 11px;
     overflow: hidden;
     border-radius: 999px;
     background: #e8eef7;
@@ -421,6 +367,10 @@
     background: linear-gradient(90deg, #1f5aa6, #4f8fe8);
   }
 
+  .dash-progress-bar.ok {
+    background: linear-gradient(90deg, #1f7a3d, #22c55e);
+  }
+
   .dash-progress-bar.warn {
     background: linear-gradient(90deg, #d97706, #fbbf24);
   }
@@ -429,43 +379,67 @@
     background: linear-gradient(90deg, #b42318, #ef4444);
   }
 
-  .dash-progress-bar.ok {
-    background: linear-gradient(90deg, #1f7a3d, #22c55e);
-  }
-
-  .dash-table-scroll {
+  .dash-table-wrap {
     width: 100%;
+    max-height: 292px;
     overflow: auto;
-    max-height: 258px;
     border: 1px solid #e5edf8;
-    border-radius: 16px;
+    border-radius: 18px;
   }
 
-  .dash-table-scroll table {
-    min-width: 760px;
+  .dash-table-wrap table {
+    min-width: 1040px;
   }
 
-  .dash-table-scroll th {
+  .dash-table-wrap th {
     position: sticky;
     top: 0;
     z-index: 2;
     background: #f7fbff;
   }
 
+  .dash-asset-cell strong {
+    display: block;
+    color: #14355f;
+    font-weight: 950;
+  }
+
   .dash-mini {
     color: #64748b;
     font-size: 12px;
-    line-height: 1.35;
+    line-height: 1.28;
   }
 
-  .dash-empty {
-    padding: 16px;
-    border: 1px dashed #cbd8ea;
-    border-radius: 14px;
-    background: #f8fbff;
-    color: #64748b;
-    font-size: 13px;
-    font-weight: 850;
+  .dash-issues {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+  }
+
+  .dash-issue {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: #fff4d6;
+    color: #8a4b00;
+    border: 1px solid #f9d36a;
+    font-size: 11px;
+    font-weight: 900;
+    white-space: nowrap;
+  }
+
+  .dash-issue.danger {
+    background: #fff0ee;
+    color: #b42318;
+    border-color: #fecaca;
+  }
+
+  .dash-issue.ok {
+    background: #e8f7ea;
+    color: #1f6b2a;
+    border-color: #b9e5bf;
   }
 
   .dash-list-compact {
@@ -505,7 +479,7 @@
   .dash-quick-link {
     display: grid;
     gap: 4px;
-    padding: 14px;
+    padding: 13px;
     border: 1px solid #dbe7f6;
     border-radius: 18px;
     background: #ffffff;
@@ -533,27 +507,29 @@
     line-height: 1.25;
   }
 
+  .dash-empty {
+    padding: 15px;
+    border: 1px dashed #cbd8ea;
+    border-radius: 14px;
+    background: #f8fbff;
+    color: #64748b;
+    font-size: 13px;
+    font-weight: 850;
+  }
+
   @media (max-width: 1360px) {
-    .dash-hero {
+    .dash-top-row {
       grid-template-columns: 1fr;
     }
 
-    .dash-micro-grid {
+    .dash-kpi-row {
       grid-template-columns: repeat(3, minmax(140px, 1fr));
-    }
-
-    .dash-panel-grid-three {
-      grid-template-columns: 1fr;
     }
   }
 
   @media (max-width: 1100px) {
     .dash-filter-form {
       grid-template-columns: 1fr 1fr;
-    }
-
-    .dash-top-kpis {
-      grid-template-columns: repeat(2, minmax(160px, 1fr));
     }
 
     .dash-panel-grid {
@@ -566,15 +542,9 @@
   }
 
   @media (max-width: 760px) {
-    .dash-hero-main {
-      grid-template-columns: 1fr;
-      text-align: center;
-      justify-items: center;
-    }
-
     .dash-filter-form,
-    .dash-top-kpis,
-    .dash-micro-grid,
+    .dash-kpi-row,
+    .dash-health-meta,
     .dash-quick-grid {
       grid-template-columns: 1fr;
     }
@@ -645,6 +615,40 @@
         return '$ ' . number_format($amount, 2);
     };
 
+    $motivosAtencion = function ($item): array {
+        $motivos = [];
+
+        if (($item->estatus ?? '') === 'incompleto') {
+            $motivos[] = ['texto' => 'Expediente incompleto', 'clase' => 'danger'];
+        }
+
+        if (($item->estatus ?? '') === 'observado') {
+            $motivos[] = ['texto' => 'Expediente observado', 'clase' => 'danger'];
+        }
+
+        if ((int) ($item->total_pdf ?? 0) === 0) {
+            $motivos[] = ['texto' => 'Falta PDF', 'clase' => 'danger'];
+        }
+
+        if ((int) ($item->total_xml ?? 0) === 0) {
+            $motivos[] = ['texto' => 'Falta XML', 'clase' => 'danger'];
+        }
+
+        if (empty($item->ubicacion_id)) {
+            $motivos[] = ['texto' => 'Falta ubicación', 'clase' => ''];
+        }
+
+        if ((int) ($item->total_valores ?? 0) === 0) {
+            $motivos[] = ['texto' => 'Falta valores fiscales/financieros', 'clase' => ''];
+        }
+
+        if (empty($motivos)) {
+            $motivos[] = ['texto' => 'Sin corrección pendiente', 'clase' => 'ok'];
+        }
+
+        return $motivos;
+    };
+
     $filtros = $filtros ?? [];
     $totalEstatus = max((int) ($kpis['total_expedientes'] ?? 0), 1);
     $porcentajeCompletos = (float) ($kpis['porcentaje_completos'] ?? 0);
@@ -660,33 +664,34 @@
     </div>
 @endif
 
-<div class="dash-compact-shell">
+<div class="dash-exec-shell">
 
-  <div class="dash-hero">
-    <section class="dash-hero-card">
-      <div class="dash-hero-main">
-        <div class="dash-ring" style="--value: {{ min(max($porcentajeCompletos, 0), 100) }};">
-          <strong>{{ number_format($porcentajeCompletos, 1) }}%</strong>
+  <div class="dash-top-row">
+    <section class="dash-health-mini">
+      <div class="dash-health-title">
+        <span>Salud documental</span>
+        <strong>{{ number_format($porcentajeCompletos, 1) }}%</strong>
+      </div>
+
+      <div class="dash-health-bar">
+        <div class="dash-health-fill" style="width: {{ min(max($porcentajeCompletos, 0), 100) }}%"></div>
+      </div>
+
+      <div class="dash-health-meta">
+        <div>
+          <span>Completos</span>
+          <strong>{{ number_format((int) $kpis['expedientes_completos']) }}</strong>
         </div>
 
         <div>
-          <h2 class="dash-hero-title">Salud documental SWAFI</h2>
-          <p class="dash-hero-text">
-            Porcentaje de expedientes completos con PDF/XML vigente y datos integrados.
-            El objetivo operativo es reducir pendientes documentales y mejorar trazabilidad por activo fijo.
-          </p>
-
-          <div class="dash-hero-pills">
-            <span class="dash-chip">{{ number_format((int) $kpis['total_expedientes']) }} expedientes</span>
-            <span class="dash-chip">{{ number_format((int) $kpis['expedientes_completos']) }} completos</span>
-            <span class="dash-chip">{{ number_format((int) $kpis['eventos_auditoria']) }} eventos</span>
-          </div>
+          <span>Atención</span>
+          <strong>{{ number_format((int) $kpis['total_atencion']) }}</strong>
         </div>
       </div>
     </section>
 
-    <section class="card dash-filter-card">
-      <div class="dash-filter-header">
+    <section class="dash-filter-compact">
+      <div class="dash-filter-head">
         <h2>Filtros ejecutivos</h2>
         <span class="pill {{ $hasFilters ? 'warn' : 'ok' }}">
           {{ $hasFilters ? 'Filtro aplicado' : 'Conectado a MySQL' }}
@@ -710,12 +715,12 @@
         </label>
 
         <label class="dash-field">
-          <span>Desde</span>
+          <span>Fecha desde</span>
           <input type="date" name="fecha_desde" value="{{ $filtros['fecha_desde'] ?? '' }}">
         </label>
 
         <label class="dash-field">
-          <span>Hasta</span>
+          <span>Fecha hasta</span>
           <input type="date" name="fecha_hasta" value="{{ $filtros['fecha_hasta'] ?? '' }}">
         </label>
 
@@ -730,66 +735,51 @@
     </section>
   </div>
 
-  <div class="dash-top-kpis">
-    <div class="dash-kpi-pro">
-      <div class="dash-kpi-label">Activos registrados</div>
-      <div class="dash-kpi-value">{{ number_format((int) $kpis['total_activos']) }}</div>
-      <div class="dash-kpi-status">Activos vigentes en SWAFI</div>
+  <div class="dash-kpi-row">
+    <div class="dash-kpi">
+      <span>Activos registrados</span>
+      <strong>{{ number_format((int) $kpis['total_activos']) }}</strong>
+      <small>Vigentes en SWAFI</small>
     </div>
 
-    <div class="dash-kpi-pro ok">
-      <div class="dash-kpi-label">Expedientes completos</div>
-      <div class="dash-kpi-value">{{ number_format((int) $kpis['expedientes_completos']) }}</div>
-      <div class="dash-kpi-status">{{ number_format($porcentajeCompletos, 1) }}% del total filtrado</div>
+    <div class="dash-kpi ok">
+      <span>Expedientes completos</span>
+      <strong>{{ number_format((int) $kpis['expedientes_completos']) }}</strong>
+      <small>{{ number_format($porcentajeCompletos, 1) }}% del total</small>
     </div>
 
-    <div class="dash-kpi-pro {{ $kpis['expedientes_incompletos'] > 0 ? 'danger' : 'ok' }}">
-      <div class="dash-kpi-label">Pendientes documentales</div>
-      <div class="dash-kpi-value">{{ number_format((int) $kpis['expedientes_incompletos']) }}</div>
-      <div class="dash-kpi-status">{{ number_format($porcentajePendientes, 1) }}% incompletos/observados</div>
+    <div class="dash-kpi {{ $kpis['total_atencion'] > 0 ? 'warn' : 'ok' }}">
+      <span>Requieren atención</span>
+      <strong>{{ number_format((int) $kpis['total_atencion']) }}</strong>
+      <small>Documentos, valores o ubicación</small>
     </div>
 
-    <div class="dash-kpi-pro">
-      <div class="dash-kpi-label">Monto registrado</div>
-      <div class="dash-kpi-value">{{ $formatMoneyCompact($kpis['monto_total']) }}</div>
-      <div class="dash-kpi-status">Suma de facturas del filtro</div>
-    </div>
-  </div>
-
-  <div class="dash-micro-grid">
-    <div class="dash-micro">
-      <span>Expedientes registrados</span>
-      <strong>{{ number_format((int) $kpis['total_expedientes']) }}</strong>
+    <div class="dash-kpi">
+      <span>Monto registrado</span>
+      <strong>{{ $formatMoneyCompact($kpis['monto_total']) }}</strong>
+      <small>Suma de facturas</small>
     </div>
 
-    <div class="dash-micro">
-      <span>Activos sin ubicación</span>
-      <strong>{{ number_format((int) $kpis['activos_sin_ubicacion']) }}</strong>
+    <div class="dash-kpi">
+      <span>PDF/XML vigentes</span>
+      <strong>{{ number_format((int) $kpis['documentos_pdf']) }}/{{ number_format((int) $kpis['documentos_xml']) }}</strong>
+      <small>Resguardo documental</small>
     </div>
 
-    <div class="dash-micro">
-      <span>Activos sin valores</span>
-      <strong>{{ number_format((int) $kpis['activos_sin_valores']) }}</strong>
-    </div>
-
-    <div class="dash-micro">
-      <span>PDF vigentes</span>
-      <strong>{{ number_format((int) $kpis['documentos_pdf']) }}</strong>
-    </div>
-
-    <div class="dash-micro">
-      <span>XML vigentes</span>
-      <strong>{{ number_format((int) $kpis['documentos_xml']) }}</strong>
+    <div class="dash-kpi">
+      <span>Eventos auditoría</span>
+      <strong>{{ number_format((int) $kpis['eventos_auditoria']) }}</strong>
+      <small>Trazabilidad registrada</small>
     </div>
   </div>
 
   <section class="card dash-tabs-card">
     <div class="dash-tabbar" role="tablist" aria-label="Secciones del dashboard">
-      <button type="button" class="dash-tab-button is-active" data-dashboard-tab="resumen">
-        Resumen operativo
+      <button type="button" class="dash-tab-button is-active" data-dashboard-tab="seguimiento">
+        Seguimiento prioritario
       </button>
-      <button type="button" class="dash-tab-button" data-dashboard-tab="seguimiento">
-        Seguimiento documental
+      <button type="button" class="dash-tab-button" data-dashboard-tab="resumen">
+        Resumen operativo
       </button>
       <button type="button" class="dash-tab-button" data-dashboard-tab="documentos">
         Documentos y auditoría
@@ -799,7 +789,103 @@
       </button>
     </div>
 
-    <div class="dash-tab-panel is-active" data-dashboard-panel="resumen">
+    <div class="dash-tab-panel is-active" data-dashboard-panel="seguimiento">
+      <div class="dash-panel">
+        <div class="dash-panel-header">
+          <h3>Expedientes que requieren atención</h3>
+          <span class="pill warn">Corrección requerida visible</span>
+        </div>
+
+        <div class="dash-table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Activo</th>
+                <th>Factura</th>
+                <th>Proveedor / Planta</th>
+                <th>Estatus</th>
+                <th>Corrección requerida</th>
+                <th>Documentos</th>
+                <th>Acciones</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              @forelse($expedientesAtencion as $item)
+                <tr>
+                  <td class="dash-asset-cell">
+                    <strong>{{ $item->numero_activo }}</strong>
+                    <span class="dash-mini">{{ $item->activo_descripcion }}</span>
+                  </td>
+
+                  <td>
+                    {{ $item->folio_factura }}<br>
+                    <span class="dash-mini">{{ $item->fecha_factura ?: 'Sin fecha' }}</span>
+                  </td>
+
+                  <td>
+                    {{ $item->proveedor_nombre ?: 'Sin proveedor' }}<br>
+                    <span class="dash-mini">{{ $item->planta_nombre ?: 'Sin planta' }}</span>
+                  </td>
+
+                  <td>
+                    <span class="pill {{ $estatusClass($item->estatus) }}">
+                      {{ $statusText($item->estatus) }}
+                    </span>
+                  </td>
+
+                  <td>
+                    <div class="dash-issues">
+                      @foreach($motivosAtencion($item) as $motivo)
+                        <span class="dash-issue {{ $motivo['clase'] }}">
+                          {{ $motivo['texto'] }}
+                        </span>
+                      @endforeach
+                    </div>
+                  </td>
+
+                  <td>
+                    PDF: {{ ((int) $item->total_pdf) > 0 ? 'Sí' : 'No' }}<br>
+                    XML: {{ ((int) $item->total_xml) > 0 ? 'Sí' : 'No' }}<br>
+                    <span class="dash-mini">
+                      Valores: {{ ((int) $item->total_valores) > 0 ? 'Sí' : 'No' }}
+                    </span>
+                  </td>
+
+                  <td>
+                    <div class="table-actions">
+                      @if($can('expedientes.ver'))
+                        <a href="{{ route('expediente', $item->expediente_id) }}">Consultar</a>
+                      @endif
+
+                      @if($can('expedientes.editar'))
+                        <a href="{{ route('expedientes.editar', $item->expediente_id) }}">Editar</a>
+                      @endif
+
+                      @if($can('valores.administrar') && ((int) $item->total_valores) === 0)
+                        <a href="{{ route('valores', ['numero_activo' => $item->numero_activo]) }}">Valores</a>
+                      @endif
+
+                      @if($can('ubicaciones.administrar') && empty($item->ubicacion_id))
+                        <a href="{{ route('ubicacion', ['numero_activo' => $item->numero_activo]) }}">Ubicación</a>
+                      @endif
+                    </div>
+                  </td>
+                </tr>
+              @empty
+                <tr>
+                  <td colspan="7">
+                    No hay expedientes pendientes con los filtros seleccionados.
+                  </td>
+                </tr>
+              @endforelse
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="dash-tab-panel" data-dashboard-panel="resumen">
       <div class="dash-panel-grid">
         <div class="dash-panel">
           <div class="dash-panel-header">
@@ -878,84 +964,12 @@
       </div>
     </div>
 
-    <div class="dash-tab-panel" data-dashboard-panel="seguimiento">
-      <div class="dash-panel">
-        <div class="dash-panel-header">
-          <h3>Expedientes que requieren atención</h3>
-          <span class="pill warn">PDF/XML · ubicación · valores</span>
-        </div>
-
-        <div class="dash-table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>Activo</th>
-                <th>Factura</th>
-                <th>Proveedor / Planta</th>
-                <th>Estatus</th>
-                <th>PDF</th>
-                <th>XML</th>
-                <th>Ubicación</th>
-                <th>Acciones</th>
-              </tr>
-            </thead>
-
-            <tbody>
-              @forelse($expedientesAtencion as $item)
-                <tr>
-                  <td>
-                    <strong>{{ $item->numero_activo }}</strong><br>
-                    <span class="dash-mini">{{ $item->activo_descripcion }}</span>
-                  </td>
-
-                  <td>{{ $item->folio_factura }}</td>
-
-                  <td>
-                    {{ $item->proveedor_nombre ?: 'Sin proveedor' }}<br>
-                    <span class="dash-mini">{{ $item->planta_nombre ?: 'Sin planta' }}</span>
-                  </td>
-
-                  <td>
-                    <span class="pill {{ $estatusClass($item->estatus) }}">
-                      {{ $statusText($item->estatus) }}
-                    </span>
-                  </td>
-
-                  <td>{{ ((int) $item->total_pdf) > 0 ? 'Sí' : 'No' }}</td>
-                  <td>{{ ((int) $item->total_xml) > 0 ? 'Sí' : 'No' }}</td>
-                  <td>{{ $item->ubicacion_id ? 'Asignada' : 'Pendiente' }}</td>
-
-                  <td>
-                    <div class="table-actions">
-                      @if($can('expedientes.ver'))
-                        <a href="{{ route('expediente', $item->expediente_id) }}">Consultar</a>
-                      @endif
-
-                      @if($can('expedientes.editar'))
-                        <a href="{{ route('expedientes.editar', $item->expediente_id) }}">Editar</a>
-                      @endif
-                    </div>
-                  </td>
-                </tr>
-              @empty
-                <tr>
-                  <td colspan="8">
-                    No hay expedientes pendientes con los filtros seleccionados.
-                  </td>
-                </tr>
-              @endforelse
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
     <div class="dash-tab-panel" data-dashboard-panel="documentos">
       <div class="dash-panel-grid">
         <div class="dash-panel">
           <div class="dash-panel-header">
             <h3>Últimos documentos cargados</h3>
-            <span class="pill ok">Vigentes</span>
+            <span class="pill ok">PDF/XML vigentes</span>
           </div>
 
           <div class="dash-scroll-panel">
