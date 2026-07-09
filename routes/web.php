@@ -74,6 +74,26 @@ Route::middleware('swafi.auth')->group(function () {
         ->whereNumber('expediente')
         ->name('documentos.descargar-todos');
 
+    Route::post('/expedientes/{expediente}/observaciones', [ExpedienteObservacionController::class, 'store'])
+        ->whereNumber('expediente')
+        ->name('observaciones.store');
+
+    Route::patch('/observaciones-expediente/{observacion}/tomar', [ExpedienteObservacionController::class, 'tomar'])
+        ->whereNumber('observacion')
+        ->name('observaciones.tomar');
+
+    Route::patch('/observaciones-expediente/{observacion}/atender', [ExpedienteObservacionController::class, 'atender'])
+        ->whereNumber('observacion')
+        ->name('observaciones.atender');
+
+    Route::patch('/observaciones-expediente/{observacion}/validar', [ExpedienteObservacionController::class, 'validar'])
+        ->whereNumber('observacion')
+        ->name('observaciones.validar');
+
+    Route::delete('/observaciones-expediente/{observacion}/cancelar', [ExpedienteObservacionController::class, 'cancelar'])
+        ->whereNumber('observacion')
+        ->name('observaciones.cancelar');
+
     Route::get('/expedientes/{expediente}/editar', [ExpedienteGestionController::class, 'edit'])
         ->whereNumber('expediente')
         ->name('expedientes.editar');
@@ -85,18 +105,6 @@ Route::middleware('swafi.auth')->group(function () {
     Route::delete('/expedientes/{expediente}', [ExpedienteGestionController::class, 'destroy'])
         ->whereNumber('expediente')
         ->name('expedientes.eliminar');
-
-    Route::post('/expedientes/{expediente}/observaciones', [ExpedienteObservacionController::class, 'store'])
-        ->whereNumber('expediente')
-        ->name('observaciones.store');
-
-    Route::patch('/observaciones-expediente/{observacion}', [ExpedienteObservacionController::class, 'update'])
-        ->whereNumber('observacion')
-        ->name('observaciones.actualizar');
-
-    Route::delete('/observaciones-expediente/{observacion}', [ExpedienteObservacionController::class, 'destroy'])
-        ->whereNumber('observacion')
-        ->name('observaciones.cancelar');
 
     Route::get('/detalle-expediente/{expediente?}', [BusquedaController::class, 'show'])->name('expediente');
 
