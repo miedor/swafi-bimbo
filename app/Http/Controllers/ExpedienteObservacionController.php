@@ -2,34 +2,84 @@
 
 namespace App\Http\Controllers;
 
+use App\Mail\SwafiObservacionAsignadaMail;
 use App\Models\ExpedienteObservacion;
+use App\Models\User;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 
 class ExpedienteObservacionController extends Controller
 {
+    private array $tipoObservacionLabels = [
+        'falta_pdf' => 'Falta PDF',
+        'falta_xml' => 'Falta XML',
+        'falta_valores' => 'Falta valores fiscales/financieros',
+        'falta_ubicacion' => 'Falta ubicación física',
+        'ubicacion_incorrecta' => 'Ubicación incorrecta',
+        'datos_inconsistentes' => 'Datos inconsistentes',
+        'documento_incorrecto' => 'Documento incorrecto',
+        'otro' => 'Otro seguimiento',
+    ];
+
+    private array $prioridadLabels = [
+        'baja' => 'Baja',
+        'media' => 'Media',
+        'alta' => 'Alta',
+        'critica' => 'Crítica',
+    ];
+
     public function store(Request $request, int $expediente): RedirectResponse
     {
         $expedienteData = $this->findExpediente($expediente);
 
         $validated = $request->validate([
-            'tipo_observacion' => ['required', 'in:falta_pdf,falta_xml,falta_valores,falta_ubicacion,ubicacion_incorrecta,datos_inconsistentes,documento_incorrecto,otro'],
-            'prioridad' => ['required', 'in:baja,media,alta,critica'],
+            'tipo_observacion' => ['required', Rule::in(array_keys($this->tipoObservacionLabels))],
+            'prioridad' => ['required', Rule::in(array_keys($this->prioridadLabels))],
+            'rol_destino' => ['required', Rule::in(['Usuario Captura', 'Usuario Planta / Inventarios'])],
+            'asignado_a' => ['required', 'integer', 'exists:users,id'],
             'descripcion' => ['required', 'string', 'min:5', 'max:2000'],
         ], [
             'tipo_observacion.required' => 'Debes seleccionar el tipo de observación.',
             'tipo_observacion.in' => 'El tipo de observación seleccionado no es válido.',
             'prioridad.required' => 'Debes seleccionar la prioridad.',
             'prioridad.in' => 'La prioridad seleccionada no es válida.',
+            'rol_destino.required' => 'Debes seleccionar el rol responsable de atender la observación.',
+            'rol_destino.in' => 'El rol responsable seleccionado no es válido.',
+            'asignado_a.required' => 'Debes seleccionar el usuario que atenderá la observación.',
+            'asignado_a.exists' => 'El usuario seleccionado para atender la observación no existe.',
             'descripcion.required' => 'Debes capturar la descripción de la observación.',
             'descripcion.min' => 'La observación debe tener al menos 5 caracteres.',
             'descripcion.max' => 'La observación no debe superar 2000 caracteres.',
         ]);
 
-        if (!$this->canCreateObservation($validated['tipo_observacion'])) {
-            return $this->redirectDenied($expedienteData->id, 'Tu perfil no puede registrar este tipo de observación.');
+        if (!$this->canCreateObservation()) {
+            return $this->redirectDenied($expedienteData->id, 'Solo Usuario Consulta / Auditoría puede registrar observaciones. Administrador SWAFI conserva la facultad de supervisión.');
+        }
+
+        $requiredRole = $this->requiredRoleForObservationType($validated['tipo_observacion']);
+
+        if ($validated['rol_destino'] !== $requiredRole) {
+            return redirect()
+                ->route('expediente', $expedienteData->id)
+                ->withErrors([
+                    'observaciones' => "La observación seleccionada debe asignarse al rol {$requiredRole}.",
+                ])
+                ->withInput();
+        }
+
+        $assignedUser = $this->findAssignableUser((int) $validated['asignado_a'], $requiredRole);
+
+        if (!$assignedUser) {
+            return redirect()
+                ->route('expediente', $expedienteData->id)
+                ->withErrors([
+                    'observaciones' => 'El usuario asignado debe estar activo y pertenecer al rol responsable seleccionado.',
+                ])
+                ->withInput();
         }
 
         $existing = ExpedienteObservacion::query()
@@ -43,26 +93,32 @@ class ExpedienteObservacionController extends Controller
                 ->route('expediente', $expedienteData->id)
                 ->withErrors([
                     'observaciones' => 'Ya existe una observación activa de ese tipo para el expediente. Atiéndela o ciérrala antes de generar otra igual.',
-                ]);
+                ])
+                ->withInput();
         }
 
-        DB::transaction(function () use ($validated, $expedienteData, $request) {
+        $observacion = null;
+
+        DB::transaction(function () use (&$observacion, $validated, $expedienteData, $request) {
             $observacion = ExpedienteObservacion::create([
                 'expediente_id' => $expedienteData->id,
                 'numero_activo' => $expedienteData->numero_activo,
                 'tipo_observacion' => $validated['tipo_observacion'],
                 'prioridad' => $validated['prioridad'],
+                'rol_destino' => $validated['rol_destino'],
+                'asignado_a' => (int) $validated['asignado_a'],
                 'estatus' => 'abierta',
                 'descripcion' => $validated['descripcion'],
                 'creado_por' => $this->userId(),
                 'actualizado_por' => $this->userId(),
+                'fecha_asignacion' => now(),
             ]);
 
             $this->markExpedienteObserved($expedienteData->id, $expedienteData->numero_activo);
 
             $this->registrarBitacora(
                 numeroActivo: $expedienteData->numero_activo,
-                accion: 'OBSERVACION_CREADA',
+                accion: 'OBSERVACION_CREADA_ASIGNADA',
                 tablaAfectada: 'expediente_observaciones',
                 registroClave: (string) $observacion->id,
                 antes: null,
@@ -71,9 +127,11 @@ class ExpedienteObservacionController extends Controller
             );
         });
 
+        $notificationMessage = $this->notifyAssignedUser($observacion, $assignedUser, $expedienteData, $request);
+
         return redirect()
             ->route('expediente', $expedienteData->id)
-            ->with('success', 'La observación fue registrada. Ahora debe ser atendida por un perfil operativo distinto y validada por Consulta/Auditoría.');
+            ->with('success', 'La observación fue registrada, asignada y el expediente quedó observado. ' . $notificationMessage);
     }
 
     public function tomar(Request $request, int $observacion): RedirectResponse
@@ -82,7 +140,7 @@ class ExpedienteObservacionController extends Controller
         $expedienteData = $this->findExpediente($observacionData->expediente_id);
 
         if (!$this->canAttendObservation($observacionData)) {
-            return $this->redirectDenied($expedienteData->id, 'Tu perfil no puede tomar en atención esta observación.');
+            return $this->redirectDenied($expedienteData->id, 'Tu perfil o usuario no puede tomar en atención esta observación. Solo puede atenderla el usuario asignado o Administrador SWAFI.');
         }
 
         if (!$this->canCurrentUserAttendOwnObservation($observacionData)) {
@@ -127,7 +185,7 @@ class ExpedienteObservacionController extends Controller
         $expedienteData = $this->findExpediente($observacionData->expediente_id);
 
         if (!$this->canAttendObservation($observacionData)) {
-            return $this->redirectDenied($expedienteData->id, 'Tu perfil no puede atender esta observación.');
+            return $this->redirectDenied($expedienteData->id, 'Tu perfil o usuario no puede atender esta observación. Solo puede atenderla el usuario asignado o Administrador SWAFI.');
         }
 
         if (!$this->canCurrentUserAttendOwnObservation($observacionData)) {
@@ -233,7 +291,7 @@ class ExpedienteObservacionController extends Controller
 
         $message = $validated['decision'] === 'cerrada'
             ? 'La observación fue cerrada por Consulta/Auditoría.'
-            : 'La corrección fue rechazada y regresa a atención del área operativa.';
+            : 'La corrección fue rechazada y regresa a atención del usuario asignado.';
 
         return redirect()
             ->route('expediente', $observacionData->expediente_id)
@@ -299,21 +357,97 @@ class ExpedienteObservacionController extends Controller
         return $expedienteData;
     }
 
-    private function canCreateObservation(string $tipoObservacion): bool
+    private function findAssignableUser(int $userId, string $roleName): ?object
     {
-        if ($this->isAdmin()) {
-            return true;
+        return DB::table('users as u')
+            ->join('role_user as ru', 'ru.user_id', '=', 'u.id')
+            ->join('roles as r', 'r.id', '=', 'ru.role_id')
+            ->where('u.id', $userId)
+            ->where('u.estatus', 'activo')
+            ->where('r.activo', 1)
+            ->where('r.nombre', $roleName)
+            ->select(['u.id', 'u.usuario', 'u.name', 'u.email', 'r.nombre as rol_nombre'])
+            ->first();
+    }
+
+    private function requiredRoleForObservationType(string $tipoObservacion): string
+    {
+        return in_array($tipoObservacion, ['falta_ubicacion', 'ubicacion_incorrecta'], true)
+            ? 'Usuario Planta / Inventarios'
+            : 'Usuario Captura';
+    }
+
+    private function notifyAssignedUser(?ExpedienteObservacion $observacion, object $assignedUser, object $expedienteData, Request $request): string
+    {
+        if (!$observacion) {
+            return 'No se generó notificación porque la observación no pudo recuperarse.';
         }
 
-        if ($this->isConsultaAuditoria()) {
-            return true;
-        }
+        try {
+            $urlExpediente = route('expediente', $expedienteData->id);
 
-        if ($this->isPlantaInventarios()) {
-            return in_array($tipoObservacion, ['falta_ubicacion', 'ubicacion_incorrecta'], true);
-        }
+            Mail::to($assignedUser->email)->send(
+                new SwafiObservacionAsignadaMail(
+                    assignedName: $assignedUser->name ?: $assignedUser->usuario,
+                    creatorName: $this->currentUserName(),
+                    numeroActivo: $expedienteData->numero_activo,
+                    folioFactura: $expedienteData->folio_factura,
+                    tipoObservacion: $this->tipoObservacionLabels[$observacion->tipo_observacion] ?? $observacion->tipo_observacion,
+                    prioridad: $this->prioridadLabels[$observacion->prioridad] ?? $observacion->prioridad,
+                    descripcion: $observacion->descripcion,
+                    urlExpediente: $urlExpediente,
+                    rolDestino: $observacion->rol_destino ?: $assignedUser->rol_nombre
+                )
+            );
 
-        return false;
+            $observacion->update([
+                'fecha_notificacion' => now(),
+                'notificacion_error' => null,
+            ]);
+
+            $this->registrarBitacora(
+                numeroActivo: $observacion->numero_activo,
+                accion: 'OBSERVACION_NOTIFICADA',
+                tablaAfectada: 'expediente_observaciones',
+                registroClave: (string) $observacion->id,
+                antes: null,
+                despues: [
+                    'asignado_a' => $assignedUser->id,
+                    'email' => $assignedUser->email,
+                    'fecha_notificacion' => now()->toDateTimeString(),
+                ],
+                ip: $request->ip()
+            );
+
+            return 'Se envió correo de notificación al usuario asignado.';
+        } catch (\Throwable $exception) {
+            $observacion->update([
+                'notificacion_error' => $exception->getMessage(),
+            ]);
+
+            $this->registrarBitacora(
+                numeroActivo: $observacion->numero_activo,
+                accion: 'OBSERVACION_NOTIFICACION_ERROR',
+                tablaAfectada: 'expediente_observaciones',
+                registroClave: (string) $observacion->id,
+                antes: null,
+                despues: [
+                    'asignado_a' => $assignedUser->id,
+                    'email' => $assignedUser->email,
+                    'error' => $exception->getMessage(),
+                ],
+                ip: $request->ip()
+            );
+
+            return 'La observación quedó registrada, pero no fue posible enviar el correo. Revisa la configuración SMTP.';
+        }
+    }
+
+    private function canCreateObservation(): bool
+    {
+        return $this->isAdmin()
+            || $this->isConsultaAuditoria()
+            || in_array('observaciones.crear', $this->permissions(), true);
     }
 
     private function canAttendObservation(ExpedienteObservacion $observacion): bool
@@ -322,20 +456,30 @@ class ExpedienteObservacionController extends Controller
             return true;
         }
 
-        if ($this->isCaptura()) {
-            return true;
+        if (!in_array('observaciones.atender', $this->permissions(), true)) {
+            return false;
         }
 
-        if ($this->isPlantaInventarios()) {
-            return in_array($observacion->tipo_observacion, ['falta_ubicacion', 'ubicacion_incorrecta'], true);
+        $userId = $this->userId();
+
+        if ((int) ($observacion->asignado_a ?? 0) > 0 && (int) $observacion->asignado_a !== $userId) {
+            return false;
         }
 
-        return false;
+        $requiredRole = $observacion->rol_destino ?: $this->requiredRoleForObservationType((string) $observacion->tipo_observacion);
+
+        if ($requiredRole === 'Usuario Planta / Inventarios') {
+            return $this->isPlantaInventarios();
+        }
+
+        return $this->isCaptura();
     }
 
     private function canValidateObservation(): bool
     {
-        return $this->isAdmin() || $this->isConsultaAuditoria();
+        return $this->isAdmin()
+            || $this->isConsultaAuditoria()
+            || in_array('observaciones.validar', $this->permissions(), true);
     }
 
     private function canCurrentUserAttendOwnObservation(ExpedienteObservacion $observacion): bool
@@ -441,6 +585,11 @@ class ExpedienteObservacionController extends Controller
         return session('swafi_roles', []);
     }
 
+    private function permissions(): array
+    {
+        return session('swafi_permissions', []);
+    }
+
     private function isAdmin(): bool
     {
         return in_array('Administrador SWAFI', $this->roles(), true)
@@ -469,6 +618,13 @@ class ExpedienteObservacionController extends Controller
     private function userId(): ?int
     {
         return session('swafi_user_id') ?: auth()->id();
+    }
+
+    private function currentUserName(): string
+    {
+        return session('swafi_nombre')
+            ?: session('swafi_usuario')
+            ?: 'Usuario SWAFI';
     }
 
     private function registrarBitacora(
