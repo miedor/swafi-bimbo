@@ -2,8 +2,173 @@
 
 @section('title', 'Detalle de expediente | SWAFI')
 @section('page_title', 'Detalle de expediente')
-@section('page_subtitle', 'Vista integral del expediente documental y patrimonial')
+@section('page_subtitle', 'Vista integral del expediente documental, patrimonial y seguimiento')
 @section('breadcrumb', 'Detalle de expediente')
+
+@section('page_styles')
+<style>
+  .obs-grid {
+    display: grid;
+    grid-template-columns: .9fr 1.1fr;
+    gap: 16px;
+    align-items: start;
+  }
+
+  .obs-form {
+    padding: 14px;
+    border: 1px dashed #b8cbe4;
+    border-radius: 16px;
+    background: #f8fbff;
+  }
+
+  .obs-form label {
+    display: block;
+    margin-bottom: 10px;
+  }
+
+  .obs-form span {
+    display: block;
+    margin-bottom: 6px;
+    color: #1d3558;
+    font-size: 12px;
+    font-weight: 900;
+  }
+
+  .obs-form input,
+  .obs-form select,
+  .obs-form textarea {
+    width: 100%;
+    min-height: 38px;
+    padding: 8px 10px;
+    border: 1px solid #d5e1ef;
+    border-radius: 11px;
+    background: #fff;
+    color: #16304d;
+    font-size: 13px;
+    box-sizing: border-box;
+  }
+
+  .obs-form textarea {
+    min-height: 86px;
+    resize: vertical;
+  }
+
+  .obs-list {
+    display: grid;
+    gap: 10px;
+  }
+
+  .obs-card {
+    padding: 13px;
+    border: 1px solid #e1eaf6;
+    border-radius: 16px;
+    background: #fff;
+  }
+
+  .obs-card-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 8px;
+  }
+
+  .obs-card-head strong {
+    display: block;
+    color: #14355f;
+    font-size: 14px;
+    font-weight: 950;
+  }
+
+  .obs-card p {
+    margin: 6px 0;
+    color: #334155;
+    font-size: 13px;
+    line-height: 1.35;
+  }
+
+  .obs-mini {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  .obs-actions {
+    display: grid;
+    grid-template-columns: 150px 150px 1fr auto auto;
+    gap: 8px;
+    align-items: end;
+    margin-top: 10px;
+  }
+
+  .obs-actions label {
+    margin: 0;
+  }
+
+  .obs-actions span {
+    display: block;
+    margin-bottom: 5px;
+    color: #1d3558;
+    font-size: 11px;
+    font-weight: 900;
+  }
+
+  .obs-actions select,
+  .obs-actions textarea {
+    width: 100%;
+    min-height: 36px;
+    padding: 7px 9px;
+    border: 1px solid #d5e1ef;
+    border-radius: 10px;
+    background: #fff;
+    color: #16304d;
+    font-size: 12px;
+    box-sizing: border-box;
+  }
+
+  .obs-actions textarea {
+    min-height: 36px;
+    resize: vertical;
+  }
+
+  .obs-suggest {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+    margin-top: 8px;
+  }
+
+  .obs-tag {
+    display: inline-flex;
+    padding: 6px 9px;
+    border-radius: 999px;
+    border: 1px solid #f9d36a;
+    background: #fff4d6;
+    color: #8a4b00;
+    font-size: 11px;
+    font-weight: 900;
+  }
+
+  .obs-tag.danger {
+    border-color: #fecaca;
+    background: #fff0ee;
+    color: #b42318;
+  }
+
+  .obs-tag.ok {
+    border-color: #b9e5bf;
+    background: #e8f7ea;
+    color: #1f6b2a;
+  }
+
+  @media (max-width: 1100px) {
+    .obs-grid,
+    .obs-actions {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>
+@endsection
 
 @section('content')
 
@@ -30,9 +195,75 @@
   $canCreateExpedientes = $isAdminSwafi
       || in_array('expedientes.crear', $swafiPermissions, true);
 
+  $canEditExpedientes = $isAdminSwafi
+      || in_array('expedientes.editar', $swafiPermissions, true);
+
   $canManageDocuments = $isAdminSwafi
       || in_array('documentos.cargar', $swafiPermissions, true)
       || in_array('expedientes.editar', $swafiPermissions, true);
+
+  $documentTypes = collect($documentos ?? [])
+      ->pluck('tipo_documento')
+      ->map(fn ($tipo) => strtoupper((string) $tipo))
+      ->unique()
+      ->values()
+      ->all();
+
+  $observaciones = $observaciones ?? collect();
+
+  $observacionesAbiertas = collect($observaciones)
+      ->filter(fn ($obs) => in_array($obs->estatus, ['abierta', 'en_proceso'], true));
+
+  $correccionesDetectadas = [];
+
+  if (!in_array('PDF', $documentTypes, true)) {
+      $correccionesDetectadas[] = ['texto' => 'Falta PDF', 'clase' => 'danger'];
+  }
+
+  if (!in_array('XML', $documentTypes, true)) {
+      $correccionesDetectadas[] = ['texto' => 'Falta XML', 'clase' => 'danger'];
+  }
+
+  if (!$valor) {
+      $correccionesDetectadas[] = ['texto' => 'Falta valores fiscales/financieros', 'clase' => ''];
+  }
+
+  if ($expediente && empty($expediente->ubicacion_codigo)) {
+      $correccionesDetectadas[] = ['texto' => 'Falta ubicación física', 'clase' => ''];
+  }
+
+  if ($expediente && $expediente->expediente_estatus === 'observado' && $observacionesAbiertas->isEmpty()) {
+      $correccionesDetectadas[] = ['texto' => 'Estatus observado sin observación abierta', 'clase' => 'danger'];
+  }
+
+  if (empty($correccionesDetectadas)) {
+      $correccionesDetectadas[] = ['texto' => 'Sin corrección pendiente detectada', 'clase' => 'ok'];
+  }
+
+  $tipoObservacionTexto = function (?string $tipo): string {
+      return match ((string) $tipo) {
+          'falta_pdf' => 'Falta PDF',
+          'falta_xml' => 'Falta XML',
+          'falta_valores' => 'Falta valores fiscales/financieros',
+          'falta_ubicacion' => 'Falta ubicación física',
+          'datos_inconsistentes' => 'Datos inconsistentes',
+          'documento_incorrecto' => 'Documento incorrecto',
+          default => 'Otro seguimiento',
+      };
+  };
+
+  $estatusObservacionClass = function (?string $estatus): string {
+      return match ((string) $estatus) {
+          'cerrada' => 'ok',
+          'cancelada' => 'warn',
+          'en_proceso' => 'warn',
+          default => 'danger',
+      };
+  };
+
+  $prioridadClass = function (?string $prioridad): string {
+      return in_array($prioridad, ['alta', 'critica'], true) ? 'danger' : 'warn';
+  };
 @endphp
 
 @if(!$expediente)
@@ -67,6 +298,10 @@
 
     <a class="tab" href="{{ route('busqueda') }}">Regresar a búsqueda</a>
 
+    @if($canEditExpedientes)
+      <a class="tab" href="{{ route('expedientes.editar', $expediente->expediente_id) }}">Editar expediente</a>
+    @endif
+
     @if($documentos->count() > 0)
       <a class="tab" href="{{ route('documentos.descargar-todos', $expediente->expediente_id) }}">
         Descargar documentos ZIP
@@ -82,6 +317,7 @@
     <span class="tab">Valores</span>
     <span class="tab">Ubicación</span>
     <span class="tab">Documentos</span>
+    <span class="tab">Seguimiento</span>
     <span class="tab">Historial</span>
   </div>
 
@@ -223,6 +459,150 @@
     <div class="meta-box">
       <strong>Valor en libros</strong>
       <div>{{ $valor ? '$ ' . number_format((float) $valor->valor_en_libros, 2) : 'Pendiente' }}</div>
+    </div>
+  </div>
+</section>
+
+<section class="card" style="margin-top:20px">
+  <div class="section-title">
+    <h2>Seguimiento de observaciones</h2>
+    <span class="pill {{ $observacionesAbiertas->count() > 0 ? 'warn' : 'ok' }}">
+      {{ $observacionesAbiertas->count() }} abierta(s)
+    </span>
+  </div>
+
+  <div class="obs-suggest">
+    @foreach($correccionesDetectadas as $correccion)
+      <span class="obs-tag {{ $correccion['clase'] }}">{{ $correccion['texto'] }}</span>
+    @endforeach
+  </div>
+
+  <div class="obs-grid" style="margin-top:14px">
+    @if($canEditExpedientes)
+      <form method="POST" action="{{ route('observaciones.store', $expediente->expediente_id) }}" class="obs-form">
+        @csrf
+
+        <label>
+          <span>Tipo de observación</span>
+          <select name="tipo_observacion" required>
+            <option value="">Selecciona una opción</option>
+            <option value="falta_pdf">Falta PDF</option>
+            <option value="falta_xml">Falta XML</option>
+            <option value="falta_valores">Falta valores fiscales/financieros</option>
+            <option value="falta_ubicacion">Falta ubicación física</option>
+            <option value="datos_inconsistentes">Datos inconsistentes</option>
+            <option value="documento_incorrecto">Documento incorrecto</option>
+            <option value="otro">Otro seguimiento</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Prioridad</span>
+          <select name="prioridad" required>
+            <option value="media">Media</option>
+            <option value="alta">Alta</option>
+            <option value="critica">Crítica</option>
+            <option value="baja">Baja</option>
+          </select>
+        </label>
+
+        <label>
+          <span>Descripción de la observación</span>
+          <textarea name="descripcion" required placeholder="Ej. Falta capturar valor financiero o adjuntar XML correcto.">{{ old('descripcion') }}</textarea>
+        </label>
+
+        <button class="tab" type="submit">Registrar observación</button>
+      </form>
+    @else
+      <div class="obs-form">
+        <strong>Seguimiento de solo lectura</strong>
+        <p class="footer-note">Tu perfil puede consultar observaciones, pero no modificarlas.</p>
+      </div>
+    @endif
+
+    <div class="obs-list">
+      @forelse($observaciones as $observacion)
+        <div class="obs-card">
+          <div class="obs-card-head">
+            <div>
+              <strong>{{ $tipoObservacionTexto($observacion->tipo_observacion) }}</strong>
+              <span class="obs-mini">
+                Creada: {{ $observacion->created_at }}
+                @if($observacion->creado_por_nombre)
+                  · {{ $observacion->creado_por_nombre }}
+                @endif
+              </span>
+            </div>
+
+            <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
+              <span class="pill {{ $estatusObservacionClass($observacion->estatus) }}">{{ str_replace('_', ' ', ucfirst($observacion->estatus)) }}</span>
+              <span class="pill {{ $prioridadClass($observacion->prioridad) }}">Prioridad {{ ucfirst($observacion->prioridad) }}</span>
+            </div>
+          </div>
+
+          <p>{{ $observacion->descripcion }}</p>
+
+          @if($observacion->respuesta)
+            <p><strong>Respuesta:</strong> {{ $observacion->respuesta }}</p>
+          @endif
+
+          @if($observacion->fecha_cierre)
+            <span class="obs-mini">
+              Cierre: {{ $observacion->fecha_cierre }}
+              @if($observacion->cerrado_por_nombre)
+                · {{ $observacion->cerrado_por_nombre }}
+              @endif
+            </span>
+          @endif
+
+          @if($canEditExpedientes && in_array($observacion->estatus, ['abierta', 'en_proceso'], true))
+            <form method="POST" action="{{ route('observaciones.actualizar', $observacion->id) }}" class="obs-actions">
+              @csrf
+              @method('PATCH')
+
+              <label>
+                <span>Estatus</span>
+                <select name="estatus" required>
+                  <option value="abierta" {{ $observacion->estatus === 'abierta' ? 'selected' : '' }}>Abierta</option>
+                  <option value="en_proceso" {{ $observacion->estatus === 'en_proceso' ? 'selected' : '' }}>En proceso</option>
+                  <option value="cerrada">Cerrada</option>
+                  <option value="cancelada">Cancelada</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Prioridad</span>
+                <select name="prioridad" required>
+                  <option value="baja" {{ $observacion->prioridad === 'baja' ? 'selected' : '' }}>Baja</option>
+                  <option value="media" {{ $observacion->prioridad === 'media' ? 'selected' : '' }}>Media</option>
+                  <option value="alta" {{ $observacion->prioridad === 'alta' ? 'selected' : '' }}>Alta</option>
+                  <option value="critica" {{ $observacion->prioridad === 'critica' ? 'selected' : '' }}>Crítica</option>
+                </select>
+              </label>
+
+              <label>
+                <span>Respuesta / cierre</span>
+                <textarea name="respuesta" placeholder="Describe la corrección realizada.">{{ $observacion->respuesta }}</textarea>
+              </label>
+
+              <button class="tab" type="submit">Actualizar</button>
+            </form>
+
+            <form method="POST" action="{{ route('observaciones.cancelar', $observacion->id) }}" style="margin-top:8px" onsubmit="return confirm('¿Deseas cancelar esta observación? Se conservará la trazabilidad.');">
+              @csrf
+              @method('DELETE')
+              <button type="submit" style="border:0;background:none;color:#b42318;font-weight:900;cursor:pointer;padding:0;">
+                Cancelar observación
+              </button>
+            </form>
+          @endif
+        </div>
+      @empty
+        <div class="obs-card">
+          <strong>Sin observaciones registradas</strong>
+          <p class="footer-note">Cuando exista una corrección pendiente, se podrá registrar aquí para dar seguimiento hasta su cierre.</p>
+        </div>
+      @endforelse
     </div>
   </div>
 </section>
