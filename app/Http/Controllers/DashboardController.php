@@ -58,7 +58,15 @@ class DashboardController extends Controller
             ->whereNotExists(function ($query) {
                 $query->select(DB::raw(1))
                     ->from('valores_activo as v')
-                    ->whereColumn('v.numero_activo', 'a.numero_activo');
+                    ->whereColumn('v.numero_activo', 'a.numero_activo')
+                    ->where(function ($subquery) {
+                        $subquery->where('v.estatus_contable', 'baja')
+                            ->orWhere(function ($nested) {
+                                $nested->whereIn('v.estatus_contable', ['vigente', 'en_revision'])
+                                    ->whereRaw('COALESCE(v.valor_fiscal, 0) > 0')
+                                    ->whereRaw('COALESCE(v.valor_financiero, 0) > 0');
+                            });
+                    });
             })
             ->count();
 
@@ -144,7 +152,8 @@ class DashboardController extends Controller
         $valorCounts = DB::table('valores_activo')
             ->select(
                 'numero_activo',
-                DB::raw('COUNT(*) as total_valores')
+                DB::raw('COUNT(*) as total_valores_registrados'),
+                DB::raw("SUM(CASE WHEN estatus_contable = 'baja' OR (estatus_contable IN ('vigente', 'en_revision') AND COALESCE(valor_fiscal, 0) > 0 AND COALESCE(valor_financiero, 0) > 0) THEN 1 ELSE 0 END) as total_valores_validos")
             )
             ->groupBy('numero_activo');
 
@@ -163,7 +172,7 @@ class DashboardController extends Controller
                     ->orWhereRaw('COALESCE(dc.total_pdf, 0) = 0')
                     ->orWhereRaw('COALESCE(dc.total_xml, 0) = 0')
                     ->orWhereNull('a.ubicacion_id')
-                    ->orWhereRaw('COALESCE(vc.total_valores, 0) = 0');
+                    ->orWhereRaw('COALESCE(vc.total_valores_validos, 0) = 0');
             })
             ->select([
                 'e.id as expediente_id',
@@ -175,7 +184,8 @@ class DashboardController extends Controller
                 'pl.nombre as planta_nombre',
                 DB::raw('COALESCE(dc.total_pdf, 0) as total_pdf'),
                 DB::raw('COALESCE(dc.total_xml, 0) as total_xml'),
-                DB::raw('COALESCE(vc.total_valores, 0) as total_valores'),
+                DB::raw('COALESCE(vc.total_valores_registrados, 0) as total_valores_registrados'),
+                DB::raw('COALESCE(vc.total_valores_validos, 0) as total_valores'),
                 'a.ubicacion_id',
                 'e.fecha_factura',
                 'e.created_at',
