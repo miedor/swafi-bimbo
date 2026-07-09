@@ -6,6 +6,7 @@ use App\Http\Controllers\CatalogosController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentoExpedienteController;
 use App\Http\Controllers\ExpedienteGestionController;
+use App\Http\Controllers\ExpedienteObservacionController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\RegistroIndividualController;
 use App\Http\Controllers\RegistroMasivoController;
@@ -84,6 +85,18 @@ Route::middleware('swafi.auth')->group(function () {
     Route::delete('/expedientes/{expediente}', [ExpedienteGestionController::class, 'destroy'])
         ->whereNumber('expediente')
         ->name('expedientes.eliminar');
+
+    Route::post('/expedientes/{expediente}/observaciones', [ExpedienteObservacionController::class, 'store'])
+        ->whereNumber('expediente')
+        ->name('observaciones.store');
+
+    Route::patch('/observaciones-expediente/{observacion}', [ExpedienteObservacionController::class, 'update'])
+        ->whereNumber('observacion')
+        ->name('observaciones.actualizar');
+
+    Route::delete('/observaciones-expediente/{observacion}', [ExpedienteObservacionController::class, 'destroy'])
+        ->whereNumber('observacion')
+        ->name('observaciones.cancelar');
 
     Route::get('/detalle-expediente/{expediente?}', [BusquedaController::class, 'show'])->name('expediente');
 
