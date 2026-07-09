@@ -42,6 +42,7 @@ class BusquedaController extends Controller
                     'valor' => null,
                     'bitacora' => collect(),
                     'observaciones' => collect(),
+                    'usuariosAsignablesObservacion' => collect(),
                 ]);
             }
         }
@@ -140,6 +141,7 @@ class BusquedaController extends Controller
             'valor' => $valor,
             'bitacora' => $bitacora,
             'observaciones' => $observaciones,
+            'usuariosAsignablesObservacion' => $this->usuariosAsignablesObservacion(),
         ]);
     }
 
@@ -149,26 +151,91 @@ class BusquedaController extends Controller
             return collect();
         }
 
-        return DB::table('expediente_observaciones as o')
+        $hasAsignado = Schema::hasColumn('expediente_observaciones', 'asignado_a');
+        $hasRolDestino = Schema::hasColumn('expediente_observaciones', 'rol_destino');
+        $hasFechaAsignacion = Schema::hasColumn('expediente_observaciones', 'fecha_asignacion');
+        $hasFechaNotificacion = Schema::hasColumn('expediente_observaciones', 'fecha_notificacion');
+        $hasNotificacionError = Schema::hasColumn('expediente_observaciones', 'notificacion_error');
+
+        $query = DB::table('expediente_observaciones as o')
             ->leftJoin('users as uc', 'uc.id', '=', 'o.creado_por')
             ->leftJoin('users as ua', 'ua.id', '=', 'o.atendido_por')
             ->leftJoin('users as uv', 'uv.id', '=', 'o.validado_por')
             ->leftJoin('users as ucan', 'ucan.id', '=', 'o.cancelado_por')
-            ->where('o.expediente_id', $expedienteId)
-            ->select([
-                'o.*',
-                'uc.name as creado_por_nombre',
-                'uc.email as creado_por_email',
-                'ua.name as atendido_por_nombre',
-                'ua.email as atendido_por_email',
-                'uv.name as validado_por_nombre',
-                'uv.email as validado_por_email',
-                'ucan.name as cancelado_por_nombre',
-                'ucan.email as cancelado_por_email',
-            ])
+            ->where('o.expediente_id', $expedienteId);
+
+        if ($hasAsignado) {
+            $query->leftJoin('users as uasig', 'uasig.id', '=', 'o.asignado_a');
+        }
+
+        $selects = [
+            'o.*',
+            'uc.name as creado_por_nombre',
+            'uc.email as creado_por_email',
+            'ua.name as atendido_por_nombre',
+            'ua.email as atendido_por_email',
+            'uv.name as validado_por_nombre',
+            'uv.email as validado_por_email',
+            'ucan.name as cancelado_por_nombre',
+            'ucan.email as cancelado_por_email',
+        ];
+
+        if ($hasAsignado) {
+            $selects[] = 'uasig.name as asignado_a_nombre';
+            $selects[] = 'uasig.email as asignado_a_email';
+            $selects[] = 'uasig.usuario as asignado_a_usuario';
+        } else {
+            $selects[] = DB::raw('NULL as asignado_a_nombre');
+            $selects[] = DB::raw('NULL as asignado_a_email');
+            $selects[] = DB::raw('NULL as asignado_a_usuario');
+            $selects[] = DB::raw('NULL as asignado_a');
+        }
+
+        if (!$hasRolDestino) {
+            $selects[] = DB::raw('NULL as rol_destino');
+        }
+
+        if (!$hasFechaAsignacion) {
+            $selects[] = DB::raw('NULL as fecha_asignacion');
+        }
+
+        if (!$hasFechaNotificacion) {
+            $selects[] = DB::raw('NULL as fecha_notificacion');
+        }
+
+        if (!$hasNotificacionError) {
+            $selects[] = DB::raw('NULL as notificacion_error');
+        }
+
+        return $query
+            ->select($selects)
             ->orderByRaw("FIELD(o.estatus, 'rechazada', 'abierta', 'en_atencion', 'atendida', 'cerrada', 'cancelada')")
             ->orderByRaw("FIELD(o.prioridad, 'critica', 'alta', 'media', 'baja')")
             ->orderByDesc('o.updated_at')
+            ->get();
+    }
+
+    private function usuariosAsignablesObservacion()
+    {
+        if (!Schema::hasTable('users') || !Schema::hasTable('roles') || !Schema::hasTable('role_user')) {
+            return collect();
+        }
+
+        return DB::table('users as u')
+            ->join('role_user as ru', 'ru.user_id', '=', 'u.id')
+            ->join('roles as r', 'r.id', '=', 'ru.role_id')
+            ->where('u.estatus', 'activo')
+            ->where('r.activo', 1)
+            ->whereIn('r.nombre', ['Usuario Captura', 'Usuario Planta / Inventarios'])
+            ->select([
+                'u.id',
+                'u.usuario',
+                'u.name',
+                'u.email',
+                'r.nombre as rol_nombre',
+            ])
+            ->orderBy('r.nombre')
+            ->orderBy('u.name')
             ->get();
     }
 
