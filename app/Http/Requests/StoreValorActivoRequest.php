@@ -4,6 +4,7 @@ namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\Validator;
 
 class StoreValorActivoRequest extends FormRequest
 {
@@ -38,6 +39,37 @@ class StoreValorActivoRequest extends FormRequest
 
             'fecha_corte' => ['required', 'date'],
         ];
+    }
+
+    public function withValidator(Validator $validator): void
+    {
+        $validator->after(function (Validator $validator) {
+            $estatus = (string) $this->input('estatus_contable');
+            $valorFiscal = (float) $this->input('valor_fiscal', 0);
+            $valorFinanciero = (float) $this->input('valor_financiero', 0);
+
+            if (in_array($estatus, ['vigente', 'en_revision'], true)) {
+                if ($valorFiscal <= 0 || $valorFinanciero <= 0) {
+                    $validator->errors()->add(
+                        'valor_fiscal',
+                        'Un activo con estatus contable vigente o en revisión debe tener valor fiscal y valor financiero mayores a cero. Solo el estatus baja permite valores en cero.'
+                    );
+                }
+            }
+
+            $valorEnLibros = $this->input('valor_en_libros');
+
+            if ($valorEnLibros !== null && $valorEnLibros !== '') {
+                $valorEnLibros = (float) $valorEnLibros;
+
+                if ($estatus !== 'baja' && $valorEnLibros < 0) {
+                    $validator->errors()->add(
+                        'valor_en_libros',
+                        'El valor en libros no puede ser negativo.'
+                    );
+                }
+            }
+        });
     }
 
     public function messages(): array
