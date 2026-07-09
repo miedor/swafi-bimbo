@@ -18,14 +18,21 @@ class ExpedienteObservacion extends Model
         'prioridad',
         'estatus',
         'descripcion',
-        'respuesta',
+        'respuesta_atencion',
+        'comentario_validacion',
         'creado_por',
+        'atendido_por',
+        'validado_por',
+        'cancelado_por',
         'actualizado_por',
-        'cerrado_por',
-        'fecha_cierre',
+        'fecha_atencion',
+        'fecha_validacion',
+        'fecha_cancelacion',
     ];
 
     protected $casts = [
-        'fecha_cierre' => 'datetime',
+        'fecha_atencion' => 'datetime',
+        'fecha_validacion' => 'datetime',
+        'fecha_cancelacion' => 'datetime',
     ];
 }
