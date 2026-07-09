@@ -40,8 +40,8 @@ class BusquedaController extends Controller
                     'expediente' => null,
                     'documentos' => collect(),
                     'valor' => null,
-                    'observaciones' => collect(),
                     'bitacora' => collect(),
+                    'observaciones' => collect(),
                 ]);
             }
         }
@@ -108,33 +108,7 @@ class BusquedaController extends Controller
             ->orderByDesc('id')
             ->first();
 
-        $observaciones = collect();
-
-        if (Schema::hasTable('expediente_observaciones')) {
-            $observaciones = DB::table('expediente_observaciones as eo')
-                ->leftJoin('users as creador', 'creador.id', '=', 'eo.creado_por')
-                ->leftJoin('users as cierre', 'cierre.id', '=', 'eo.cerrado_por')
-                ->where('eo.expediente_id', $detalle->expediente_id)
-                ->select([
-                    'eo.id',
-                    'eo.expediente_id',
-                    'eo.numero_activo',
-                    'eo.tipo_observacion',
-                    'eo.prioridad',
-                    'eo.estatus',
-                    'eo.descripcion',
-                    'eo.respuesta',
-                    'eo.fecha_cierre',
-                    'eo.created_at',
-                    'eo.updated_at',
-                    'creador.name as creado_por_nombre',
-                    'cierre.name as cerrado_por_nombre',
-                ])
-                ->orderByRaw("CASE eo.estatus WHEN 'abierta' THEN 1 WHEN 'en_proceso' THEN 2 WHEN 'cerrada' THEN 3 ELSE 4 END")
-                ->orderByRaw("CASE eo.prioridad WHEN 'critica' THEN 1 WHEN 'alta' THEN 2 WHEN 'media' THEN 3 ELSE 4 END")
-                ->orderByDesc('eo.created_at')
-                ->get();
-        }
+        $observaciones = $this->observacionesExpediente($detalle->expediente_id);
 
         $bitacora = DB::table('bitacora_auditoria')
             ->where('numero_activo', $detalle->numero_activo)
@@ -144,7 +118,7 @@ class BusquedaController extends Controller
 
         DB::table('bitacora_auditoria')->insert([
             'numero_activo' => $detalle->numero_activo,
-            'user_id' => auth()->id(),
+            'user_id' => session('swafi_user_id') ?: auth()->id(),
             'modulo' => 'M03 Consultas',
             'accion' => 'CONSULTA',
             'tabla_afectada' => 'expedientes',
@@ -164,9 +138,38 @@ class BusquedaController extends Controller
             'expediente' => $detalle,
             'documentos' => $documentos,
             'valor' => $valor,
-            'observaciones' => $observaciones,
             'bitacora' => $bitacora,
+            'observaciones' => $observaciones,
         ]);
+    }
+
+    private function observacionesExpediente(int $expedienteId)
+    {
+        if (!Schema::hasTable('expediente_observaciones')) {
+            return collect();
+        }
+
+        return DB::table('expediente_observaciones as o')
+            ->leftJoin('users as uc', 'uc.id', '=', 'o.creado_por')
+            ->leftJoin('users as ua', 'ua.id', '=', 'o.atendido_por')
+            ->leftJoin('users as uv', 'uv.id', '=', 'o.validado_por')
+            ->leftJoin('users as ucan', 'ucan.id', '=', 'o.cancelado_por')
+            ->where('o.expediente_id', $expedienteId)
+            ->select([
+                'o.*',
+                'uc.name as creado_por_nombre',
+                'uc.email as creado_por_email',
+                'ua.name as atendido_por_nombre',
+                'ua.email as atendido_por_email',
+                'uv.name as validado_por_nombre',
+                'uv.email as validado_por_email',
+                'ucan.name as cancelado_por_nombre',
+                'ucan.email as cancelado_por_email',
+            ])
+            ->orderByRaw("FIELD(o.estatus, 'rechazada', 'abierta', 'en_atencion', 'atendida', 'cerrada', 'cancelada')")
+            ->orderByRaw("FIELD(o.prioridad, 'critica', 'alta', 'media', 'baja')")
+            ->orderByDesc('o.updated_at')
+            ->get();
     }
 
     private function baseQuery()
