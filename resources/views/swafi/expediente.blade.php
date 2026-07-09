@@ -2,31 +2,38 @@
 
 @section('title', 'Detalle de expediente | SWAFI')
 @section('page_title', 'Detalle de expediente')
-@section('page_subtitle', 'Vista integral del expediente documental, patrimonial y seguimiento')
+@section('page_subtitle', 'Vista integral del expediente documental y patrimonial')
 @section('breadcrumb', 'Detalle de expediente')
 
 @section('page_styles')
 <style>
-  .obs-grid {
+  .obs-workflow {
     display: grid;
-    grid-template-columns: .9fr 1.1fr;
-    gap: 16px;
-    align-items: start;
+    gap: 14px;
   }
 
-  .obs-form {
-    padding: 14px;
-    border: 1px dashed #b8cbe4;
+  .obs-role-note {
+    padding: 12px 14px;
+    border: 1px solid #dbe7f6;
     border-radius: 16px;
     background: #f8fbff;
+    color: #324b6d;
+    font-size: 13px;
+    font-weight: 750;
+    line-height: 1.45;
   }
 
-  .obs-form label {
-    display: block;
-    margin-bottom: 10px;
+  .obs-form-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(180px, 1fr));
+    gap: 12px;
   }
 
-  .obs-form span {
+  .obs-form-grid .full {
+    grid-column: 1 / -1;
+  }
+
+  .obs-field span {
     display: block;
     margin-bottom: 6px;
     color: #1d3558;
@@ -34,136 +41,130 @@
     font-weight: 900;
   }
 
-  .obs-form input,
-  .obs-form select,
-  .obs-form textarea {
+  .obs-field input,
+  .obs-field select,
+  .obs-field textarea {
     width: 100%;
-    min-height: 38px;
-    padding: 8px 10px;
+    min-height: 40px;
+    padding: 9px 11px;
     border: 1px solid #d5e1ef;
-    border-radius: 11px;
-    background: #fff;
+    border-radius: 12px;
+    background: #ffffff;
     color: #16304d;
     font-size: 13px;
-    box-sizing: border-box;
+    font-weight: 750;
   }
 
-  .obs-form textarea {
+  .obs-field textarea {
     min-height: 86px;
     resize: vertical;
   }
 
-  .obs-list {
-    display: grid;
-    gap: 10px;
+  .obs-card {
+    padding: 14px;
+    border: 1px solid #dbe7f6;
+    border-radius: 18px;
+    background: #ffffff;
   }
 
-  .obs-card {
-    padding: 13px;
-    border: 1px solid #e1eaf6;
-    border-radius: 16px;
-    background: #fff;
+  .obs-card + .obs-card {
+    margin-top: 12px;
   }
 
   .obs-card-head {
     display: flex;
     justify-content: space-between;
-    gap: 10px;
+    gap: 12px;
     align-items: flex-start;
-    margin-bottom: 8px;
+    margin-bottom: 10px;
   }
 
-  .obs-card-head strong {
-    display: block;
-    color: #14355f;
-    font-size: 14px;
+  .obs-card-head h3 {
+    margin: 0;
+    color: #152f52;
+    font-size: 16px;
     font-weight: 950;
   }
 
-  .obs-card p {
-    margin: 6px 0;
-    color: #334155;
-    font-size: 13px;
-    line-height: 1.35;
-  }
-
-  .obs-mini {
-    color: #64748b;
-    font-size: 12px;
-    font-weight: 750;
-  }
-
-  .obs-actions {
-    display: grid;
-    grid-template-columns: 150px 150px 1fr auto auto;
-    gap: 8px;
-    align-items: end;
-    margin-top: 10px;
-  }
-
-  .obs-actions label {
-    margin: 0;
-  }
-
-  .obs-actions span {
-    display: block;
-    margin-bottom: 5px;
-    color: #1d3558;
-    font-size: 11px;
-    font-weight: 900;
-  }
-
-  .obs-actions select,
-  .obs-actions textarea {
-    width: 100%;
-    min-height: 36px;
-    padding: 7px 9px;
-    border: 1px solid #d5e1ef;
-    border-radius: 10px;
-    background: #fff;
-    color: #16304d;
-    font-size: 12px;
-    box-sizing: border-box;
-  }
-
-  .obs-actions textarea {
-    min-height: 36px;
-    resize: vertical;
-  }
-
-  .obs-suggest {
+  .obs-badges {
     display: flex;
-    gap: 7px;
     flex-wrap: wrap;
-    margin-top: 8px;
+    gap: 6px;
   }
 
-  .obs-tag {
+  .obs-badge {
     display: inline-flex;
-    padding: 6px 9px;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 9px;
     border-radius: 999px;
-    border: 1px solid #f9d36a;
-    background: #fff4d6;
-    color: #8a4b00;
+    border: 1px solid #dbe7f6;
+    background: #f8fbff;
+    color: #174f9a;
     font-size: 11px;
     font-weight: 900;
+    white-space: nowrap;
   }
 
-  .obs-tag.danger {
+  .obs-badge.warn {
+    border-color: #f9d36a;
+    background: #fff7db;
+    color: #8a4b00;
+  }
+
+  .obs-badge.danger {
     border-color: #fecaca;
     background: #fff0ee;
     color: #b42318;
   }
 
-  .obs-tag.ok {
+  .obs-badge.ok {
     border-color: #b9e5bf;
     background: #e8f7ea;
     color: #1f6b2a;
   }
 
-  @media (max-width: 1100px) {
-    .obs-grid,
-    .obs-actions {
+  .obs-body {
+    display: grid;
+    gap: 8px;
+    color: #324b6d;
+    font-size: 13px;
+    line-height: 1.42;
+  }
+
+  .obs-body strong {
+    color: #152f52;
+  }
+
+  .obs-actions {
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+    padding-top: 12px;
+    border-top: 1px solid #e5edf8;
+  }
+
+  .obs-action-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 10px;
+    align-items: end;
+  }
+
+  .obs-action-row.validate {
+    grid-template-columns: minmax(150px, .35fr) 1fr auto;
+  }
+
+  .obs-muted {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 750;
+  }
+
+  @media (max-width: 980px) {
+    .obs-form-grid,
+    .obs-action-row,
+    .obs-action-row.validate {
       grid-template-columns: 1fr;
     }
   }
@@ -189,80 +190,78 @@
 @php
   $swafiRoles = session('swafi_roles', []);
   $swafiPermissions = session('swafi_permissions', []);
+  $currentUserId = (int) (session('swafi_user_id') ?: auth()->id());
 
-  $isAdminSwafi = in_array('Administrador SWAFI', $swafiRoles, true);
+  $isAdminSwafi = in_array('Administrador SWAFI', $swafiRoles, true) || in_array('Administrador', $swafiRoles, true);
+  $isCaptura = in_array('Usuario Captura', $swafiRoles, true) || in_array('Capturista', $swafiRoles, true);
+  $isConsultaAuditoria = in_array('Usuario Consulta / Auditoría', $swafiRoles, true)
+      || in_array('Usuario Consulta / Auditoria', $swafiRoles, true)
+      || in_array('Consultor', $swafiRoles, true)
+      || in_array('Auditor', $swafiRoles, true);
+  $isPlantaInventarios = in_array('Usuario Planta / Inventarios', $swafiRoles, true);
 
-  $canCreateExpedientes = $isAdminSwafi
-      || in_array('expedientes.crear', $swafiPermissions, true);
-
-  $canEditExpedientes = $isAdminSwafi
-      || in_array('expedientes.editar', $swafiPermissions, true);
-
+  $canCreateExpedientes = $isAdminSwafi || in_array('expedientes.crear', $swafiPermissions, true);
   $canManageDocuments = $isAdminSwafi
       || in_array('documentos.cargar', $swafiPermissions, true)
       || in_array('expedientes.editar', $swafiPermissions, true);
 
-  $documentTypes = collect($documentos ?? [])
-      ->pluck('tipo_documento')
-      ->map(fn ($tipo) => strtoupper((string) $tipo))
-      ->unique()
-      ->values()
-      ->all();
+  $canCreateObservation = $isAdminSwafi || $isConsultaAuditoria || $isPlantaInventarios;
+  $canAttendObservation = $isAdminSwafi || $isCaptura || $isPlantaInventarios;
+  $canValidateObservation = $isAdminSwafi || $isConsultaAuditoria;
 
-  $observaciones = $observaciones ?? collect();
+  $tipoObservacionLabels = [
+      'falta_pdf' => 'Falta PDF',
+      'falta_xml' => 'Falta XML',
+      'falta_valores' => 'Falta valores fiscales/financieros',
+      'falta_ubicacion' => 'Falta ubicación física',
+      'ubicacion_incorrecta' => 'Ubicación incorrecta',
+      'datos_inconsistentes' => 'Datos inconsistentes',
+      'documento_incorrecto' => 'Documento incorrecto',
+      'otro' => 'Otro seguimiento',
+  ];
 
-  $observacionesAbiertas = collect($observaciones)
-      ->filter(fn ($obs) => in_array($obs->estatus, ['abierta', 'en_proceso'], true));
+  $tipoObservacionOptions = $tipoObservacionLabels;
 
-  $correccionesDetectadas = [];
-
-  if (!in_array('PDF', $documentTypes, true)) {
-      $correccionesDetectadas[] = ['texto' => 'Falta PDF', 'clase' => 'danger'];
-  }
-
-  if (!in_array('XML', $documentTypes, true)) {
-      $correccionesDetectadas[] = ['texto' => 'Falta XML', 'clase' => 'danger'];
-  }
-
-  if (!$valor) {
-      $correccionesDetectadas[] = ['texto' => 'Falta valores fiscales/financieros', 'clase' => ''];
-  }
-
-  if ($expediente && empty($expediente->ubicacion_codigo)) {
-      $correccionesDetectadas[] = ['texto' => 'Falta ubicación física', 'clase' => ''];
-  }
-
-  if ($expediente && $expediente->expediente_estatus === 'observado' && $observacionesAbiertas->isEmpty()) {
-      $correccionesDetectadas[] = ['texto' => 'Estatus observado sin observación abierta', 'clase' => 'danger'];
-  }
-
-  if (empty($correccionesDetectadas)) {
-      $correccionesDetectadas[] = ['texto' => 'Sin corrección pendiente detectada', 'clase' => 'ok'];
-  }
-
-  $tipoObservacionTexto = function (?string $tipo): string {
-      return match ((string) $tipo) {
-          'falta_pdf' => 'Falta PDF',
-          'falta_xml' => 'Falta XML',
-          'falta_valores' => 'Falta valores fiscales/financieros',
+  if ($isPlantaInventarios && !$isAdminSwafi && !$isConsultaAuditoria) {
+      $tipoObservacionOptions = [
           'falta_ubicacion' => 'Falta ubicación física',
-          'datos_inconsistentes' => 'Datos inconsistentes',
-          'documento_incorrecto' => 'Documento incorrecto',
-          default => 'Otro seguimiento',
-      };
-  };
+          'ubicacion_incorrecta' => 'Ubicación incorrecta',
+      ];
+  }
 
-  $estatusObservacionClass = function (?string $estatus): string {
+  $prioridadLabels = [
+      'baja' => 'Baja',
+      'media' => 'Media',
+      'alta' => 'Alta',
+      'critica' => 'Crítica',
+  ];
+
+  $estatusObservacionLabels = [
+      'abierta' => 'Abierta',
+      'en_atencion' => 'En atención',
+      'atendida' => 'Atendida, pendiente de validar',
+      'cerrada' => 'Cerrada',
+      'rechazada' => 'Rechazada',
+      'cancelada' => 'Cancelada',
+  ];
+
+  $obsBadgeClass = function (?string $estatus): string {
       return match ((string) $estatus) {
           'cerrada' => 'ok',
-          'cancelada' => 'warn',
-          'en_proceso' => 'warn',
-          default => 'danger',
+          'atendida', 'en_atencion' => 'warn',
+          'rechazada', 'abierta' => 'danger',
+          'cancelada' => '',
+          default => '',
       };
   };
 
-  $prioridadClass = function (?string $prioridad): string {
-      return in_array($prioridad, ['alta', 'critica'], true) ? 'danger' : 'warn';
+  $priorityBadgeClass = function (?string $prioridad): string {
+      return match ((string) $prioridad) {
+          'critica', 'alta' => 'danger',
+          'media' => 'warn',
+          'baja' => 'ok',
+          default => '',
+      };
   };
 @endphp
 
@@ -298,10 +297,6 @@
 
     <a class="tab" href="{{ route('busqueda') }}">Regresar a búsqueda</a>
 
-    @if($canEditExpedientes)
-      <a class="tab" href="{{ route('expedientes.editar', $expediente->expediente_id) }}">Editar expediente</a>
-    @endif
-
     @if($documentos->count() > 0)
       <a class="tab" href="{{ route('documentos.descargar-todos', $expediente->expediente_id) }}">
         Descargar documentos ZIP
@@ -317,7 +312,7 @@
     <span class="tab">Valores</span>
     <span class="tab">Ubicación</span>
     <span class="tab">Documentos</span>
-    <span class="tab">Seguimiento</span>
+    <span class="tab">Observaciones</span>
     <span class="tab">Historial</span>
   </div>
 
@@ -465,150 +460,6 @@
 
 <section class="card" style="margin-top:20px">
   <div class="section-title">
-    <h2>Seguimiento de observaciones</h2>
-    <span class="pill {{ $observacionesAbiertas->count() > 0 ? 'warn' : 'ok' }}">
-      {{ $observacionesAbiertas->count() }} abierta(s)
-    </span>
-  </div>
-
-  <div class="obs-suggest">
-    @foreach($correccionesDetectadas as $correccion)
-      <span class="obs-tag {{ $correccion['clase'] }}">{{ $correccion['texto'] }}</span>
-    @endforeach
-  </div>
-
-  <div class="obs-grid" style="margin-top:14px">
-    @if($canEditExpedientes)
-      <form method="POST" action="{{ route('observaciones.store', $expediente->expediente_id) }}" class="obs-form">
-        @csrf
-
-        <label>
-          <span>Tipo de observación</span>
-          <select name="tipo_observacion" required>
-            <option value="">Selecciona una opción</option>
-            <option value="falta_pdf">Falta PDF</option>
-            <option value="falta_xml">Falta XML</option>
-            <option value="falta_valores">Falta valores fiscales/financieros</option>
-            <option value="falta_ubicacion">Falta ubicación física</option>
-            <option value="datos_inconsistentes">Datos inconsistentes</option>
-            <option value="documento_incorrecto">Documento incorrecto</option>
-            <option value="otro">Otro seguimiento</option>
-          </select>
-        </label>
-
-        <label>
-          <span>Prioridad</span>
-          <select name="prioridad" required>
-            <option value="media">Media</option>
-            <option value="alta">Alta</option>
-            <option value="critica">Crítica</option>
-            <option value="baja">Baja</option>
-          </select>
-        </label>
-
-        <label>
-          <span>Descripción de la observación</span>
-          <textarea name="descripcion" required placeholder="Ej. Falta capturar valor financiero o adjuntar XML correcto.">{{ old('descripcion') }}</textarea>
-        </label>
-
-        <button class="tab" type="submit">Registrar observación</button>
-      </form>
-    @else
-      <div class="obs-form">
-        <strong>Seguimiento de solo lectura</strong>
-        <p class="footer-note">Tu perfil puede consultar observaciones, pero no modificarlas.</p>
-      </div>
-    @endif
-
-    <div class="obs-list">
-      @forelse($observaciones as $observacion)
-        <div class="obs-card">
-          <div class="obs-card-head">
-            <div>
-              <strong>{{ $tipoObservacionTexto($observacion->tipo_observacion) }}</strong>
-              <span class="obs-mini">
-                Creada: {{ $observacion->created_at }}
-                @if($observacion->creado_por_nombre)
-                  · {{ $observacion->creado_por_nombre }}
-                @endif
-              </span>
-            </div>
-
-            <div style="display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end">
-              <span class="pill {{ $estatusObservacionClass($observacion->estatus) }}">{{ str_replace('_', ' ', ucfirst($observacion->estatus)) }}</span>
-              <span class="pill {{ $prioridadClass($observacion->prioridad) }}">Prioridad {{ ucfirst($observacion->prioridad) }}</span>
-            </div>
-          </div>
-
-          <p>{{ $observacion->descripcion }}</p>
-
-          @if($observacion->respuesta)
-            <p><strong>Respuesta:</strong> {{ $observacion->respuesta }}</p>
-          @endif
-
-          @if($observacion->fecha_cierre)
-            <span class="obs-mini">
-              Cierre: {{ $observacion->fecha_cierre }}
-              @if($observacion->cerrado_por_nombre)
-                · {{ $observacion->cerrado_por_nombre }}
-              @endif
-            </span>
-          @endif
-
-          @if($canEditExpedientes && in_array($observacion->estatus, ['abierta', 'en_proceso'], true))
-            <form method="POST" action="{{ route('observaciones.actualizar', $observacion->id) }}" class="obs-actions">
-              @csrf
-              @method('PATCH')
-
-              <label>
-                <span>Estatus</span>
-                <select name="estatus" required>
-                  <option value="abierta" {{ $observacion->estatus === 'abierta' ? 'selected' : '' }}>Abierta</option>
-                  <option value="en_proceso" {{ $observacion->estatus === 'en_proceso' ? 'selected' : '' }}>En proceso</option>
-                  <option value="cerrada">Cerrada</option>
-                  <option value="cancelada">Cancelada</option>
-                </select>
-              </label>
-
-              <label>
-                <span>Prioridad</span>
-                <select name="prioridad" required>
-                  <option value="baja" {{ $observacion->prioridad === 'baja' ? 'selected' : '' }}>Baja</option>
-                  <option value="media" {{ $observacion->prioridad === 'media' ? 'selected' : '' }}>Media</option>
-                  <option value="alta" {{ $observacion->prioridad === 'alta' ? 'selected' : '' }}>Alta</option>
-                  <option value="critica" {{ $observacion->prioridad === 'critica' ? 'selected' : '' }}>Crítica</option>
-                </select>
-              </label>
-
-              <label>
-                <span>Respuesta / cierre</span>
-                <textarea name="respuesta" placeholder="Describe la corrección realizada.">{{ $observacion->respuesta }}</textarea>
-              </label>
-
-              <button class="tab" type="submit">Actualizar</button>
-            </form>
-
-            <form method="POST" action="{{ route('observaciones.cancelar', $observacion->id) }}" style="margin-top:8px" onsubmit="return confirm('¿Deseas cancelar esta observación? Se conservará la trazabilidad.');">
-              @csrf
-              @method('DELETE')
-              <button type="submit" style="border:0;background:none;color:#b42318;font-weight:900;cursor:pointer;padding:0;">
-                Cancelar observación
-              </button>
-            </form>
-          @endif
-        </div>
-      @empty
-        <div class="obs-card">
-          <strong>Sin observaciones registradas</strong>
-          <p class="footer-note">Cuando exista una corrección pendiente, se podrá registrar aquí para dar seguimiento hasta su cierre.</p>
-        </div>
-      @endforelse
-    </div>
-  </div>
-</section>
-
-<section class="card" style="margin-top:20px">
-  <div class="section-title">
     <h2>Documentos asociados</h2>
     <span class="pill {{ $documentos->count() > 0 ? 'ok' : 'warn' }}">
       {{ $documentos->count() }} documento(s) vigente(s)
@@ -674,7 +525,6 @@
             </td>
 
             <td>{{ $documento->tipo_documento }}</td>
-
             <td>v{{ $documento->version }}</td>
 
             <td>
@@ -702,13 +552,8 @@
 
             <td>
               <div class="table-actions">
-                <a href="{{ route('documentos.ver', $documento->id) }}" target="_blank" rel="noopener">
-                  Ver
-                </a>
-
-                <a href="{{ route('documentos.descargar', $documento->id) }}">
-                  Descargar
-                </a>
+                <a href="{{ route('documentos.ver', $documento->id) }}" target="_blank" rel="noopener">Ver</a>
+                <a href="{{ route('documentos.descargar', $documento->id) }}">Descargar</a>
 
                 @if($canManageDocuments)
                   <form
@@ -720,10 +565,7 @@
                     @csrf
                     @method('DELETE')
 
-                    <button
-                      type="submit"
-                      style="border:0;background:none;color:#b42318;font-weight:800;cursor:pointer;padding:0"
-                    >
+                    <button type="submit" style="border:0;background:none;color:#b42318;font-weight:800;cursor:pointer;padding:0">
                       Eliminar
                     </button>
                   </form>
@@ -745,6 +587,194 @@
   <div class="footer-note" style="margin-top:12px">
     Los documentos se entregan desde almacenamiento privado. Antes de abrir o descargar, SWAFI valida existencia del archivo y coincidencia del hash SHA-256 registrado.
     La eliminación es lógica: el documento deja de aparecer como vigente, pero se conserva la trazabilidad en bitácora.
+  </div>
+</section>
+
+<section class="card" style="margin-top:20px">
+  <div class="section-title">
+    <h2>Seguimiento y validación cruzada</h2>
+    <span class="pill {{ ($observaciones ?? collect())->whereIn('estatus', ['abierta', 'en_atencion', 'atendida', 'rechazada'])->count() > 0 ? 'warn' : 'ok' }}">
+      {{ ($observaciones ?? collect())->whereIn('estatus', ['abierta', 'en_atencion', 'atendida', 'rechazada'])->count() }} pendiente(s)
+    </span>
+  </div>
+
+  <div class="obs-workflow">
+    <div class="obs-role-note">
+      <strong>Flujo de valor:</strong>
+      Consulta/Auditoría o Planta registran observaciones; Captura o Planta atienden la corrección;
+      Consulta/Auditoría valida y cierra o rechaza. El usuario que atiende no puede validar su propia corrección.
+    </div>
+
+    @if($canCreateObservation)
+      <form method="POST" action="{{ route('observaciones.store', $expediente->expediente_id) }}" class="obs-card">
+        @csrf
+
+        <div class="obs-card-head">
+          <h3>Registrar nueva observación</h3>
+          <span class="obs-badge warn">Genera estatus observado</span>
+        </div>
+
+        <div class="obs-form-grid">
+          <label class="obs-field">
+            <span>Tipo de observación</span>
+            <select name="tipo_observacion" required>
+              <option value="">Selecciona</option>
+              @foreach($tipoObservacionOptions as $key => $label)
+                <option value="{{ $key }}" {{ old('tipo_observacion') === $key ? 'selected' : '' }}>
+                  {{ $label }}
+                </option>
+              @endforeach
+            </select>
+          </label>
+
+          <label class="obs-field">
+            <span>Prioridad</span>
+            <select name="prioridad" required>
+              @foreach($prioridadLabels as $key => $label)
+                <option value="{{ $key }}" {{ old('prioridad', 'media') === $key ? 'selected' : '' }}>
+                  {{ $label }}
+                </option>
+              @endforeach
+            </select>
+          </label>
+
+          <div class="obs-field">
+            <span>Responsable funcional</span>
+            <div class="obs-muted">
+              Documental: Usuario Captura.<br>
+              Ubicación: Usuario Planta / Inventarios.
+            </div>
+          </div>
+
+          <label class="obs-field full">
+            <span>Descripción de la observación</span>
+            <textarea name="descripcion" required placeholder="Describe claramente qué se detectó y qué debe corregirse">{{ old('descripcion') }}</textarea>
+          </label>
+        </div>
+
+        <div style="margin-top:12px">
+          <button type="submit" class="tab">Registrar observación</button>
+        </div>
+      </form>
+    @endif
+
+    <div>
+      @forelse(($observaciones ?? collect()) as $observacion)
+        @php
+          $estatus = (string) $observacion->estatus;
+          $tipo = $tipoObservacionLabels[$observacion->tipo_observacion] ?? $observacion->tipo_observacion;
+          $prioridad = $prioridadLabels[$observacion->prioridad] ?? $observacion->prioridad;
+          $canTakeThis = $canAttendObservation
+              && in_array($estatus, ['abierta', 'rechazada'], true)
+              && ($isAdminSwafi || (int) $observacion->creado_por !== $currentUserId);
+          $canAttendThis = $canAttendObservation
+              && in_array($estatus, ['abierta', 'en_atencion', 'rechazada'], true)
+              && ($isAdminSwafi || (int) $observacion->creado_por !== $currentUserId);
+          $canValidateThis = $canValidateObservation
+              && $estatus === 'atendida'
+              && ($isAdminSwafi || (int) $observacion->atendido_por !== $currentUserId);
+          $canCancelThis = $canValidateObservation && !in_array($estatus, ['cerrada', 'cancelada'], true);
+        @endphp
+
+        <article class="obs-card">
+          <div class="obs-card-head">
+            <h3>{{ $tipo }}</h3>
+            <div class="obs-badges">
+              <span class="obs-badge {{ $obsBadgeClass($estatus) }}">{{ $estatusObservacionLabels[$estatus] ?? ucfirst($estatus) }}</span>
+              <span class="obs-badge {{ $priorityBadgeClass($observacion->prioridad) }}">Prioridad {{ $prioridad }}</span>
+            </div>
+          </div>
+
+          <div class="obs-body">
+            <div><strong>Observación:</strong> {{ $observacion->descripcion }}</div>
+            <div class="obs-muted">
+              Registró: {{ $observacion->creado_por_nombre ?: ($observacion->creado_por_email ?: 'Usuario no identificado') }} · {{ $observacion->created_at }}
+            </div>
+
+            @if($observacion->respuesta_atencion)
+              <div><strong>Respuesta de atención:</strong> {{ $observacion->respuesta_atencion }}</div>
+              <div class="obs-muted">
+                Atendió: {{ $observacion->atendido_por_nombre ?: ($observacion->atendido_por_email ?: 'Usuario no identificado') }} · {{ $observacion->fecha_atencion ?: $observacion->updated_at }}
+              </div>
+            @endif
+
+            @if($observacion->comentario_validacion)
+              <div><strong>Validación:</strong> {{ $observacion->comentario_validacion }}</div>
+              <div class="obs-muted">
+                Validó/Canceló:
+                {{ $observacion->validado_por_nombre ?: ($observacion->validado_por_email ?: ($observacion->cancelado_por_nombre ?: ($observacion->cancelado_por_email ?: 'Usuario no identificado'))) }}
+                · {{ $observacion->fecha_validacion ?: ($observacion->fecha_cancelacion ?: $observacion->updated_at) }}
+              </div>
+            @endif
+          </div>
+
+          @if($canTakeThis || $canAttendThis || $canValidateThis || $canCancelThis)
+            <div class="obs-actions">
+              @if($canTakeThis)
+                <form method="POST" action="{{ route('observaciones.tomar', $observacion->id) }}">
+                  @csrf
+                  @method('PATCH')
+                  <button type="submit" class="tab">Tomar en atención</button>
+                </form>
+              @endif
+
+              @if($canAttendThis)
+                <form method="POST" action="{{ route('observaciones.atender', $observacion->id) }}" class="obs-action-row">
+                  @csrf
+                  @method('PATCH')
+                  <label class="obs-field">
+                    <span>Respuesta de atención</span>
+                    <textarea name="respuesta_atencion" required placeholder="Describe la corrección realizada, documento cargado, dato corregido o acción aplicada">{{ old('respuesta_atencion') }}</textarea>
+                  </label>
+                  <button type="submit" class="tab">Marcar como atendida</button>
+                </form>
+              @endif
+
+              @if($canValidateThis)
+                <form method="POST" action="{{ route('observaciones.validar', $observacion->id) }}" class="obs-action-row validate">
+                  @csrf
+                  @method('PATCH')
+                  <label class="obs-field">
+                    <span>Decisión</span>
+                    <select name="decision" required>
+                      <option value="cerrada">Cerrar corrección</option>
+                      <option value="rechazada">Rechazar corrección</option>
+                    </select>
+                  </label>
+                  <label class="obs-field">
+                    <span>Comentario de validación</span>
+                    <textarea name="comentario_validacion" required placeholder="Indica si la evidencia quedó correcta o por qué se rechaza">{{ old('comentario_validacion') }}</textarea>
+                  </label>
+                  <button type="submit" class="tab">Validar</button>
+                </form>
+              @endif
+
+              @if($canCancelThis)
+                <form
+                  method="POST"
+                  action="{{ route('observaciones.cancelar', $observacion->id) }}"
+                  onsubmit="return confirm('¿Deseas cancelar esta observación? Se conservará trazabilidad en bitácora.');"
+                >
+                  @csrf
+                  @method('DELETE')
+                  <input type="hidden" name="comentario_validacion" value="Observación cancelada por Consulta/Auditoría.">
+                  <button type="submit" style="border:0;background:none;color:#b42318;font-weight:900;cursor:pointer;padding:0">
+                    Cancelar observación
+                  </button>
+                </form>
+              @endif
+            </div>
+          @endif
+        </article>
+      @empty
+        <div class="obs-card">
+          <div class="obs-body">
+            <strong>Sin observaciones de seguimiento.</strong>
+            <span>El expediente no tiene observaciones abiertas, atendidas, rechazadas, cerradas o canceladas.</span>
+          </div>
+        </div>
+      @endforelse
+    </div>
   </div>
 </section>
 
