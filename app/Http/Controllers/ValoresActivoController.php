@@ -46,14 +46,11 @@ class ValoresActivoController extends Controller
     {
         $data = $request->validated();
 
-        $valorEnLibros = $data['valor_en_libros'] ?? null;
-
-        if ($valorEnLibros === null || $valorEnLibros === '') {
-            $valorEnLibros = max(
-                0,
-                (float) $data['valor_fiscal'] - (float) $data['depreciacion_acumulada']
-            );
-        }
+        $valorEnLibros = $this->resolveValorEnLibros(
+            valorFiscal: (float) $data['valor_fiscal'],
+            depreciacionAcumulada: (float) $data['depreciacion_acumulada'],
+            valorEnLibros: $data['valor_en_libros'] ?? null
+        );
 
         $payload = [
             'numero_activo' => $data['numero_activo'],
@@ -67,10 +64,35 @@ class ValoresActivoController extends Controller
             'registrado_por' => auth()->id(),
         ];
 
+        if (!$this->isValorContableValido(
+            estatusContable: $payload['estatus_contable'],
+            valorFiscal: (float) $payload['valor_fiscal'],
+            valorFinanciero: (float) $payload['valor_financiero'],
+            valorEnLibros: (float) $payload['valor_en_libros']
+        )) {
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'valor_fiscal' => 'Un activo con estatus contable vigente o en revisión debe tener valor fiscal y valor financiero mayores a cero. Solo el estatus baja permite valores en cero.',
+                ]);
+        }
+
         if (!empty($data['valor_id'])) {
             $valor = ValorActivo::findOrFail($data['valor_id']);
-            $antes = $valor->toArray();
 
+            $duplicado = ValorActivo::where('numero_activo', $data['numero_activo'])
+                ->where('id', '<>', $valor->id)
+                ->first();
+
+            if ($duplicado) {
+                return back()
+                    ->withInput()
+                    ->withErrors([
+                        'numero_activo' => 'El activo seleccionado ya cuenta con un registro de valores. Edita ese registro para evitar duplicidad.',
+                    ]);
+            }
+
+            $antes = $valor->toArray();
             $valor->update($payload);
 
             $this->registrarBitacora(
@@ -84,6 +106,25 @@ class ValoresActivoController extends Controller
             return redirect()
                 ->route('valores')
                 ->with('success', 'Los valores fiscales y financieros se actualizaron correctamente.');
+        }
+
+        $valorExistente = ValorActivo::where('numero_activo', $data['numero_activo'])->first();
+
+        if ($valorExistente) {
+            $antes = $valorExistente->toArray();
+            $valorExistente->update($payload);
+
+            $this->registrarBitacora(
+                numeroActivo: $valorExistente->numero_activo,
+                accion: 'EDICION_VALOR',
+                registroClave: (string) $valorExistente->id,
+                antes: $antes,
+                despues: $valorExistente->fresh()->toArray()
+            );
+
+            return redirect()
+                ->route('valores')
+                ->with('success', 'El activo ya tenía valores registrados; SWAFI actualizó el registro existente para evitar duplicidad.');
         }
 
         $valor = ValorActivo::create($payload);
@@ -175,8 +216,7 @@ class ValoresActivoController extends Controller
                     ->exists();
 
                 if (!$activoExists) {
-                    $summary['rechazados']++;
-                    $summary['errores'][] = "Fila {$lineNumber}: el activo {$numeroActivo} no existe en SWAFI.";
+                    $this->rejectImportRow($summary, $lineNumber, "el activo {$numeroActivo} no existe en SWAFI.");
                     continue;
                 }
 
@@ -189,63 +229,58 @@ class ValoresActivoController extends Controller
                 $estatusContable = $this->normalizeEstatusContable($data['estatus_contable']);
 
                 if ($valorFiscal === null || $depreciacionAcumulada === null || $valorFinanciero === null) {
-                    $summary['rechazados']++;
-                    $summary['errores'][] = "Fila {$lineNumber}: los valores fiscales y financieros deben ser numéricos.";
+                    $this->rejectImportRow($summary, $lineNumber, 'los valores fiscales y financieros deben ser numéricos.');
                     continue;
                 }
 
                 if ($valorEnLibros === null) {
-                    $valorEnLibros = max(0, $valorFiscal - $depreciacionAcumulada);
+                    $valorEnLibros = $this->resolveValorEnLibros($valorFiscal, $depreciacionAcumulada, null);
                 }
 
                 if ($vidaUtilMeses === null || $vidaUtilMeses <= 0) {
-                    $summary['rechazados']++;
-                    $summary['errores'][] = "Fila {$lineNumber}: la vida útil debe ser un número entero mayor a cero.";
+                    $this->rejectImportRow($summary, $lineNumber, 'la vida útil debe ser un número entero mayor a cero.');
                     continue;
                 }
 
                 if (!$fechaCorte) {
-                    $summary['rechazados']++;
-                    $summary['errores'][] = "Fila {$lineNumber}: la fecha de corte no tiene un formato válido.";
+                    $this->rejectImportRow($summary, $lineNumber, 'la fecha de corte no tiene un formato válido.');
                     continue;
                 }
 
                 if (!in_array($estatusContable, ['vigente', 'en_revision', 'baja'], true)) {
-                    $summary['rechazados']++;
-                    $summary['errores'][] = "Fila {$lineNumber}: el estatus contable no es válido.";
+                    $this->rejectImportRow($summary, $lineNumber, 'el estatus contable no es válido.');
                     continue;
                 }
 
-                $registroExistente = ValorActivo::where('numero_activo', $numeroActivo)
-                    ->whereDate('fecha_corte', $fechaCorte)
-                    ->first();
+                if (!$this->isValorContableValido($estatusContable, $valorFiscal, $valorFinanciero, $valorEnLibros)) {
+                    $this->rejectImportRow($summary, $lineNumber, 'un activo vigente o en revisión debe tener valor fiscal y valor financiero mayores a cero. Solo baja permite valores en cero.');
+                    continue;
+                }
 
+                $registroExistente = ValorActivo::where('numero_activo', $numeroActivo)->first();
                 $antes = $registroExistente ? $registroExistente->toArray() : null;
 
                 $payload = [
+                    'numero_activo' => $numeroActivo,
                     'valor_fiscal' => $valorFiscal,
                     'valor_financiero' => $valorFinanciero,
                     'depreciacion_acumulada' => $depreciacionAcumulada,
                     'valor_en_libros' => $valorEnLibros,
                     'vida_util_meses' => $vidaUtilMeses,
                     'estatus_contable' => $estatusContable,
+                    'fecha_corte' => $fechaCorte,
                     'registrado_por' => auth()->id(),
                 ];
 
-                $valor = ValorActivo::updateOrCreate(
-                    [
-                        'numero_activo' => $numeroActivo,
-                        'fecha_corte' => $fechaCorte,
-                    ],
-                    $payload
-                );
-
-                if ($valor->wasRecentlyCreated) {
-                    $summary['insertados']++;
-                    $accion = 'IMPORTACION_VALOR_ALTA';
-                } else {
+                if ($registroExistente) {
+                    $registroExistente->update($payload);
+                    $valor = $registroExistente->fresh();
                     $summary['actualizados']++;
                     $accion = 'IMPORTACION_VALOR_ACTUALIZACION';
+                } else {
+                    $valor = ValorActivo::create($payload);
+                    $summary['insertados']++;
+                    $accion = 'IMPORTACION_VALOR_ALTA';
                 }
 
                 $this->registrarBitacora(
@@ -276,13 +311,6 @@ class ValoresActivoController extends Controller
     {
         return response()->streamDownload(function () {
             $output = fopen('php://output', 'w');
-
-            /*
-            |--------------------------------------------------------------------------
-            | BOM UTF-8
-            |--------------------------------------------------------------------------
-            | Ayuda a que Excel reconozca caracteres especiales correctamente.
-            */
 
             fwrite($output, "\xEF\xBB\xBF");
 
@@ -332,7 +360,7 @@ class ValoresActivoController extends Controller
 
         return redirect()
             ->route('valores')
-            ->with('success', 'El registro de valores fue eliminado correctamente.');
+            ->with('success', 'El registro de valores fue eliminado correctamente. El Dashboard marcará el activo como pendiente de atención si queda sin valores válidos.');
     }
 
     private function baseQuery()
@@ -362,6 +390,7 @@ class ValoresActivoController extends Controller
                 'v.estatus_contable',
                 'v.fecha_corte',
                 'v.created_at',
+                'e.id as expediente_id',
                 'e.folio_factura',
                 'e.uuid_cfdi',
                 'a.descripcion as activo_descripcion',
@@ -566,18 +595,6 @@ class ValoresActivoController extends Controller
 
         $value = str_replace(['$', ' '], '', $value);
 
-        /*
-        |--------------------------------------------------------------------------
-        | Normalización de separadores numéricos
-        |--------------------------------------------------------------------------
-        | Soporta:
-        | 602700
-        | 602700.50
-        | 602700,50
-        | 602,700.50
-        | 602,700
-        */
-
         if (str_contains($value, ',') && str_contains($value, '.')) {
             $value = str_replace(',', '', $value);
         } elseif (str_contains($value, ',') && !str_contains($value, '.')) {
@@ -624,7 +641,7 @@ class ValoresActivoController extends Controller
             try {
                 return Carbon::createFromFormat($format, $value)->format('Y-m-d');
             } catch (\Throwable $exception) {
-                //
+                // Intenta el siguiente formato.
             }
         }
 
@@ -644,6 +661,34 @@ class ValoresActivoController extends Controller
             'baja', 'dado_de_baja' => 'baja',
             default => 'vigente',
         };
+    }
+
+    private function resolveValorEnLibros(float $valorFiscal, float $depreciacionAcumulada, mixed $valorEnLibros): float
+    {
+        if ($valorEnLibros === null || $valorEnLibros === '') {
+            return max(0, $valorFiscal - $depreciacionAcumulada);
+        }
+
+        return (float) $valorEnLibros;
+    }
+
+    private function isValorContableValido(
+        string $estatusContable,
+        float $valorFiscal,
+        float $valorFinanciero,
+        float $valorEnLibros
+    ): bool {
+        if ($estatusContable === 'baja') {
+            return $valorFiscal >= 0 && $valorFinanciero >= 0 && $valorEnLibros >= 0;
+        }
+
+        return $valorFiscal > 0 && $valorFinanciero > 0 && $valorEnLibros >= 0;
+    }
+
+    private function rejectImportRow(array &$summary, int $lineNumber, string $message): void
+    {
+        $summary['rechazados']++;
+        $summary['errores'][] = "Fila {$lineNumber}: {$message}";
     }
 
     private function registrarBitacora(
