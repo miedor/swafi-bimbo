@@ -111,11 +111,13 @@ class SwafiAuth
             'documentos.store',
             'documentos.eliminar' => 'documentos.cargar',
 
-            'observaciones.store',
+            'observaciones.store' => 'observaciones.crear',
+
             'observaciones.tomar',
-            'observaciones.atender',
+            'observaciones.atender' => 'observaciones.atender',
+
             'observaciones.validar',
-            'observaciones.cancelar' => 'expedientes.ver',
+            'observaciones.cancelar' => 'observaciones.validar',
 
             'valores',
             'valores.store',
