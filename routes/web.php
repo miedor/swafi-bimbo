@@ -3,6 +3,7 @@
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusquedaController;
 use App\Http\Controllers\CatalogosController;
+use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentoExpedienteController;
 use App\Http\Controllers\ExpedienteGestionController;
 use App\Http\Controllers\PasswordResetController;
@@ -28,7 +29,7 @@ Route::middleware('swafi.auth')->group(function () {
 
     Route::get('/logout', [AuthController::class, 'logout'])->name('logout');
 
-    Route::view('/dashboard', 'swafi.dashboard')->name('dashboard');
+    Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
     Route::get('/registro-individual', [RegistroIndividualController::class, 'create'])->name('registro-individual');
     Route::post('/registro-individual', [RegistroIndividualController::class, 'store'])->name('registro-individual.store');
@@ -55,13 +56,14 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/documentos-expediente/{documento}/ver', [DocumentoExpedienteController::class, 'show'])
         ->whereNumber('documento')
         ->name('documentos.ver');
+
     Route::post('/expedientes/{expediente}/documentos', [DocumentoExpedienteController::class, 'store'])
-    ->whereNumber('expediente')
-    ->name('documentos.store');
+        ->whereNumber('expediente')
+        ->name('documentos.store');
 
     Route::delete('/documentos-expediente/{documento}', [DocumentoExpedienteController::class, 'destroy'])
-    ->whereNumber('documento')
-    ->name('documentos.eliminar');
+        ->whereNumber('documento')
+        ->name('documentos.eliminar');
 
     Route::get('/documentos-expediente/{documento}/descargar', [DocumentoExpedienteController::class, 'download'])
         ->whereNumber('documento')
@@ -70,7 +72,6 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/expedientes/{expediente}/documentos/descargar', [DocumentoExpedienteController::class, 'downloadAll'])
         ->whereNumber('expediente')
         ->name('documentos.descargar-todos');
-
 
     Route::get('/expedientes/{expediente}/editar', [ExpedienteGestionController::class, 'edit'])
         ->whereNumber('expediente')
