@@ -205,9 +205,10 @@
       || in_array('documentos.cargar', $swafiPermissions, true)
       || in_array('expedientes.editar', $swafiPermissions, true);
 
-  $canCreateObservation = $isAdminSwafi || $isConsultaAuditoria || $isPlantaInventarios;
-  $canAttendObservation = $isAdminSwafi || $isCaptura || $isPlantaInventarios;
-  $canValidateObservation = $isAdminSwafi || $isConsultaAuditoria;
+  $canCreateObservation = $isAdminSwafi || $isConsultaAuditoria || in_array('observaciones.crear', $swafiPermissions, true);
+  $canAttendObservation = $isAdminSwafi || in_array('observaciones.atender', $swafiPermissions, true);
+  $canValidateObservation = $isAdminSwafi || $isConsultaAuditoria || in_array('observaciones.validar', $swafiPermissions, true);
+  $usuariosAsignablesObservacion = $usuariosAsignablesObservacion ?? collect();
 
   $tipoObservacionLabels = [
       'falta_pdf' => 'Falta PDF',
@@ -221,13 +222,6 @@
   ];
 
   $tipoObservacionOptions = $tipoObservacionLabels;
-
-  if ($isPlantaInventarios && !$isAdminSwafi && !$isConsultaAuditoria) {
-      $tipoObservacionOptions = [
-          'falta_ubicacion' => 'Falta ubicación física',
-          'ubicacion_incorrecta' => 'Ubicación incorrecta',
-      ];
-  }
 
   $prioridadLabels = [
       'baja' => 'Baja',
@@ -611,13 +605,13 @@
 
         <div class="obs-card-head">
           <h3>Registrar nueva observación</h3>
-          <span class="obs-badge warn">Genera estatus observado</span>
+          <span class="obs-badge warn">Asigna responsable y envía correo</span>
         </div>
 
         <div class="obs-form-grid">
           <label class="obs-field">
             <span>Tipo de observación</span>
-            <select name="tipo_observacion" required>
+            <select name="tipo_observacion" id="obs_tipo_observacion" required>
               <option value="">Selecciona</option>
               @foreach($tipoObservacionOptions as $key => $label)
                 <option value="{{ $key }}" {{ old('tipo_observacion') === $key ? 'selected' : '' }}>
@@ -638,13 +632,36 @@
             </select>
           </label>
 
-          <div class="obs-field">
-            <span>Responsable funcional</span>
-            <div class="obs-muted">
-              Documental: Usuario Captura.<br>
-              Ubicación: Usuario Planta / Inventarios.
+          <label class="obs-field">
+            <span>Rol responsable</span>
+            <select name="rol_destino" id="obs_rol_destino" required>
+              <option value="Usuario Captura" {{ old('rol_destino') === 'Usuario Captura' ? 'selected' : '' }}>
+                Usuario Captura
+              </option>
+              <option value="Usuario Planta / Inventarios" {{ old('rol_destino') === 'Usuario Planta / Inventarios' ? 'selected' : '' }}>
+                Usuario Planta / Inventarios
+              </option>
+            </select>
+          </label>
+
+          <label class="obs-field full">
+            <span>Usuario que atenderá la observación</span>
+            <select name="asignado_a" id="obs_asignado_a" required>
+              <option value="">Selecciona usuario responsable</option>
+              @foreach($usuariosAsignablesObservacion as $usuarioAsignable)
+                <option
+                  value="{{ $usuarioAsignable->id }}"
+                  data-rol="{{ $usuarioAsignable->rol_nombre }}"
+                  {{ (string) old('asignado_a') === (string) $usuarioAsignable->id ? 'selected' : '' }}
+                >
+                  {{ $usuarioAsignable->name }} · {{ $usuarioAsignable->rol_nombre }} · {{ $usuarioAsignable->email }}
+                </option>
+              @endforeach
+            </select>
+            <div class="obs-muted" style="margin-top:6px">
+              Regla: observaciones de ubicación se asignan a Usuario Planta / Inventarios; observaciones documentales, valores o datos se asignan a Usuario Captura.
             </div>
-          </div>
+          </label>
 
           <label class="obs-field full">
             <span>Descripción de la observación</span>
@@ -653,7 +670,7 @@
         </div>
 
         <div style="margin-top:12px">
-          <button type="submit" class="tab">Registrar observación</button>
+          <button type="submit" class="tab">Registrar y notificar observación</button>
         </div>
       </form>
     @endif
@@ -664,11 +681,14 @@
           $estatus = (string) $observacion->estatus;
           $tipo = $tipoObservacionLabels[$observacion->tipo_observacion] ?? $observacion->tipo_observacion;
           $prioridad = $prioridadLabels[$observacion->prioridad] ?? $observacion->prioridad;
+          $assignedToCurrentUser = empty($observacion->asignado_a) || (int) $observacion->asignado_a === $currentUserId;
           $canTakeThis = $canAttendObservation
               && in_array($estatus, ['abierta', 'rechazada'], true)
+              && ($isAdminSwafi || $assignedToCurrentUser)
               && ($isAdminSwafi || (int) $observacion->creado_por !== $currentUserId);
           $canAttendThis = $canAttendObservation
               && in_array($estatus, ['abierta', 'en_atencion', 'rechazada'], true)
+              && ($isAdminSwafi || $assignedToCurrentUser)
               && ($isAdminSwafi || (int) $observacion->creado_por !== $currentUserId);
           $canValidateThis = $canValidateObservation
               && $estatus === 'atendida'
@@ -689,6 +709,17 @@
             <div><strong>Observación:</strong> {{ $observacion->descripcion }}</div>
             <div class="obs-muted">
               Registró: {{ $observacion->creado_por_nombre ?: ($observacion->creado_por_email ?: 'Usuario no identificado') }} · {{ $observacion->created_at }}
+            </div>
+            <div class="obs-muted">
+              Asignado a: {{ $observacion->asignado_a_nombre ?: ($observacion->asignado_a_email ?: 'Usuario pendiente de asignar') }}
+              @if($observacion->rol_destino)
+                · Rol: {{ $observacion->rol_destino }}
+              @endif
+              @if($observacion->fecha_notificacion)
+                · Correo enviado: {{ $observacion->fecha_notificacion }}
+              @elseif($observacion->notificacion_error)
+                · <span style="color:#b42318;font-weight:900">Correo no enviado</span>
+              @endif
             </div>
 
             @if($observacion->respuesta_atencion)
@@ -801,4 +832,60 @@
 
 @endif
 
+@endsection
+
+
+@section('page_scripts')
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const tipo = document.getElementById('obs_tipo_observacion');
+    const rol = document.getElementById('obs_rol_destino');
+    const usuario = document.getElementById('obs_asignado_a');
+
+    if (!tipo || !rol || !usuario) {
+      return;
+    }
+
+    const tiposPlanta = ['falta_ubicacion', 'ubicacion_incorrecta'];
+
+    function syncRoleByType() {
+      if (tiposPlanta.includes(tipo.value)) {
+        rol.value = 'Usuario Planta / Inventarios';
+      } else if (tipo.value !== '') {
+        rol.value = 'Usuario Captura';
+      }
+
+      filterUsersByRole();
+    }
+
+    function filterUsersByRole() {
+      const selectedRole = rol.value;
+      let visibleSelected = false;
+
+      Array.from(usuario.options).forEach(function (option) {
+        if (option.value === '') {
+          option.hidden = false;
+          return;
+        }
+
+        const optionRole = option.getAttribute('data-rol');
+        const visible = optionRole === selectedRole;
+        option.hidden = !visible;
+
+        if (visible && option.selected) {
+          visibleSelected = true;
+        }
+      });
+
+      if (!visibleSelected) {
+        usuario.value = '';
+      }
+    }
+
+    tipo.addEventListener('change', syncRoleByType);
+    rol.addEventListener('change', filterUsersByRole);
+
+    syncRoleByType();
+  });
+</script>
 @endsection
