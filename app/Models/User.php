@@ -20,6 +20,13 @@ class User extends Authenticatable
         'estatus',
         'ultimo_acceso',
         'ultimo_ip',
+        'avatar_path',
+        'avatar_mime',
+        'password_changed_at',
+        'intentos_fallidos',
+        'ultimo_intento_fallido',
+        'bloqueado_en',
+        'bloqueado_motivo',
     ];
 
     protected $hidden = [
@@ -32,6 +39,10 @@ class User extends Authenticatable
         return [
             'email_verified_at' => 'datetime',
             'ultimo_acceso' => 'datetime',
+            'password_changed_at' => 'datetime',
+            'ultimo_intento_fallido' => 'datetime',
+            'bloqueado_en' => 'datetime',
+            'intentos_fallidos' => 'integer',
             'password' => 'hashed',
         ];
     }
