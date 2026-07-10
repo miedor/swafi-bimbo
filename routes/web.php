@@ -8,6 +8,7 @@ use App\Http\Controllers\DocumentoExpedienteController;
 use App\Http\Controllers\ExpedienteGestionController;
 use App\Http\Controllers\ExpedienteObservacionController;
 use App\Http\Controllers\PasswordResetController;
+use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RegistroIndividualController;
 use App\Http\Controllers\RegistroMasivoController;
 use App\Http\Controllers\ReportesController;
@@ -29,6 +30,11 @@ Route::post('/restablecer-contrasena', [PasswordResetController::class, 'resetPa
 Route::middleware('swafi.auth')->group(function () {
 
     Route::get('/logout', [AuthController::class, 'logout'])->name('logout');
+
+    Route::get('/perfil', [ProfileController::class, 'show'])->name('perfil');
+    Route::post('/perfil', [ProfileController::class, 'update'])->name('perfil.update');
+    Route::get('/perfil/avatar', [ProfileController::class, 'avatar'])->name('perfil.avatar');
+    Route::delete('/perfil/avatar', [ProfileController::class, 'destroyAvatar'])->name('perfil.avatar.destroy');
 
     Route::get('/dashboard', [DashboardController::class, 'index'])->name('dashboard');
 
