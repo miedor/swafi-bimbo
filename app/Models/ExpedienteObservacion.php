@@ -16,6 +16,8 @@ class ExpedienteObservacion extends Model
         'numero_activo',
         'tipo_observacion',
         'prioridad',
+        'rol_destino',
+        'asignado_a',
         'estatus',
         'descripcion',
         'respuesta_atencion',
@@ -26,13 +28,18 @@ class ExpedienteObservacion extends Model
         'cancelado_por',
         'actualizado_por',
         'fecha_atencion',
+        'fecha_asignacion',
         'fecha_validacion',
         'fecha_cancelacion',
+        'fecha_notificacion',
+        'notificacion_error',
     ];
 
     protected $casts = [
         'fecha_atencion' => 'datetime',
+        'fecha_asignacion' => 'datetime',
         'fecha_validacion' => 'datetime',
         'fecha_cancelacion' => 'datetime',
+        'fecha_notificacion' => 'datetime',
     ];
 }
