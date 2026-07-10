@@ -12,6 +12,8 @@ use Illuminate\Support\Facades\Schema;
 
 class AuthController extends Controller
 {
+    private int $maxFailedAttempts = 5;
+
     public function showLogin(Request $request)
     {
         if ($request->session()->get('swafi_autenticado')) {
@@ -52,12 +54,60 @@ class AuthController extends Controller
 
         $user = $this->findUserByIdentity($identity);
 
-        if (!$user || !$this->isUserActive($user) || !Hash::check($password, $user->password)) {
-            $this->registrarBitacoraLogin(null, 'INICIO_SESION_FALLIDO', $identity, $request->ip());
+        if (!$user) {
+            $this->registrarBitacoraLogin(null, 'INICIO_SESION_FALLIDO', $identity, $request->ip(), [
+                'motivo' => 'Usuario no encontrado.',
+            ]);
 
             return back()
                 ->withErrors([
-                    'usuario' => 'Usuario o contraseña incorrectos, o usuario inactivo.',
+                    'usuario' => 'Usuario o contraseña incorrectos.',
+                ])
+                ->withInput($request->only('usuario', 'remember'));
+        }
+
+        if ($this->isUserBlocked($user)) {
+            $this->registrarBitacoraLogin($user->id, 'INICIO_SESION_BLOQUEADO', $identity, $request->ip(), [
+                'motivo' => 'Usuario bloqueado por intentos fallidos.',
+                'intentos_fallidos' => $user->intentos_fallidos ?? null,
+            ]);
+
+            return back()
+                ->withErrors([
+                    'usuario' => 'El usuario se encuentra bloqueado por intentos fallidos. Solicita al Administrador SWAFI restablecer la contraseña y activar la cuenta.',
+                ])
+                ->withInput($request->only('usuario', 'remember'));
+        }
+
+        if (!$this->isUserActive($user)) {
+            $this->registrarBitacoraLogin($user->id, 'INICIO_SESION_INACTIVO', $identity, $request->ip(), [
+                'estatus' => $user->estatus ?? null,
+            ]);
+
+            return back()
+                ->withErrors([
+                    'usuario' => 'El usuario se encuentra inactivo. Solicita revisión al Administrador SWAFI.',
+                ])
+                ->withInput($request->only('usuario', 'remember'));
+        }
+
+        if (!Hash::check($password, $user->password)) {
+            $bloqueado = $this->registerFailedAttempt($user, $identity, $request->ip());
+
+            if ($bloqueado) {
+                return back()
+                    ->withErrors([
+                        'usuario' => 'Contraseña incorrecta. El usuario quedó bloqueado por superar 5 intentos fallidos. Solo el Administrador SWAFI puede restablecer la contraseña y activar la cuenta.',
+                    ])
+                    ->withInput($request->only('usuario'));
+            }
+
+            $attempts = $this->failedAttemptsFor($user->id);
+            $remaining = max($this->maxFailedAttempts - $attempts, 0);
+
+            return back()
+                ->withErrors([
+                    'usuario' => 'Usuario o contraseña incorrectos. Intentos restantes antes del bloqueo: ' . $remaining . '.',
                 ])
                 ->withInput($request->only('usuario', 'remember'));
         }
@@ -65,10 +115,13 @@ class AuthController extends Controller
         Auth::login($user, $remember);
         $request->session()->regenerate();
 
-        $this->hydrateSwafiSession($request, $user);
+        $this->resetFailedAttempts($user->id);
+        $this->hydrateSwafiSession($request, $user->fresh());
 
         $this->updateLastAccess($user->id, $request->ip());
-        $this->registrarBitacoraLogin($user->id, 'INICIO_SESION', $identity, $request->ip());
+        $this->registrarBitacoraLogin($user->id, 'INICIO_SESION', $identity, $request->ip(), [
+            'remember' => $remember,
+        ]);
 
         return redirect()->route('dashboard');
     }
@@ -76,12 +129,16 @@ class AuthController extends Controller
     public function logout(Request $request)
     {
         $userId = $request->session()->get('swafi_user_id');
+        $motivo = $request->query('motivo') === 'inactividad'
+            ? 'CIERRE_SESION_INACTIVIDAD'
+            : 'CIERRE_SESION';
 
         $this->registrarBitacoraLogin(
             $userId,
-            'CIERRE_SESION',
+            $motivo,
             $request->session()->get('swafi_usuario'),
-            $request->ip()
+            $request->ip(),
+            ['motivo' => $request->query('motivo')]
         );
 
         Auth::logout();
@@ -90,8 +147,11 @@ class AuthController extends Controller
             'swafi_user_id',
             'swafi_usuario',
             'swafi_nombre',
+            'swafi_avatar_path',
+            'swafi_avatar_version',
             'swafi_roles',
             'swafi_permissions',
+            'swafi_last_activity_at',
             'swafi_autenticado',
         ]);
 
@@ -109,8 +169,11 @@ class AuthController extends Controller
         $request->session()->put('swafi_user_id', $user->id);
         $request->session()->put('swafi_usuario', $user->usuario ?: $user->email);
         $request->session()->put('swafi_nombre', $user->name);
+        $request->session()->put('swafi_avatar_path', $user->avatar_path ?? null);
+        $request->session()->put('swafi_avatar_version', now()->timestamp);
         $request->session()->put('swafi_roles', $roles);
         $request->session()->put('swafi_permissions', $permissions);
+        $request->session()->put('swafi_last_activity_at', now()->timestamp);
         $request->session()->put('swafi_autenticado', true);
     }
 
@@ -134,6 +197,105 @@ class AuthController extends Controller
         }
 
         return ($user->estatus ?? 'activo') === 'activo';
+    }
+
+    private function isUserBlocked(User $user): bool
+    {
+        if (!Schema::hasColumn('users', 'estatus')) {
+            return false;
+        }
+
+        return ($user->estatus ?? 'activo') === 'bloqueado';
+    }
+
+    private function registerFailedAttempt(User $user, string $identity, ?string $ip): bool
+    {
+        $currentAttempts = Schema::hasColumn('users', 'intentos_fallidos')
+            ? (int) ($user->intentos_fallidos ?? 0)
+            : 0;
+
+        $attempts = $currentAttempts + 1;
+        $payload = ['updated_at' => now()];
+
+        if (Schema::hasColumn('users', 'intentos_fallidos')) {
+            $payload['intentos_fallidos'] = $attempts;
+        }
+
+        if (Schema::hasColumn('users', 'ultimo_intento_fallido')) {
+            $payload['ultimo_intento_fallido'] = now();
+        }
+
+        $blocked = $attempts >= $this->maxFailedAttempts;
+
+        if ($blocked && Schema::hasColumn('users', 'estatus')) {
+            $payload['estatus'] = 'bloqueado';
+        }
+
+        if ($blocked && Schema::hasColumn('users', 'bloqueado_en')) {
+            $payload['bloqueado_en'] = now();
+        }
+
+        if ($blocked && Schema::hasColumn('users', 'bloqueado_motivo')) {
+            $payload['bloqueado_motivo'] = 'Bloqueo automático por 5 intentos fallidos de inicio de sesión.';
+        }
+
+        DB::table('users')
+            ->where('id', $user->id)
+            ->update($payload);
+
+        $this->registrarBitacoraLogin($user->id, 'INICIO_SESION_FALLIDO', $identity, $ip, [
+            'intentos_fallidos' => $attempts,
+            'bloqueado' => $blocked,
+        ]);
+
+        if ($blocked) {
+            $this->registrarBitacoraLogin($user->id, 'USUARIO_BLOQUEADO_INTENTOS', $identity, $ip, [
+                'intentos_fallidos' => $attempts,
+                'motivo' => '5 intentos fallidos.',
+            ]);
+        }
+
+        return $blocked;
+    }
+
+    private function failedAttemptsFor(int $userId): int
+    {
+        if (!Schema::hasColumn('users', 'intentos_fallidos')) {
+            return 0;
+        }
+
+        return (int) DB::table('users')
+            ->where('id', $userId)
+            ->value('intentos_fallidos');
+    }
+
+    private function resetFailedAttempts(int $userId): void
+    {
+        $payload = [];
+
+        if (Schema::hasColumn('users', 'intentos_fallidos')) {
+            $payload['intentos_fallidos'] = 0;
+        }
+
+        if (Schema::hasColumn('users', 'ultimo_intento_fallido')) {
+            $payload['ultimo_intento_fallido'] = null;
+        }
+
+        if (Schema::hasColumn('users', 'bloqueado_en')) {
+            $payload['bloqueado_en'] = null;
+        }
+
+        if (Schema::hasColumn('users', 'bloqueado_motivo')) {
+            $payload['bloqueado_motivo'] = null;
+        }
+
+        if (!empty($payload)) {
+            $payload['updated_at'] = now();
+
+            DB::table('users')
+                ->where('id', $userId)
+                ->update($payload);
+        }
     }
 
     private function ensureDefaultAdmin(): void
@@ -175,8 +337,12 @@ class AuthController extends Controller
 
             $adminUserId = $admin->id;
         } else {
-            $payload['password'] = Hash::make('12345678');
+            $payload['password'] = Hash::make('Admin@12345678');
             $payload['created_at'] = $now;
+
+            if (Schema::hasColumn('users', 'password_changed_at')) {
+                $payload['password_changed_at'] = $now;
+            }
 
             $adminUserId = DB::table('users')->insertGetId($payload);
         }
@@ -193,32 +359,16 @@ class AuthController extends Controller
         $now = now();
 
         $roles = [
-            [
-                'nombre' => 'Administrador SWAFI',
-                'descripcion' => 'Administración general, seguridad, catálogos y bitácora.',
-            ],
-            [
-                'nombre' => 'Usuario Captura',
-                'descripcion' => 'Registro individual y masivo de expedientes de activo fijo.',
-            ],
-            [
-                'nombre' => 'Usuario Consulta / Auditoría',
-                'descripcion' => 'Consulta, reportes, exportación y revisión de trazabilidad.',
-            ],
-            [
-                'nombre' => 'Usuario Planta / Inventarios',
-                'descripcion' => 'Consulta y seguimiento de ubicación física e inventarios.',
-            ],
+            ['nombre' => 'Administrador SWAFI', 'descripcion' => 'Administración general, seguridad, catálogos y bitácora.'],
+            ['nombre' => 'Usuario Captura', 'descripcion' => 'Registro individual y masivo de expedientes de activo fijo.'],
+            ['nombre' => 'Usuario Consulta / Auditoría', 'descripcion' => 'Consulta, reportes, exportación y revisión de trazabilidad.'],
+            ['nombre' => 'Usuario Planta / Inventarios', 'descripcion' => 'Consulta y seguimiento de ubicación física e inventarios.'],
         ];
 
         foreach ($roles as $role) {
             DB::table('roles')->updateOrInsert(
                 ['nombre' => $role['nombre']],
-                [
-                    'descripcion' => $role['descripcion'],
-                    'activo' => 1,
-                    'updated_at' => $now,
-                ]
+                ['descripcion' => $role['descripcion'], 'activo' => 1, 'updated_at' => $now]
             );
         }
 
@@ -234,15 +384,15 @@ class AuthController extends Controller
             ['clave' => 'catalogos.administrar', 'descripcion' => 'Administrar catálogos base.'],
             ['clave' => 'seguridad.administrar', 'descripcion' => 'Administrar usuarios, roles y permisos.'],
             ['clave' => 'bitacora.ver', 'descripcion' => 'Consultar bitácora de auditoría.'],
+            ['clave' => 'observaciones.crear', 'descripcion' => 'Crear observaciones de expediente.'],
+            ['clave' => 'observaciones.atender', 'descripcion' => 'Atender observaciones asignadas.'],
+            ['clave' => 'observaciones.validar', 'descripcion' => 'Validar, cerrar o rechazar observaciones.'],
         ];
 
         foreach ($permissions as $permission) {
             DB::table('permissions')->updateOrInsert(
                 ['clave' => $permission['clave']],
-                [
-                    'descripcion' => $permission['descripcion'],
-                    'updated_at' => $now,
-                ]
+                ['descripcion' => $permission['descripcion'], 'updated_at' => $now]
             );
         }
 
@@ -289,11 +439,7 @@ class AuthController extends Controller
 
     private function permissionsForUser(int $userId): array
     {
-        if (
-            !Schema::hasTable('permissions') ||
-            !Schema::hasTable('permission_role') ||
-            !Schema::hasTable('role_user')
-        ) {
+        if (!Schema::hasTable('permissions') || !Schema::hasTable('permission_role') || !Schema::hasTable('role_user')) {
             return [];
         }
 
@@ -329,7 +475,7 @@ class AuthController extends Controller
         }
     }
 
-    private function registrarBitacoraLogin(?int $userId, string $accion, ?string $identity, ?string $ip): void
+    private function registrarBitacoraLogin(?int $userId, string $accion, ?string $identity, ?string $ip, array $detalle = []): void
     {
         try {
             if (!Schema::hasTable('bitacora_auditoria')) {
@@ -344,7 +490,7 @@ class AuthController extends Controller
                 'tabla_afectada' => 'users',
                 'registro_clave' => $userId ? (string) $userId : null,
                 'antes' => null,
-                'despues' => json_encode(['usuario_intento' => $identity], JSON_UNESCAPED_UNICODE),
+                'despues' => json_encode(array_merge(['usuario_intento' => $identity], $detalle), JSON_UNESCAPED_UNICODE),
                 'ip' => $ip,
                 'fecha_evento' => now(),
                 'created_at' => now(),

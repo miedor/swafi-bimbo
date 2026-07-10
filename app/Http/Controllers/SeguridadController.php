@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Rules\SwafiPasswordPolicy;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
@@ -59,13 +60,30 @@ class SeguridadController extends Controller
             'usuario' => ['required', 'string', 'max:80', Rule::unique('users', 'usuario')->ignore($id)],
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($id)],
-            'password' => [$id ? 'nullable' : 'required', 'string', 'min:8', 'max:120'],
-            'estatus' => ['required', Rule::in(['activo', 'inactivo'])],
+            'password' => [$id ? 'nullable' : 'required', 'string', 'max:120', new SwafiPasswordPolicy()],
+            'estatus' => ['required', Rule::in(['activo', 'inactivo', 'bloqueado'])],
             'role_ids' => ['nullable', 'array'],
             'role_ids.*' => ['integer', 'exists:roles,id'],
         ];
 
         $validated = $request->validate($rules, $this->messages());
+
+        if ($id) {
+            $usuarioActual = DB::table('users')->where('id', $id)->first();
+
+            if (
+                $usuarioActual
+                && ($usuarioActual->estatus ?? 'activo') === 'bloqueado'
+                && ($validated['estatus'] ?? '') === 'activo'
+                && empty($validated['password'])
+            ) {
+                return back()
+                    ->withErrors([
+                        'password' => 'Para desbloquear un usuario debes capturar una nueva contraseña que cumpla la política de seguridad.',
+                    ])
+                    ->withInput($request->except('password'));
+            }
+        }
 
         $roleIds = array_values(array_unique($validated['role_ids'] ?? []));
         unset($validated['role_ids']);
@@ -87,6 +105,18 @@ class SeguridadController extends Controller
 
             if (!empty($validated['password'])) {
                 $payload['password'] = Hash::make($validated['password']);
+                $payload['password_changed_at'] = $now;
+                $payload['intentos_fallidos'] = 0;
+                $payload['ultimo_intento_fallido'] = null;
+                $payload['bloqueado_en'] = null;
+                $payload['bloqueado_motivo'] = null;
+            }
+
+            if (($validated['estatus'] ?? '') !== 'bloqueado' && ($before->estatus ?? null) === 'bloqueado' && !empty($validated['password'])) {
+                $payload['intentos_fallidos'] = 0;
+                $payload['ultimo_intento_fallido'] = null;
+                $payload['bloqueado_en'] = null;
+                $payload['bloqueado_motivo'] = null;
             }
 
             if ($id) {
@@ -374,6 +404,10 @@ class SeguridadController extends Controller
                 'u.estatus',
                 'u.ultimo_acceso',
                 'u.ultimo_ip',
+                'u.intentos_fallidos',
+                'u.ultimo_intento_fallido',
+                'u.bloqueado_en',
+                'u.bloqueado_motivo',
                 'u.created_at',
                 'u.updated_at',
                 DB::raw("COALESCE(GROUP_CONCAT(r.nombre ORDER BY r.nombre SEPARATOR ', '), 'Sin rol') as roles"),
@@ -386,6 +420,10 @@ class SeguridadController extends Controller
                 'u.estatus',
                 'u.ultimo_acceso',
                 'u.ultimo_ip',
+                'u.intentos_fallidos',
+                'u.ultimo_intento_fallido',
+                'u.bloqueado_en',
+                'u.bloqueado_motivo',
                 'u.created_at',
                 'u.updated_at'
             );
@@ -555,6 +593,7 @@ class SeguridadController extends Controller
         return [
             'usuarios_total' => DB::table('users')->count(),
             'usuarios_activos' => DB::table('users')->where('estatus', 'activo')->count(),
+            'usuarios_bloqueados' => DB::table('users')->where('estatus', 'bloqueado')->count(),
             'roles_activos' => DB::table('roles')->where('activo', 1)->count(),
             'permisos_total' => DB::table('permissions')->count(),
             'eventos_bitacora' => DB::table('bitacora_auditoria')->count(),
@@ -578,6 +617,8 @@ class SeguridadController extends Controller
                 'Estatus',
                 'Último acceso',
                 'Última IP',
+                'Intentos fallidos',
+                'Bloqueado en',
             ]);
 
             foreach ($rows as $row) {
@@ -589,6 +630,8 @@ class SeguridadController extends Controller
                     $row->estatus,
                     $row->ultimo_acceso,
                     $row->ultimo_ip,
+                    $row->intentos_fallidos ?? 0,
+                    $row->bloqueado_en ?? null,
                 ]);
             }
 

@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Mail\SwafiPasswordResetMail;
 use App\Models\User;
 use App\Rules\RecaptchaV3;
+use App\Rules\SwafiPasswordPolicy;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -47,13 +48,13 @@ class PasswordResetController extends Controller
          * Por seguridad, la respuesta es genérica. Así evitamos confirmar
          * públicamente si un correo existe o no dentro de SWAFI.
          */
-        if (!$user || !$this->isUserActive($user)) {
+        if (!$user || !$this->isUserActive($user) || $this->isUserBlocked($user)) {
             $this->registrarBitacoraPassword(
                 userId: $user?->id,
                 accion: 'RECUPERACION_NO_ENVIADA',
                 detalle: [
                     'email_solicitado' => $email,
-                    'motivo' => 'Usuario inexistente o inactivo.',
+                    'motivo' => 'Usuario inexistente, inactivo o bloqueado.',
                 ]
             );
 
@@ -127,15 +128,14 @@ class PasswordResetController extends Controller
         $request->validate([
             'token' => ['required', 'string'],
             'email' => ['required', 'email', 'max:255'],
-            'password' => ['required', 'string', 'min:8', 'max:120', 'confirmed'],
+            'password' => ['required', 'string', 'max:120', 'confirmed', new SwafiPasswordPolicy()],
             'g-recaptcha-response' => ['required', new RecaptchaV3('reset_password')],
         ], [
             'token.required' => 'El token de recuperación es obligatorio.',
             'email.required' => 'El correo electrónico es obligatorio.',
             'email.email' => 'El correo electrónico no tiene un formato válido.',
             'password.required' => 'La nueva contraseña es obligatoria.',
-            'password.min' => 'La nueva contraseña debe tener al menos 8 caracteres.',
-            'password.confirmed' => 'La confirmación de contraseña no coincide.',
+                        'password.confirmed' => 'La confirmación de contraseña no coincide.',
             'g-recaptcha-response.required' => 'No se recibió la validación reCAPTCHA.',
         ]);
 
@@ -184,9 +184,9 @@ class PasswordResetController extends Controller
             ->where('email', $email)
             ->first();
 
-        if (!$user || !$this->isUserActive($user)) {
+        if (!$user || !$this->isUserActive($user) || $this->isUserBlocked($user)) {
             return back()
-                ->withErrors(['email' => 'El usuario no existe o se encuentra inactivo.'])
+                ->withErrors(['email' => 'El usuario no existe, se encuentra inactivo o está bloqueado. Si fue bloqueado por intentos fallidos, solicita al Administrador SWAFI restablecer la contraseña.'])
                 ->withInput($request->only('email'));
         }
 
@@ -195,6 +195,11 @@ class PasswordResetController extends Controller
                 ->where('id', $user->id)
                 ->update([
                     'password' => Hash::make($request->input('password')),
+                    'password_changed_at' => now(),
+                    'intentos_fallidos' => 0,
+                    'ultimo_intento_fallido' => null,
+                    'bloqueado_en' => null,
+                    'bloqueado_motivo' => null,
                     'updated_at' => now(),
                 ]);
 
@@ -230,6 +235,17 @@ class PasswordResetController extends Controller
         }
 
         return ($user->estatus ?? 'activo') === 'activo';
+    }
+
+
+
+    private function isUserBlocked(User $user): bool
+    {
+        if (!Schema::hasColumn('users', 'estatus')) {
+            return false;
+        }
+
+        return ($user->estatus ?? 'activo') === 'bloqueado';
     }
 
     private function registrarBitacoraPassword(?int $userId, string $accion, array $detalle): void
