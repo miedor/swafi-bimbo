@@ -113,7 +113,7 @@
 
     .sec-kpi-grid {
         display: grid;
-        grid-template-columns: repeat(5, minmax(0, 1fr));
+        grid-template-columns: repeat(6, minmax(0, 1fr));
         gap: 10px;
         margin-bottom: 16px;
     }
@@ -207,6 +207,22 @@
         color: #8a5a00;
     }
 
+    .sec-status-danger {
+        background: #fdeaea;
+        color: #b42318;
+    }
+
+    .sec-policy-box {
+        grid-column: 1 / -1;
+        padding: 10px 12px;
+        border: 1px solid #d9e6f7;
+        border-radius: 13px;
+        background: #f8fbff;
+        color: #36557a;
+        font-size: 12px;
+        line-height: 1.45;
+    }
+
     @media (max-width: 1100px) {
         .sec-grid,
         .sec-kpi-grid {
@@ -252,6 +268,11 @@
     <div class="sec-kpi">
         <strong>{{ number_format((int) $kpis['usuarios_activos']) }}</strong>
         <span>Usuarios activos</span>
+    </div>
+
+    <div class="sec-kpi">
+        <strong>{{ number_format((int) ($kpis['usuarios_bloqueados'] ?? 0)) }}</strong>
+        <span>Usuarios bloqueados</span>
     </div>
 
     <div class="sec-kpi">
@@ -335,8 +356,14 @@
                         <select name="estatus" required>
                             <option value="activo" {{ $estatusUsuario === 'activo' ? 'selected' : '' }}>Activo</option>
                             <option value="inactivo" {{ $estatusUsuario === 'inactivo' ? 'selected' : '' }}>Inactivo</option>
+                            <option value="bloqueado" {{ $estatusUsuario === 'bloqueado' ? 'selected' : '' }}>Bloqueado</option>
                         </select>
                     </label>
+
+                    <div class="sec-policy-box">
+                        <strong>Política de contraseña:</strong> mínimo 8 caracteres, al menos una mayúscula, una minúscula, un número y un carácter especial.
+                        Si el usuario está bloqueado, el Administrador SWAFI debe capturar una nueva contraseña y cambiar el estatus a <strong>Activo</strong> para desbloquearlo.
+                    </div>
 
                     <div class="sec-field-wide">
                         <span>Roles asignados</span>
@@ -373,7 +400,7 @@
 
             <div class="sec-help">
                 El inicio de sesión ahora se valida contra la tabla <strong>users</strong>. El usuario administrador base es
-                <strong>admin.swafi</strong> con contraseña <strong>12345678</strong>. Después de probar, conviene cambiar la contraseña desde esta pantalla.
+                <strong>admin.swafi</strong>. La contraseña debe cumplir la política definida. Después de probar, conviene cambiar la contraseña desde esta pantalla.
             </div>
         </div>
 
@@ -418,6 +445,7 @@
                             <option value="">Todos</option>
                             <option value="activo" {{ $filtroEstatus === 'activo' ? 'selected' : '' }}>Activo</option>
                             <option value="inactivo" {{ $filtroEstatus === 'inactivo' ? 'selected' : '' }}>Inactivo</option>
+                            <option value="bloqueado" {{ $filtroEstatus === 'bloqueado' ? 'selected' : '' }}>Bloqueado</option>
                         </select>
                     </label>
 
@@ -461,6 +489,7 @@
                         <th>Correo</th>
                         <th>Roles</th>
                         <th>Último acceso</th>
+                        <th>Seguridad</th>
                         <th>Estatus</th>
                         <th>Acciones</th>
                     </tr>
@@ -478,8 +507,21 @@
                                 <small>{{ $usuario->ultimo_ip ?: 'Sin IP' }}</small>
                             </td>
                             <td>
+                                Intentos: {{ (int) ($usuario->intentos_fallidos ?? 0) }}<br>
+                                <small>
+                                    {{ $usuario->bloqueado_en ? 'Bloqueado: ' . $usuario->bloqueado_en : 'Sin bloqueo' }}
+                                </small>
+                            </td>
+
+                            <td>
                                 @php
-                                    $claseUsuario = $usuario->estatus === 'activo' ? 'sec-status-ok' : 'sec-status-warn';
+                                    if ($usuario->estatus === 'activo') {
+                                        $claseUsuario = 'sec-status-ok';
+                                    } elseif ($usuario->estatus === 'bloqueado') {
+                                        $claseUsuario = 'sec-status-danger';
+                                    } else {
+                                        $claseUsuario = 'sec-status-warn';
+                                    }
                                 @endphp
 
                                 <span class="sec-status {{ $claseUsuario }}">
@@ -505,7 +547,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="7">No existen usuarios con los criterios seleccionados.</td>
+                            <td colspan="8">No existen usuarios con los criterios seleccionados.</td>
                         </tr>
                     @endforelse
                 </tbody>
