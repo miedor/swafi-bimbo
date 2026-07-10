@@ -25,6 +25,10 @@
 
   $swafiRoles = session('swafi_roles', []);
   $swafiPermissions = session('swafi_permissions', []);
+  $swafiNombre = session('swafi_nombre', 'Usuario SWAFI');
+  $swafiUsuario = session('swafi_usuario', 'usuario');
+  $swafiAvatarPath = session('swafi_avatar_path');
+  $swafiAvatarVersion = session('swafi_avatar_version', time());
 
   $swafiCan = function (string $permission) use ($swafiRoles, $swafiPermissions): bool {
     if (in_array('Administrador SWAFI', $swafiRoles, true)) {
@@ -307,6 +311,127 @@
       margin-top: 8px !important;
     }
 
+
+    .swafi-profile-menu {
+      position: relative;
+    }
+
+    .swafi-profile-toggle {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 54px;
+      height: 54px;
+      border: 1px solid #d8e5f5;
+      border-radius: 18px;
+      background: #eef6ff;
+      color: #174f9a;
+      cursor: pointer;
+      box-shadow: 0 10px 22px rgba(15, 23, 42, .06);
+      transition: all .15s ease;
+      overflow: hidden;
+    }
+
+    .swafi-profile-toggle:hover {
+      background: #e6f1ff;
+      transform: translateY(-1px);
+    }
+
+    .swafi-profile-toggle img,
+    .swafi-profile-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      display: block;
+    }
+
+    .swafi-profile-dropdown {
+      position: absolute;
+      right: 0;
+      top: calc(100% + 10px);
+      z-index: 1500;
+      width: 292px;
+      display: none;
+      padding: 14px;
+      border: 1px solid #dbe7f6;
+      border-radius: 20px;
+      background: #ffffff;
+      box-shadow: 0 24px 48px rgba(15, 23, 42, .18);
+    }
+
+    .swafi-profile-menu.is-open .swafi-profile-dropdown {
+      display: block;
+    }
+
+    .swafi-profile-head {
+      display: grid;
+      grid-template-columns: 50px 1fr;
+      gap: 11px;
+      align-items: center;
+      padding-bottom: 12px;
+      border-bottom: 1px solid #e6edf7;
+    }
+
+    .swafi-profile-avatar {
+      width: 50px;
+      height: 50px;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      border-radius: 16px;
+      background: #eef6ff;
+      color: #174f9a;
+    }
+
+    .swafi-profile-name {
+      color: #12345c;
+      font-size: 14px;
+      font-weight: 950;
+      line-height: 1.15;
+    }
+
+    .swafi-profile-user {
+      margin-top: 3px;
+      color: #64748b;
+      font-size: 12px;
+      font-weight: 800;
+      word-break: break-word;
+    }
+
+    .swafi-profile-links {
+      display: grid;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .swafi-profile-link {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 38px;
+      padding: 9px 11px;
+      border: 1px solid #dbe7f6;
+      border-radius: 13px;
+      background: #f8fbff;
+      color: #174f9a;
+      font-size: 13px;
+      font-weight: 900;
+      text-decoration: none;
+    }
+
+    .swafi-profile-link:hover {
+      background: #eef5ff;
+    }
+
+    .swafi-session-note {
+      margin-top: 10px;
+      color: #64748b;
+      font-size: 11px;
+      font-weight: 750;
+      line-height: 1.35;
+    }
+
     @media (max-width: 1200px) {
       .swafi-page-header .topbar {
         grid-template-columns: minmax(260px, 1fr) auto auto !important;
@@ -538,9 +663,46 @@
         </div>
 
         <div class="swafi-user-slot">
-          <div class="userbar userbar-compact">
-            <div class="avatar avatar-with-icon">
-              {!! $swafiIcon('user', 'avatar-icon') !!}
+          <div class="swafi-profile-menu" data-profile-menu>
+            <button type="button" class="swafi-profile-toggle" data-profile-toggle aria-label="Perfil de usuario" aria-expanded="false">
+              @if ($swafiAvatarPath)
+                <img src="{{ route('perfil.avatar', ['v' => $swafiAvatarVersion]) }}" alt="Avatar de {{ $swafiNombre }}">
+              @else
+                {!! $swafiIcon('user', 'avatar-icon') !!}
+              @endif
+            </button>
+
+            <div class="swafi-profile-dropdown" data-profile-dropdown>
+              <div class="swafi-profile-head">
+                <div class="swafi-profile-avatar">
+                  @if ($swafiAvatarPath)
+                    <img src="{{ route('perfil.avatar', ['v' => $swafiAvatarVersion]) }}" alt="Avatar de {{ $swafiNombre }}">
+                  @else
+                    {!! $swafiIcon('user', 'avatar-icon') !!}
+                  @endif
+                </div>
+
+                <div>
+                  <div class="swafi-profile-name">{{ $swafiNombre }}</div>
+                  <div class="swafi-profile-user">{{ $swafiUsuario }}</div>
+                </div>
+              </div>
+
+              <div class="swafi-profile-links">
+                <a class="swafi-profile-link" href="{{ route('perfil') }}">
+                  <span>Mi perfil y avatar</span>
+                  <span>→</span>
+                </a>
+
+                <a class="swafi-profile-link" href="{{ route('logout') }}">
+                  <span>Cerrar sesión</span>
+                  <span>→</span>
+                </a>
+              </div>
+
+              <div class="swafi-session-note">
+                Por seguridad, SWAFI cerrará automáticamente la sesión después de 10 minutos sin actividad.
+              </div>
             </div>
           </div>
         </div>
@@ -557,6 +719,44 @@
 </div>
 
 <script src="{{ asset('assets/swafi/js/swafi.js') }}?v={{ filemtime(public_path('assets/swafi/js/swafi.js')) }}"></script>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const profileMenu = document.querySelector('[data-profile-menu]');
+    const profileToggle = document.querySelector('[data-profile-toggle]');
+
+    if (profileMenu && profileToggle) {
+      profileToggle.addEventListener('click', function (event) {
+        event.stopPropagation();
+        const isOpen = profileMenu.classList.toggle('is-open');
+        profileToggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
+      });
+
+      document.addEventListener('click', function (event) {
+        if (!profileMenu.contains(event.target)) {
+          profileMenu.classList.remove('is-open');
+          profileToggle.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+
+    const inactivityLimitMs = 10 * 60 * 1000;
+    let inactivityTimer = null;
+
+    function resetInactivityTimer() {
+      window.clearTimeout(inactivityTimer);
+      inactivityTimer = window.setTimeout(function () {
+        window.location.href = "{{ route('logout', ['motivo' => 'inactividad']) }}";
+      }, inactivityLimitMs);
+    }
+
+    ['click', 'mousemove', 'keydown', 'scroll', 'touchstart'].forEach(function (eventName) {
+      document.addEventListener(eventName, resetInactivityTimer, { passive: true });
+    });
+
+    resetInactivityTimer();
+  });
+</script>
 
 @yield('page_scripts')
 </body>
