@@ -11,6 +11,8 @@ use Symfony\Component\HttpFoundation\Response;
 
 class SwafiAuth
 {
+    private int $inactiveSeconds = 600;
+
     public function handle(Request $request, Closure $next): Response
     {
         if (!$request->session()->get('swafi_autenticado')) {
@@ -23,7 +25,7 @@ class SwafiAuth
                     return redirect()
                         ->route('login')
                         ->withErrors([
-                            'usuario' => 'La sesión ya no es válida o el usuario fue desactivado.',
+                            'usuario' => 'La sesión ya no es válida, el usuario fue desactivado o se encuentra bloqueado.',
                         ]);
                 }
 
@@ -45,7 +47,18 @@ class SwafiAuth
             return redirect()
                 ->route('login')
                 ->withErrors([
-                    'usuario' => 'La sesión ya no es válida o el usuario fue desactivado.',
+                    'usuario' => 'La sesión ya no es válida, el usuario fue desactivado o se encuentra bloqueado.',
+                ]);
+        }
+
+        if ($this->sessionExpiredByInactivity($request)) {
+            $this->registrarSesionExpirada($request);
+            $this->invalidateSession($request);
+
+            return redirect()
+                ->route('login')
+                ->withErrors([
+                    'usuario' => 'La sesión se cerró automáticamente por 10 minutos de inactividad.',
                 ]);
         }
 
@@ -62,6 +75,8 @@ class SwafiAuth
                 ]);
         }
 
+        $request->session()->put('swafi_last_activity_at', now()->timestamp);
+
         $response = $next($request);
 
         $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
@@ -77,7 +92,7 @@ class SwafiAuth
             return null;
         }
 
-        if ($routeName === 'logout') {
+        if (in_array($routeName, ['logout', 'perfil', 'perfil.update', 'perfil.avatar', 'perfil.avatar.destroy'], true)) {
             return null;
         }
 
@@ -159,6 +174,13 @@ class SwafiAuth
         return in_array($permission, $permissions, true);
     }
 
+    private function sessionExpiredByInactivity(Request $request): bool
+    {
+        $lastActivity = (int) $request->session()->get('swafi_last_activity_at', now()->timestamp);
+
+        return (now()->timestamp - $lastActivity) > $this->inactiveSeconds;
+    }
+
     private function hydrateSwafiSession(Request $request, int $userId): void
     {
         $user = DB::table('users')
@@ -175,8 +197,11 @@ class SwafiAuth
         $request->session()->put('swafi_user_id', $user->id);
         $request->session()->put('swafi_usuario', $user->usuario ?: $user->email);
         $request->session()->put('swafi_nombre', $user->name);
+        $request->session()->put('swafi_avatar_path', $user->avatar_path ?? null);
+        $request->session()->put('swafi_avatar_version', now()->timestamp);
         $request->session()->put('swafi_roles', $roles);
         $request->session()->put('swafi_permissions', $permissions);
+        $request->session()->put('swafi_last_activity_at', now()->timestamp);
         $request->session()->put('swafi_autenticado', true);
     }
 
@@ -213,11 +238,7 @@ class SwafiAuth
 
     private function permissionsForUser(int $userId): array
     {
-        if (
-            !Schema::hasTable('permissions') ||
-            !Schema::hasTable('permission_role') ||
-            !Schema::hasTable('role_user')
-        ) {
+        if (!Schema::hasTable('permissions') || !Schema::hasTable('permission_role') || !Schema::hasTable('role_user')) {
             return [];
         }
 
@@ -240,13 +261,45 @@ class SwafiAuth
             'swafi_user_id',
             'swafi_usuario',
             'swafi_nombre',
+            'swafi_avatar_path',
+            'swafi_avatar_version',
             'swafi_roles',
             'swafi_permissions',
+            'swafi_last_activity_at',
             'swafi_autenticado',
         ]);
 
         $request->session()->invalidate();
         $request->session()->regenerateToken();
+    }
+
+    private function registrarSesionExpirada(Request $request): void
+    {
+        try {
+            if (!Schema::hasTable('bitacora_auditoria')) {
+                return;
+            }
+
+            DB::table('bitacora_auditoria')->insert([
+                'numero_activo' => null,
+                'user_id' => $request->session()->get('swafi_user_id'),
+                'modulo' => 'M04 Administración y seguridad del sistema',
+                'accion' => 'CIERRE_SESION_INACTIVIDAD',
+                'tabla_afectada' => 'sessions',
+                'registro_clave' => $request->session()->getId(),
+                'antes' => null,
+                'despues' => json_encode([
+                    'minutos_inactividad' => 10,
+                    'url' => $request->fullUrl(),
+                ], JSON_UNESCAPED_UNICODE),
+                'ip' => $request->ip(),
+                'fecha_evento' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Throwable $exception) {
+            // Un error de bitácora no debe bloquear el cierre por inactividad.
+        }
     }
 
     private function registrarAccesoDenegado(Request $request, string $permission, ?string $routeName): void
