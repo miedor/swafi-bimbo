@@ -168,6 +168,11 @@
                             </div>
                         </div>
 
+                        <p class="recaptcha-note-v1" style="margin-top:-2px;margin-bottom:12px">
+                            <strong>Política de contraseña:</strong> mínimo 8 caracteres, al menos una mayúscula,
+                            una minúscula, un número y un carácter especial.
+                        </p>
+
                         <button type="submit" class="btn-login-v1 btn-login-executive">
                             {!! $loginIcon('arrow', 'login-button-icon') !!}
                             <span>Actualizar contraseña</span>
