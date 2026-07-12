@@ -94,6 +94,7 @@ class BusquedaController extends Controller
                     'bitacora' => collect(),
                     'observaciones' => collect(),
                     'usuariosAsignablesObservacion' => collect(),
+                    'cfdiValidaciones' => collect(),
                 ]);
             }
         }
@@ -160,6 +161,24 @@ class BusquedaController extends Controller
             ->orderByDesc('id')
             ->first();
 
+        $cfdiValidaciones = Schema::hasTable('cfdi_validaciones')
+            ? DB::table('cfdi_validaciones as cv')
+                ->join('documentos_expediente as d', 'd.id', '=', 'cv.documento_id')
+                ->leftJoin('users as uval', 'uval.id', '=', 'cv.validado_por')
+                ->where('cv.expediente_id', $detalle->expediente_id)
+                ->where('d.vigente', true)
+                ->select([
+                    'cv.*',
+                    'd.nombre_archivo',
+                    'd.version as documento_version',
+                    'd.hash_sha256',
+                    'uval.name as validado_por_nombre',
+                    'uval.email as validado_por_email',
+                ])
+                ->orderByDesc('cv.validado_at')
+                ->get()
+            : collect();
+
         $observaciones = $this->observacionesExpediente($detalle->expediente_id);
 
         $bitacora = DB::table('bitacora_auditoria')
@@ -193,6 +212,7 @@ class BusquedaController extends Controller
             'bitacora' => $bitacora,
             'observaciones' => $observaciones,
             'usuariosAsignablesObservacion' => $this->usuariosAsignablesObservacion(),
+            'cfdiValidaciones' => $cfdiValidaciones,
         ]);
     }
 
