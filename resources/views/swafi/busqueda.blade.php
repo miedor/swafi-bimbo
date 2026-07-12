@@ -421,7 +421,13 @@
 
         <div class="search-actions">
           <button class="tab" type="submit">Consultar</button>
-          <button class="tab" type="submit" name="export" value="csv">Exportar CSV</button>
+
+          @if($canExportReports)
+            <button class="tab" type="submit" name="export" value="csv">Exportar CSV</button>
+            <button class="tab" type="submit" name="export" value="xlsx">Exportar Excel</button>
+            <button class="tab" type="submit" name="export" value="pdf">Exportar PDF</button>
+          @endif
+
           <a class="tab" href="{{ route('busqueda') }}">Limpiar filtros</a>
         </div>
       </form>
