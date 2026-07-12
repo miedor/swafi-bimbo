@@ -7,6 +7,8 @@
       'user' => '<path d="M20 21a8 8 0 0 0-16 0"></path><path d="M12 13a5 5 0 1 0 0-10 5 5 0 0 0 0 10Z"></path>',
       'lock' => '<path d="M7 11V8a5 5 0 0 1 10 0v3"></path><path d="M6 11h12a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2Z"></path>',
       'login' => '<path d="M10 17l5-5-5-5"></path><path d="M15 12H3"></path><path d="M21 3v18"></path>',
+      'eye' => '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z"></path><circle cx="12" cy="12" r="3"></circle>',
+      'eye-off' => '<path d="m3 3 18 18"></path><path d="M10.6 5.2A9.8 9.8 0 0 1 12 5c6.5 0 10 7 10 7a17.8 17.8 0 0 1-2.1 3.2"></path><path d="M6.2 6.2C3.5 8.1 2 12 2 12s3.5 7 10 7a9.8 9.8 0 0 0 4.1-.9"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path>',
       'chart' => '<path d="M4 19V5"></path><path d="M4 19h17"></path><path d="M8 16v-5"></path><path d="M13 16V8"></path><path d="M18 16v-9"></path>',
       'search' => '<path d="M10.5 18a7.5 7.5 0 1 0 0-15 7.5 7.5 0 0 0 0 15Z"></path><path d="m16 16 5 5"></path>',
       'map' => '<path d="M12 21s7-4.35 7-11a7 7 0 1 0-14 0c0 6.65 7 11 7 11Z"></path><path d="M12 10.5a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5Z"></path>',
@@ -51,6 +53,48 @@
 
         .login-alert-v1 p + p {
             margin-top: 6px;
+        }
+
+        .password-field-wrap {
+            position: relative;
+        }
+
+        .password-field-wrap input {
+            padding-right: 52px !important;
+        }
+
+        .password-toggle-v1 {
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 36px;
+            height: 36px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border: 0;
+            border-radius: 10px;
+            background: transparent;
+            color: #526f93;
+            cursor: pointer;
+            transition: background .16s ease, color .16s ease;
+        }
+
+        .password-toggle-v1:hover,
+        .password-toggle-v1:focus-visible {
+            background: #eef5ff;
+            color: #174f9a;
+            outline: none;
+        }
+
+        .password-toggle-icon-v1 {
+            width: 20px;
+            height: 20px;
+        }
+
+        .password-toggle-v1 .is-hidden {
+            display: none;
         }
 
         .recaptcha-note-v1 {
@@ -154,7 +198,7 @@
                                     id="usuario"
                                     name="usuario"
                                     type="text"
-                                    value="{{ old('usuario', 'admin.swafi') }}"
+                                    value="{{ old('usuario') }}"
                                     autocomplete="username"
                                     required
                                 >
@@ -166,16 +210,31 @@
                                 {!! $loginIcon('lock', 'field-label-icon') !!}
                                 <span>Contraseña</span>
                             </label>
-                            <div class="input-with-icon">
+                            <div class="input-with-icon password-field-wrap">
                                 {!! $loginIcon('lock', 'input-icon') !!}
                                 <input
                                     id="password"
                                     name="password"
                                     type="password"
-                                    value="12345678"
                                     autocomplete="current-password"
                                     required
                                 >
+
+                                <button
+                                    type="button"
+                                    id="togglePassword"
+                                    class="password-toggle-v1"
+                                    aria-label="Mostrar contraseña"
+                                    aria-pressed="false"
+                                    title="Mostrar contraseña"
+                                >
+                                    <span id="passwordEyeVisible">
+                                        {!! $loginIcon('eye', 'password-toggle-icon-v1') !!}
+                                    </span>
+                                    <span id="passwordEyeHidden" class="is-hidden">
+                                        {!! $loginIcon('eye-off', 'password-toggle-icon-v1') !!}
+                                    </span>
+                                </button>
                             </div>
                         </div>
 
@@ -205,6 +264,36 @@
             </div>
         </section>
     </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function () {
+            const passwordInput = document.getElementById('password');
+            const toggleButton = document.getElementById('togglePassword');
+            const eyeVisible = document.getElementById('passwordEyeVisible');
+            const eyeHidden = document.getElementById('passwordEyeHidden');
+
+            if (!passwordInput || !toggleButton) {
+                return;
+            }
+
+            toggleButton.addEventListener('click', function () {
+                const isPassword = passwordInput.type === 'password';
+
+                passwordInput.type = isPassword ? 'text' : 'password';
+                toggleButton.setAttribute('aria-pressed', isPassword ? 'true' : 'false');
+                toggleButton.setAttribute('aria-label', isPassword ? 'Ocultar contraseña' : 'Mostrar contraseña');
+                toggleButton.setAttribute('title', isPassword ? 'Ocultar contraseña' : 'Mostrar contraseña');
+
+                if (eyeVisible && eyeHidden) {
+                    eyeVisible.classList.toggle('is-hidden', isPassword);
+                    eyeHidden.classList.toggle('is-hidden', !isPassword);
+                }
+
+                passwordInput.focus();
+                passwordInput.setSelectionRange(passwordInput.value.length, passwordInput.value.length);
+            });
+        });
+    </script>
 
     @if(config('services.recaptcha.site_key'))
         <script>
