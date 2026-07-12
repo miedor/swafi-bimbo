@@ -2,6 +2,7 @@
 
 use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusquedaController;
+use App\Http\Controllers\BusquedaGuardadaController;
 use App\Http\Controllers\CatalogosController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentoExpedienteController;
@@ -59,6 +60,17 @@ Route::middleware('swafi.auth')->group(function () {
     Route::post('/ubicacion-inventario/inventario', [UbicacionInventarioController::class, 'storeInventario'])->name('ubicacion.inventario');
 
     Route::get('/busqueda-avanzada', [BusquedaController::class, 'index'])->name('busqueda');
+
+    Route::post('/busquedas-guardadas', [BusquedaGuardadaController::class, 'store'])
+        ->name('busquedas-guardadas.store');
+
+    Route::get('/busquedas-guardadas/{busqueda}/aplicar', [BusquedaGuardadaController::class, 'apply'])
+        ->whereNumber('busqueda')
+        ->name('busquedas-guardadas.apply');
+
+    Route::delete('/busquedas-guardadas/{busqueda}', [BusquedaGuardadaController::class, 'destroy'])
+        ->whereNumber('busqueda')
+        ->name('busquedas-guardadas.destroy');
 
     Route::get('/documentos-expediente/{documento}/ver', [DocumentoExpedienteController::class, 'show'])
         ->whereNumber('documento')
