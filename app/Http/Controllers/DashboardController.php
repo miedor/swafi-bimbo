@@ -75,6 +75,9 @@ class DashboardController extends Controller
 
         $documentosPdf = $this->documentosVigentesPorTipo('PDF', $plantaId);
         $documentosXml = $this->documentosVigentesPorTipo('XML', $plantaId);
+        $xmlValidados = $this->cfdiValidationCount($plantaId, ['valido', 'observado', 'invalido']);
+        $cfdiConInconsistencias = $this->cfdiValidationCount($plantaId, ['observado', 'invalido']);
+        $xmlSinValidar = max($documentosXml - $xmlValidados, 0);
 
         $eventosAuditoria = DB::table('bitacora_auditoria')->count();
 
@@ -90,6 +93,8 @@ class DashboardController extends Controller
             'monto_total' => $montoTotal,
             'documentos_pdf' => $documentosPdf,
             'documentos_xml' => $documentosXml,
+            'xml_sin_validar' => $xmlSinValidar,
+            'cfdi_con_inconsistencias' => $cfdiConInconsistencias,
             'eventos_auditoria' => $eventosAuditoria,
             'total_atencion' => $totalAtencion,
             'porcentaje_completos' => $totalExpedientes > 0
@@ -153,9 +158,23 @@ class DashboardController extends Controller
             ->select(
                 'numero_activo',
                 DB::raw('COUNT(*) as total_valores_registrados'),
-                DB::raw("SUM(CASE WHEN estatus_contable = 'baja' OR (estatus_contable IN ('vigente', 'en_revision') AND COALESCE(valor_fiscal, 0) > 0 AND COALESCE(valor_financiero, 0) > 0) THEN 1 ELSE 0 END) as total_valores_validos")
+                DB::raw("SUM(CASE WHEN estatus_contable = 'baja' OR (estatus_contable IN ('vigente', 'en_revision') AND COALESCE(valor_fiscal, 0) > 0 AND COALESCE(valor_financiero, 0) > 0) THEN 1 ELSE 0 END) as total_valores_validos"),
+                DB::raw("SUM(CASE WHEN conciliacion_cfdi = 'validado' OR estatus_contable = 'baja' THEN 1 ELSE 0 END) as total_valores_conciliados")
             )
             ->groupBy('numero_activo');
+
+        $cfdiCounts = DB::table('documentos_expediente as dx')
+            ->leftJoin('cfdi_validaciones as cv', 'cv.documento_id', '=', 'dx.id')
+            ->where('dx.vigente', true)
+            ->whereRaw("UPPER(dx.tipo_documento) = 'XML'")
+            ->select(
+                'dx.expediente_id',
+                DB::raw('COUNT(dx.id) as total_xml_cfdi'),
+                DB::raw('COUNT(cv.id) as total_xml_validados'),
+                DB::raw("SUM(CASE WHEN cv.estatus_validacion = 'valido' THEN 1 ELSE 0 END) as total_cfdi_validos"),
+                DB::raw("SUM(CASE WHEN cv.estatus_validacion IN ('observado','invalido') THEN 1 ELSE 0 END) as total_cfdi_inconsistentes")
+            )
+            ->groupBy('dx.expediente_id');
 
         $query = DB::table('expedientes as e')
             ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
@@ -167,12 +186,18 @@ class DashboardController extends Controller
             ->leftJoinSub($valorCounts, 'vc', function ($join) {
                 $join->on('vc.numero_activo', '=', 'e.numero_activo');
             })
+            ->leftJoinSub($cfdiCounts, 'cfc', function ($join) {
+                $join->on('cfc.expediente_id', '=', 'e.id');
+            })
             ->where(function ($query) {
                 $query->whereIn('e.estatus', ['incompleto', 'observado'])
                     ->orWhereRaw('COALESCE(dc.total_pdf, 0) = 0')
                     ->orWhereRaw('COALESCE(dc.total_xml, 0) = 0')
                     ->orWhereNull('a.ubicacion_id')
-                    ->orWhereRaw('COALESCE(vc.total_valores_validos, 0) = 0');
+                    ->orWhereRaw('COALESCE(vc.total_valores_validos, 0) = 0')
+                    ->orWhereRaw('COALESCE(vc.total_valores_conciliados, 0) = 0')
+                    ->orWhereRaw('COALESCE(cfc.total_xml_validados, 0) < COALESCE(cfc.total_xml_cfdi, 0)')
+                    ->orWhereRaw('COALESCE(cfc.total_cfdi_inconsistentes, 0) > 0');
             })
             ->select([
                 'e.id as expediente_id',
@@ -186,6 +211,11 @@ class DashboardController extends Controller
                 DB::raw('COALESCE(dc.total_xml, 0) as total_xml'),
                 DB::raw('COALESCE(vc.total_valores_registrados, 0) as total_valores_registrados'),
                 DB::raw('COALESCE(vc.total_valores_validos, 0) as total_valores'),
+                DB::raw('COALESCE(vc.total_valores_conciliados, 0) as total_valores_conciliados'),
+                DB::raw('COALESCE(cfc.total_xml_cfdi, 0) as total_xml_cfdi'),
+                DB::raw('COALESCE(cfc.total_xml_validados, 0) as total_xml_validados'),
+                DB::raw('COALESCE(cfc.total_cfdi_validos, 0) as total_cfdi_validos'),
+                DB::raw('COALESCE(cfc.total_cfdi_inconsistentes, 0) as total_cfdi_inconsistentes'),
                 'a.ubicacion_id',
                 'e.fecha_factura',
                 'e.created_at',
@@ -264,6 +294,23 @@ class DashboardController extends Controller
             ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
             ->where('d.vigente', true)
             ->where('d.tipo_documento', $tipoDocumento);
+
+        if ($plantaId) {
+            $query->where('a.planta_id', $plantaId);
+        }
+
+        return $query->count();
+    }
+
+
+    private function cfdiValidationCount(?int $plantaId, array $statuses): int
+    {
+        $query = DB::table('cfdi_validaciones as cv')
+            ->join('documentos_expediente as d', 'd.id', '=', 'cv.documento_id')
+            ->join('expedientes as e', 'e.id', '=', 'cv.expediente_id')
+            ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
+            ->where('d.vigente', true)
+            ->whereIn('cv.estatus_validacion', $statuses);
 
         if ($plantaId) {
             $query->where('a.planta_id', $plantaId);
