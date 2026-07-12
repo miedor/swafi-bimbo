@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\BusquedaGuardada;
+use App\Services\SimplePdfTableExporter;
+use App\Services\SimpleXlsxExporter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -30,15 +32,26 @@ class BusquedaController extends Controller
         'per_page',
     ];
 
-    public function index(Request $request)
-    {
+    public function index(
+        Request $request,
+        SimpleXlsxExporter $xlsxExporter,
+        SimplePdfTableExporter $pdfExporter
+    ) {
         $query = $this->baseQuery();
 
         $this->applyFilters($query, $request);
         $this->applyOrder($query, $request);
 
-        if ($request->input('export') === 'csv') {
-            return $this->exportCsv($query, $request);
+        $exportFormat = strtolower((string) $request->input('export'));
+
+        if (in_array($exportFormat, ['csv', 'xlsx', 'pdf'], true)) {
+            return $this->exportResults(
+                query: $query,
+                request: $request,
+                format: $exportFormat,
+                xlsxExporter: $xlsxExporter,
+                pdfExporter: $pdfExporter
+            );
         }
 
         if ($this->hasMeaningfulFilters($request) && !$request->filled('page')) {
@@ -64,6 +77,7 @@ class BusquedaController extends Controller
             'filtros' => $request->all(),
             'busquedasGuardadas' => $this->busquedasGuardadas(),
             'camposGuardables' => self::CAMPOS_GUARDABLES,
+            'canExportReports' => $this->canExportReports(),
         ]);
     }
 
@@ -460,71 +474,176 @@ class BusquedaController extends Controller
             ->get();
     }
 
-    private function exportCsv($query, Request $request)
-    {
-        $rows = $query->get();
+    private function exportResults(
+        $query,
+        Request $request,
+        string $format,
+        SimpleXlsxExporter $xlsxExporter,
+        SimplePdfTableExporter $pdfExporter
+    ) {
+        if (!$this->canExportReports()) {
+            abort(403, 'Tu usuario no tiene permiso para exportar resultados de búsqueda.');
+        }
+
+        $limit = 5000;
+        $rows = (clone $query)
+            ->limit($limit + 1)
+            ->get();
+
+        if ($rows->count() > $limit) {
+            return redirect()
+                ->route('busqueda', $request->except(['export']))
+                ->withErrors([
+                    'exportacion' => 'La exportación supera el límite de ' . number_format($limit) . ' registros. Aplica filtros más específicos.',
+                ]);
+        }
+
+        $columns = $this->exportColumns();
+        $dataRows = $this->rowsForExport($rows, array_keys($columns), $format);
         $filtros = $this->filtersForAudit($request);
+        $filenameBase = 'consulta_swafi_' . now()->format('Ymd_His');
 
         $this->registrarBitacoraConsulta(
-            accion: 'EXPORTACION_BUSQUEDA_AVANZADA',
+            accion: match ($format) {
+                'xlsx' => 'EXPORTACION_BUSQUEDA_XLSX',
+                'pdf' => 'EXPORTACION_BUSQUEDA_PDF',
+                default => 'EXPORTACION_BUSQUEDA_CSV',
+            },
             filtros: [
                 'filtros' => $filtros,
                 'total_exportado' => $rows->count(),
-                'formato' => 'CSV',
+                'formato' => strtoupper($format),
+                'columnas' => array_keys($columns),
             ]
         );
 
-        return response()->streamDownload(function () use ($rows) {
-            $output = fopen('php://output', 'w');
-            fwrite($output, "\xEF\xBB\xBF");
+        if ($format === 'csv') {
+            return response()->streamDownload(function () use ($columns, $dataRows) {
+                $output = fopen('php://output', 'w');
+                fwrite($output, "\xEF\xBB\xBF");
+                fputcsv($output, array_values($columns));
 
-            fputcsv($output, [
-                'Folio factura',
-                'UUID CFDI',
-                'Número activo',
-                'Descripción activo',
-                'Proveedor',
-                'RFC',
-                'Planta',
-                'Centro costo',
-                'Área',
-                'Ubicación',
-                'Fecha factura',
-                'Monto',
-                'Moneda',
-                'Estatus documental',
-                'Estatus operativo',
+                foreach ($dataRows as $row) {
+                    fputcsv($output, $row);
+                }
+
+                fclose($output);
+            }, $filenameBase . '.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
             ]);
+        }
 
-            foreach ($rows as $row) {
-                $ubicacion = trim(implode(' / ', array_filter([
-                    $row->ubicacion_codigo,
-                    $row->ubicacion_descripcion,
-                ])));
-
-                fputcsv($output, [
-                    $row->folio_factura,
-                    $row->uuid_cfdi,
-                    $row->numero_activo,
-                    $row->activo_descripcion,
-                    $row->proveedor_nombre,
-                    $row->proveedor_rfc,
-                    $row->planta_nombre,
-                    $row->centro_costo_clave,
-                    $row->area_nombre,
-                    $ubicacion,
-                    $row->fecha_factura,
-                    $row->monto_factura,
-                    $row->moneda,
-                    $row->estatus,
-                    $row->estatus_operativo,
-                ]);
+        if ($format === 'xlsx') {
+            try {
+                $path = $xlsxExporter->export('Búsqueda avanzada', array_values($columns), $dataRows);
+            } catch (\Throwable $exception) {
+                return redirect()
+                    ->route('busqueda', $request->except(['export']))
+                    ->withErrors(['exportacion' => $exception->getMessage()]);
             }
 
-            fclose($output);
-        }, 'consulta_swafi_' . now()->format('Ymd_His') . '.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+            return response()
+                ->download($path, $filenameBase . '.xlsx', [
+                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                ])
+                ->deleteFileAfterSend(true);
+        }
+
+        $pdf = $pdfExporter->export(
+            title: 'Resultados de búsqueda avanzada SWAFI',
+            headers: array_values($columns),
+            rows: $dataRows,
+            metadata: [
+                'usuario' => session('swafi_nombre', session('swafi_usuario', 'Usuario SWAFI')),
+                'fecha' => now()->format('d/m/Y H:i:s'),
+                'filtros' => $this->filterSummary($request),
+            ]
+        );
+
+        return response($pdf, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filenameBase . '.pdf"',
+            'Content-Length' => (string) strlen($pdf),
         ]);
+    }
+
+    private function exportColumns(): array
+    {
+        return [
+            'folio_factura' => 'Folio factura',
+            'uuid_cfdi' => 'UUID CFDI',
+            'numero_activo' => 'Número activo',
+            'activo_descripcion' => 'Descripción activo',
+            'proveedor_nombre' => 'Proveedor',
+            'proveedor_rfc' => 'RFC',
+            'planta_nombre' => 'Planta',
+            'centro_costo_clave' => 'Centro de costo',
+            'area_nombre' => 'Área',
+            'ubicacion_resumen' => 'Ubicación',
+            'fecha_factura' => 'Fecha factura',
+            'monto_factura' => 'Monto',
+            'moneda' => 'Moneda',
+            'estatus' => 'Estatus documental',
+            'estatus_operativo' => 'Estatus operativo',
+        ];
+    }
+
+    private function rowsForExport($rows, array $columnKeys, string $format): array
+    {
+        return $rows->map(function ($row) use ($columnKeys, $format) {
+            $row->ubicacion_resumen = trim(implode(' / ', array_filter([
+                $row->ubicacion_codigo,
+                $row->ubicacion_descripcion,
+                $row->area_nombre,
+            ])));
+
+            $line = [];
+
+            foreach ($columnKeys as $key) {
+                $value = data_get($row, $key);
+
+                if ($key === 'monto_factura' && $value !== null && $value !== '') {
+                    $line[] = $format === 'xlsx'
+                        ? (float) $value
+                        : number_format((float) $value, 2, '.', ',');
+                    continue;
+                }
+
+                if (in_array($key, ['estatus', 'estatus_operativo'], true) && $value !== null && $value !== '') {
+                    $line[] = ucfirst(str_replace('_', ' ', (string) $value));
+                    continue;
+                }
+
+                $line[] = $value;
+            }
+
+            return $line;
+        })->all();
+    }
+
+    private function filterSummary(Request $request): string
+    {
+        $filters = $this->filtersForAudit($request);
+        $parts = [];
+
+        foreach ($filters as $key => $value) {
+            if ($value === null || $value === '') {
+                continue;
+            }
+
+            $parts[] = str_replace('_', ' ', $key) . ': ' . $value;
+        }
+
+        return empty($parts) ? 'Sin filtros adicionales' : implode(' | ', $parts);
+    }
+
+    private function canExportReports(): bool
+    {
+        $roles = session('swafi_roles', []);
+        $permissions = session('swafi_permissions', []);
+
+        return in_array('Administrador SWAFI', $roles, true)
+            || in_array('reportes.exportar', $permissions, true);
     }
 
     private function hasMeaningfulFilters(Request $request): bool
