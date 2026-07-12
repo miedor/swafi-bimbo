@@ -114,6 +114,9 @@ class SwafiAuth
             'registro-masivo.plantilla' => 'expedientes.crear',
 
             'busqueda',
+            'busquedas-guardadas.store',
+            'busquedas-guardadas.apply',
+            'busquedas-guardadas.destroy',
             'expediente',
             'documentos.ver',
             'documentos.descargar',
