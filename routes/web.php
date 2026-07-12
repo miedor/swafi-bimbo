@@ -13,6 +13,7 @@ use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RegistroIndividualController;
 use App\Http\Controllers\RegistroMasivoController;
 use App\Http\Controllers\ReportesController;
+use App\Http\Controllers\ReporteGuardadoController;
 use App\Http\Controllers\SeguridadController;
 use App\Http\Controllers\UbicacionInventarioController;
 use App\Http\Controllers\ValoresActivoController;
@@ -127,6 +128,17 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/detalle-expediente/{expediente?}', [BusquedaController::class, 'show'])->name('expediente');
 
     Route::get('/reportes', [ReportesController::class, 'index'])->name('reportes');
+
+    Route::post('/reportes-guardados', [ReporteGuardadoController::class, 'store'])
+        ->name('reportes-guardados.store');
+
+    Route::get('/reportes-guardados/{reporte}/aplicar', [ReporteGuardadoController::class, 'apply'])
+        ->whereNumber('reporte')
+        ->name('reportes-guardados.apply');
+
+    Route::delete('/reportes-guardados/{reporte}', [ReporteGuardadoController::class, 'destroy'])
+        ->whereNumber('reporte')
+        ->name('reportes-guardados.destroy');
 
     Route::get('/catalogos', [CatalogosController::class, 'index'])->name('catalogos');
     Route::post('/catalogos', [CatalogosController::class, 'store'])->name('catalogos.store');
