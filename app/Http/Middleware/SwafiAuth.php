@@ -149,6 +149,10 @@ class SwafiAuth
 
             'reportes' => 'reportes.exportar',
 
+            'reportes-guardados.store',
+            'reportes-guardados.apply',
+            'reportes-guardados.destroy' => 'reportes.plantillas',
+
             'catalogos',
             'catalogos.store',
             'catalogos.importar',
