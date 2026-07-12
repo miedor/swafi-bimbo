@@ -632,6 +632,12 @@
 
         if ((int) ($item->total_xml ?? 0) === 0) {
             $motivos[] = ['texto' => 'Falta XML', 'clase' => 'danger'];
+        } elseif ((int) ($item->total_xml_validados ?? 0) < (int) ($item->total_xml_cfdi ?? 0)) {
+            $motivos[] = ['texto' => 'XML CFDI sin validar', 'clase' => 'danger'];
+        }
+
+        if ((int) ($item->total_cfdi_inconsistentes ?? 0) > 0) {
+            $motivos[] = ['texto' => 'CFDI con inconsistencias', 'clase' => 'danger'];
         }
 
         if (empty($item->ubicacion_id)) {
@@ -640,6 +646,8 @@
 
         if ((int) ($item->total_valores ?? 0) === 0) {
             $motivos[] = ['texto' => 'Falta valores fiscales/financieros', 'clase' => ''];
+        } elseif ((int) ($item->total_valores_conciliados ?? 0) === 0) {
+            $motivos[] = ['texto' => 'Valores sin conciliar con CFDI', 'clase' => ''];
         }
 
         if (empty($motivos)) {
@@ -760,10 +768,10 @@
       <small>Suma de facturas</small>
     </div>
 
-    <div class="dash-kpi">
+    <div class="dash-kpi {{ (($kpis['xml_sin_validar'] ?? 0) + ($kpis['cfdi_con_inconsistencias'] ?? 0)) > 0 ? 'warn' : 'ok' }}">
       <span>PDF/XML vigentes</span>
       <strong>{{ number_format((int) $kpis['documentos_pdf']) }}/{{ number_format((int) $kpis['documentos_xml']) }}</strong>
-      <small>Resguardo documental</small>
+      <small>Sin validar: {{ number_format((int) ($kpis['xml_sin_validar'] ?? 0)) }} · Con inconsistencias: {{ number_format((int) ($kpis['cfdi_con_inconsistencias'] ?? 0)) }}</small>
     </div>
 
     <div class="dash-kpi">
@@ -848,7 +856,8 @@
                     PDF: {{ ((int) $item->total_pdf) > 0 ? 'Sí' : 'No' }}<br>
                     XML: {{ ((int) $item->total_xml) > 0 ? 'Sí' : 'No' }}<br>
                     <span class="dash-mini">
-                      Valores: {{ ((int) $item->total_valores) > 0 ? 'Sí' : 'No' }}
+                      Valores: {{ ((int) $item->total_valores) > 0 ? 'Sí' : 'No' }}<br>
+                      CFDI validado: {{ ((int) ($item->total_cfdi_validos ?? 0)) > 0 ? 'Sí' : 'No' }}
                     </span>
                   </td>
 
@@ -1043,7 +1052,7 @@
             </a>
           @endif
 
-          @if ($can('valores.administrar'))
+          @if ($can('valores.ver') || $can('valores.administrar'))
             <a class="dash-quick-link" href="{{ route('valores') }}">
               <strong>Valores fiscales</strong>
               <span>Control financiero y fiscal del activo.</span>
