@@ -4,6 +4,7 @@ use App\Http\Controllers\AuthController;
 use App\Http\Controllers\BusquedaController;
 use App\Http\Controllers\BusquedaGuardadaController;
 use App\Http\Controllers\CatalogosController;
+use App\Http\Controllers\CfdiValidationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentoExpedienteController;
 use App\Http\Controllers\ExpedienteGestionController;
@@ -84,6 +85,10 @@ Route::middleware('swafi.auth')->group(function () {
     Route::delete('/documentos-expediente/{documento}', [DocumentoExpedienteController::class, 'destroy'])
         ->whereNumber('documento')
         ->name('documentos.eliminar');
+
+    Route::post('/expedientes/{expediente}/cfdi/revalidar', [CfdiValidationController::class, 'revalidate'])
+        ->whereNumber('expediente')
+        ->name('cfdi.revalidar');
 
     Route::get('/documentos-expediente/{documento}/descargar', [DocumentoExpedienteController::class, 'download'])
         ->whereNumber('documento')
