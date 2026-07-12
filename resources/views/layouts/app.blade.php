@@ -39,7 +39,7 @@
   };
 
   $showM01 = $swafiCan('expedientes.ver') || $swafiCan('expedientes.crear');
-  $showM02 = $swafiCan('valores.administrar') || $swafiCan('ubicaciones.administrar');
+  $showM02 = $swafiCan('valores.ver') || $swafiCan('valores.administrar') || $swafiCan('ubicaciones.administrar');
   $showM03 = $swafiCan('expedientes.ver') || $swafiCan('reportes.exportar');
   $showM04 = $swafiCan('catalogos.administrar') || $swafiCan('seguridad.administrar') || $swafiCan('bitacora.ver');
 
@@ -548,7 +548,7 @@
         </button>
 
         <div class="nav-submenu {{ $m02Open ? 'is-open' : '' }}" data-nav-group="m02">
-          @if ($swafiCan('valores.administrar'))
+          @if ($swafiCan('valores.ver') || $swafiCan('valores.administrar'))
             <a class="nav-item {{ request()->routeIs('valores') ? 'active' : '' }}" href="{{ route('valores') }}">
               {!! $swafiIcon('coins', 'nav-icon') !!}
               <span>Valores fiscales y financieros</span>
