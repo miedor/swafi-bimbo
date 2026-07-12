@@ -179,6 +179,10 @@
   </div>
 @endif
 
+@if (session('warning'))
+  <div style="margin-bottom:14px;padding:12px 14px;border-radius:14px;background:#fff4d6;border:1px solid #facc15;color:#7a4b00;font-weight:800;">{{ session('warning') }}</div>
+@endif
+
 @if ($errors->any())
   <div style="margin-bottom:14px;padding:12px 14px;border-radius:14px;background:#fff4d6;border:1px solid #facc15;color:#7a4b00;font-weight:800;">
     @foreach ($errors->all() as $error)
@@ -204,6 +208,8 @@
   $canManageDocuments = $isAdminSwafi
       || in_array('documentos.cargar', $swafiPermissions, true)
       || in_array('expedientes.editar', $swafiPermissions, true);
+  $canValidateCfdi = $isAdminSwafi || in_array('cfdi.validar', $swafiPermissions, true);
+  $cfdiValidaciones = $cfdiValidaciones ?? collect();
 
   $canCreateObservation = $isAdminSwafi || $isConsultaAuditoria || in_array('observaciones.crear', $swafiPermissions, true);
   $canAttendObservation = $isAdminSwafi || in_array('observaciones.atender', $swafiPermissions, true);
@@ -449,7 +455,78 @@
       <strong>Valor en libros</strong>
       <div>{{ $valor ? '$ ' . number_format((float) $valor->valor_en_libros, 2) : 'Pendiente' }}</div>
     </div>
+
+    <div class="meta-box">
+      <strong>Moneda / tipo de cambio</strong>
+      <div>{{ $valor ? (($valor->moneda ?? 'MXN') . ' / ' . ($valor->tipo_cambio ? number_format((float) $valor->tipo_cambio, 6) : 'N/A')) : 'Pendiente' }}</div>
+    </div>
+
+    <div class="meta-box">
+      <strong>Conciliación CFDI</strong>
+      @php
+        $valorConciliacion = $valor->conciliacion_cfdi ?? 'sin_xml';
+        $valorConciliacionClass = $valorConciliacion === 'validado' ? 'ok' : ($valorConciliacion === 'observado' ? 'warn' : 'danger');
+      @endphp
+      <div><span class="pill {{ $valorConciliacionClass }}">{{ ucfirst(str_replace('_', ' ', $valorConciliacion)) }}</span></div>
+    </div>
   </div>
+</section>
+
+<section class="card" style="margin-top:20px">
+  <div class="section-title">
+    <h2>Validación técnica del XML CFDI</h2>
+    @php
+      $cfdiStatus = $cfdiValidaciones->contains(fn($item) => $item->estatus_validacion === 'invalido')
+          ? 'danger'
+          : ($cfdiValidaciones->contains(fn($item) => $item->estatus_validacion === 'observado') ? 'warn' : 'ok');
+    @endphp
+    <span class="pill {{ $cfdiValidaciones->isEmpty() ? 'warn' : $cfdiStatus }}">
+      {{ $cfdiValidaciones->isEmpty() ? 'Sin validación' : $cfdiValidaciones->count() . ' XML validado(s)' }}
+    </span>
+  </div>
+
+  <div class="obs-role-note">
+    SWAFI verifica estructura XML, UUID, RFC emisor, fecha, total, moneda, timbre, sello, certificado y consistencia contra el expediente. Esta revisión técnica no sustituye una consulta en línea del estado fiscal ante SAT.
+  </div>
+
+  @if($canValidateCfdi)
+    <form method="POST" action="{{ route('cfdi.revalidar', $expediente->expediente_id) }}" style="margin:12px 0;">
+      @csrf
+      <button type="submit" class="tab">Revalidar XML CFDI vigentes</button>
+    </form>
+  @endif
+
+  @forelse($cfdiValidaciones as $cfdi)
+    @php
+      $cfdiErrors = is_string($cfdi->errores) ? json_decode($cfdi->errores, true) : $cfdi->errores;
+      $cfdiWarnings = is_string($cfdi->advertencias) ? json_decode($cfdi->advertencias, true) : $cfdi->advertencias;
+      $cfdiErrors = is_array($cfdiErrors) ? $cfdiErrors : [];
+      $cfdiWarnings = is_array($cfdiWarnings) ? $cfdiWarnings : [];
+      $cfdiPill = $cfdi->estatus_validacion === 'valido' ? 'ok' : ($cfdi->estatus_validacion === 'observado' ? 'warn' : 'danger');
+    @endphp
+    <div class="obs-card" style="margin-top:12px;">
+      <div class="obs-card-head">
+        <div><h3>{{ $cfdi->nombre_archivo }}</h3><div class="obs-muted">Versión documental {{ $cfdi->documento_version }} · validado {{ $cfdi->validado_at }}</div></div>
+        <span class="obs-badge {{ $cfdiPill }}">{{ ucfirst($cfdi->estatus_validacion) }}</span>
+      </div>
+      <div class="meta-grid">
+        <div class="meta-box"><strong>UUID</strong><div>{{ $cfdi->uuid_cfdi ?: 'No localizado' }}</div></div>
+        <div class="meta-box"><strong>Emisor</strong><div>{{ $cfdi->rfc_emisor ?: 'Sin RFC' }}<br><small>{{ $cfdi->nombre_emisor }}</small></div></div>
+        <div class="meta-box"><strong>Total CFDI</strong><div>{{ $cfdi->total !== null ? '$ '.number_format((float)$cfdi->total,2).' '.$cfdi->moneda : 'No localizado' }}</div></div>
+        <div class="meta-box"><strong>Tipo de cambio</strong><div>{{ $cfdi->tipo_cambio !== null ? number_format((float)$cfdi->tipo_cambio,6) : 'No aplica / no informado' }}</div></div>
+        <div class="meta-box"><strong>Coincidencias</strong><div>UUID: {{ $cfdi->coincide_uuid === null ? 'N/A' : ($cfdi->coincide_uuid ? 'Sí' : 'No') }} · RFC: {{ $cfdi->coincide_rfc === null ? 'N/A' : ($cfdi->coincide_rfc ? 'Sí' : 'No') }} · Monto: {{ $cfdi->coincide_monto === null ? 'N/A' : ($cfdi->coincide_monto ? 'Sí' : 'No') }}</div></div>
+        <div class="meta-box"><strong>Integridad técnica</strong><div>Sello: {{ $cfdi->sello_presente ? 'Sí' : 'No' }} · Certificado: {{ $cfdi->certificado_presente ? 'Sí' : 'No' }} · Timbre: {{ $cfdi->timbre_presente ? 'Sí' : 'No' }}</div></div>
+      </div>
+      @if($cfdiErrors)
+        <div class="obs-role-note" style="margin-top:10px;border-color:#fecaca;background:#fff0ee;color:#b42318;"><strong>Errores:</strong> {{ implode(' ', $cfdiErrors) }}</div>
+      @endif
+      @if($cfdiWarnings)
+        <div class="obs-role-note" style="margin-top:10px;border-color:#f9d36a;background:#fff7db;color:#8a4b00;"><strong>Advertencias:</strong> {{ implode(' ', $cfdiWarnings) }}</div>
+      @endif
+    </div>
+  @empty
+    <div class="obs-role-note" style="margin-top:12px;">No existe una validación CFDI registrada. Carga un XML vigente o utiliza “Revalidar XML CFDI vigentes”.</div>
+  @endforelse
 </section>
 
 <section class="card" style="margin-top:20px">
