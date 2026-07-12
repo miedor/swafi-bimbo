@@ -137,11 +137,14 @@ class SwafiAuth
             'observaciones.validar',
             'observaciones.cancelar' => 'observaciones.validar',
 
-            'valores',
+            'valores' => 'valores.ver',
+
             'valores.store',
             'valores.plantilla',
             'valores.importar',
             'valores.destroy' => 'valores.administrar',
+
+            'cfdi.revalidar' => 'cfdi.validar',
 
             'ubicacion',
             'ubicacion.movimiento',
