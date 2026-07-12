@@ -2,31 +2,68 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\BusquedaGuardada;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class BusquedaController extends Controller
 {
+    private const CAMPOS_GUARDABLES = [
+        'folio_factura',
+        'uuid_cfdi',
+        'proveedor',
+        'rfc',
+        'numero_activo',
+        'planta_id',
+        'centro_costo_id',
+        'area_id',
+        'ubicacion_id',
+        'estatus',
+        'estatus_operativo',
+        'fecha_desde',
+        'fecha_hasta',
+        'monto_desde',
+        'monto_hasta',
+        'ordenar_por',
+        'direccion',
+        'per_page',
+    ];
+
     public function index(Request $request)
     {
         $query = $this->baseQuery();
 
         $this->applyFilters($query, $request);
+        $this->applyOrder($query, $request);
 
         if ($request->input('export') === 'csv') {
-            return $this->exportCsv($query);
+            return $this->exportCsv($query, $request);
+        }
+
+        if ($this->hasMeaningfulFilters($request) && !$request->filled('page')) {
+            $this->registrarBitacoraConsulta(
+                accion: 'BUSQUEDA_AVANZADA',
+                filtros: $this->filtersForAudit($request)
+            );
+        }
+
+        $perPage = (int) $request->input('per_page', 10);
+
+        if (!in_array($perPage, [10, 25, 50, 100], true)) {
+            $perPage = 10;
         }
 
         $resultados = $query
-            ->orderByDesc('e.created_at')
-            ->paginate((int) $request->input('per_page', 10))
+            ->paginate($perPage)
             ->withQueryString();
 
         return view('swafi.busqueda', [
             'resultados' => $resultados,
             'catalogos' => $this->catalogos(),
             'filtros' => $request->all(),
+            'busquedasGuardadas' => $this->busquedasGuardadas(),
+            'camposGuardables' => self::CAMPOS_GUARDABLES,
         ]);
     }
 
@@ -119,7 +156,7 @@ class BusquedaController extends Controller
 
         DB::table('bitacora_auditoria')->insert([
             'numero_activo' => $detalle->numero_activo,
-            'user_id' => session('swafi_user_id') ?: auth()->id(),
+            'user_id' => $this->userId(),
             'modulo' => 'M03 Consultas',
             'accion' => 'CONSULTA',
             'tabla_afectada' => 'expedientes',
@@ -247,6 +284,7 @@ class BusquedaController extends Controller
             ->leftJoin('centros_costo as cc', 'cc.id', '=', 'a.centro_costo_id')
             ->leftJoin('plantas as pl', 'pl.id', '=', 'a.planta_id')
             ->leftJoin('ubicaciones as u', 'u.id', '=', 'a.ubicacion_id')
+            ->leftJoin('areas as ar', 'ar.id', '=', 'u.area_id')
             ->select([
                 'e.id as expediente_id',
                 'e.folio_factura',
@@ -255,6 +293,7 @@ class BusquedaController extends Controller
                 'e.monto_factura',
                 'e.moneda',
                 'e.estatus',
+                'e.created_at as expediente_creado',
                 'a.numero_activo',
                 'a.descripcion as activo_descripcion',
                 'a.estatus_operativo',
@@ -263,99 +302,222 @@ class BusquedaController extends Controller
                 'cc.clave as centro_costo_clave',
                 'cc.descripcion as centro_costo_descripcion',
                 'pl.nombre as planta_nombre',
+                'u.id as ubicacion_id',
+                'u.codigo_interno as ubicacion_codigo',
                 'u.descripcion as ubicacion_descripcion',
+                'ar.id as area_id',
+                'ar.nombre as area_nombre',
             ]);
     }
 
     private function applyFilters($query, Request $request): void
     {
         if ($request->filled('folio_factura')) {
-            $query->where('e.folio_factura', 'like', '%' . $request->folio_factura . '%');
+            $query->where('e.folio_factura', 'like', '%' . trim((string) $request->input('folio_factura')) . '%');
+        }
+
+        if ($request->filled('uuid_cfdi')) {
+            $query->where('e.uuid_cfdi', 'like', '%' . trim((string) $request->input('uuid_cfdi')) . '%');
         }
 
         if ($request->filled('numero_activo')) {
-            $query->where('a.numero_activo', 'like', '%' . $request->numero_activo . '%');
+            $query->where('a.numero_activo', 'like', '%' . trim((string) $request->input('numero_activo')) . '%');
         }
 
         if ($request->filled('proveedor')) {
-            $query->where('p.nombre', 'like', '%' . $request->proveedor . '%');
+            $query->where('p.nombre', 'like', '%' . trim((string) $request->input('proveedor')) . '%');
         }
 
         if ($request->filled('rfc')) {
-            $query->where('p.rfc', 'like', '%' . $request->rfc . '%');
+            $query->where('p.rfc', 'like', '%' . trim((string) $request->input('rfc')) . '%');
         }
 
         if ($request->filled('planta_id')) {
-            $query->where('a.planta_id', $request->planta_id);
+            $query->where('a.planta_id', (int) $request->input('planta_id'));
         }
 
         if ($request->filled('centro_costo_id')) {
-            $query->where('a.centro_costo_id', $request->centro_costo_id);
+            $query->where('a.centro_costo_id', (int) $request->input('centro_costo_id'));
+        }
+
+        if ($request->filled('area_id')) {
+            $query->where('u.area_id', (int) $request->input('area_id'));
+        }
+
+        if ($request->filled('ubicacion_id')) {
+            $query->where('a.ubicacion_id', (int) $request->input('ubicacion_id'));
         }
 
         if ($request->filled('estatus')) {
-            $query->where('e.estatus', $request->estatus);
+            $query->where('e.estatus', $request->input('estatus'));
+        }
+
+        if ($request->filled('estatus_operativo')) {
+            $query->where('a.estatus_operativo', $request->input('estatus_operativo'));
         }
 
         if ($request->filled('fecha_desde')) {
-            $query->whereDate('e.fecha_factura', '>=', $request->fecha_desde);
+            $query->whereDate('e.fecha_factura', '>=', $request->input('fecha_desde'));
         }
 
         if ($request->filled('fecha_hasta')) {
-            $query->whereDate('e.fecha_factura', '<=', $request->fecha_hasta);
+            $query->whereDate('e.fecha_factura', '<=', $request->input('fecha_hasta'));
         }
 
         if ($request->filled('monto_desde')) {
-            $query->where('e.monto_factura', '>=', $request->monto_desde);
+            $query->where('e.monto_factura', '>=', (float) $request->input('monto_desde'));
         }
 
         if ($request->filled('monto_hasta')) {
-            $query->where('e.monto_factura', '<=', $request->monto_hasta);
+            $query->where('e.monto_factura', '<=', (float) $request->input('monto_hasta'));
         }
+    }
+
+    private function applyOrder($query, Request $request): void
+    {
+        $allowed = [
+            'fecha_factura' => 'e.fecha_factura',
+            'fecha_registro' => 'e.created_at',
+            'numero_activo' => 'a.numero_activo',
+            'folio_factura' => 'e.folio_factura',
+            'proveedor' => 'p.nombre',
+            'planta' => 'pl.nombre',
+            'monto_factura' => 'e.monto_factura',
+            'estatus' => 'e.estatus',
+        ];
+
+        $orderKey = (string) $request->input('ordenar_por', 'fecha_factura');
+        $direction = strtolower((string) $request->input('direccion', 'desc'));
+
+        if (!array_key_exists($orderKey, $allowed)) {
+            $orderKey = 'fecha_factura';
+        }
+
+        if (!in_array($direction, ['asc', 'desc'], true)) {
+            $direction = 'desc';
+        }
+
+        $query->orderBy($allowed[$orderKey], $direction)
+            ->orderByDesc('e.id');
     }
 
     private function catalogos(): array
     {
         return [
-            'plantas' => DB::table('plantas')->where('estatus', 'activo')->orderBy('nombre')->get(),
-            'centrosCosto' => DB::table('centros_costo')->where('estatus', 'activo')->orderBy('clave')->get(),
+            'plantas' => DB::table('plantas')
+                ->where('estatus', 'activo')
+                ->orderBy('nombre')
+                ->get(),
+
+            'centrosCosto' => DB::table('centros_costo')
+                ->where('estatus', 'activo')
+                ->orderBy('clave')
+                ->get(),
+
+            'areas' => DB::table('areas as ar')
+                ->leftJoin('plantas as pl', 'pl.id', '=', 'ar.planta_id')
+                ->where('ar.estatus', 'activo')
+                ->select([
+                    'ar.id',
+                    'ar.nombre',
+                    'ar.planta_id',
+                    'pl.nombre as planta_nombre',
+                ])
+                ->orderBy('pl.nombre')
+                ->orderBy('ar.nombre')
+                ->get(),
+
+            'ubicaciones' => DB::table('ubicaciones as u')
+                ->leftJoin('plantas as pl', 'pl.id', '=', 'u.planta_id')
+                ->leftJoin('areas as ar', 'ar.id', '=', 'u.area_id')
+                ->where('u.estatus', 'activo')
+                ->select([
+                    'u.id',
+                    'u.codigo_interno',
+                    'u.descripcion',
+                    'u.planta_id',
+                    'u.area_id',
+                    'pl.nombre as planta_nombre',
+                    'ar.nombre as area_nombre',
+                ])
+                ->orderBy('pl.nombre')
+                ->orderBy('ar.nombre')
+                ->orderBy('u.codigo_interno')
+                ->get(),
         ];
     }
 
-    private function exportCsv($query)
+    private function busquedasGuardadas()
     {
-        $rows = $query->orderByDesc('e.created_at')->get();
+        if (!Schema::hasTable('busquedas_guardadas')) {
+            return collect();
+        }
+
+        return BusquedaGuardada::query()
+            ->where('user_id', $this->userId())
+            ->where('modulo', 'busqueda')
+            ->orderByDesc('updated_at')
+            ->get();
+    }
+
+    private function exportCsv($query, Request $request)
+    {
+        $rows = $query->get();
+        $filtros = $this->filtersForAudit($request);
+
+        $this->registrarBitacoraConsulta(
+            accion: 'EXPORTACION_BUSQUEDA_AVANZADA',
+            filtros: [
+                'filtros' => $filtros,
+                'total_exportado' => $rows->count(),
+                'formato' => 'CSV',
+            ]
+        );
 
         return response()->streamDownload(function () use ($rows) {
             $output = fopen('php://output', 'w');
+            fwrite($output, "\xEF\xBB\xBF");
 
             fputcsv($output, [
                 'Folio factura',
                 'UUID CFDI',
                 'Número activo',
+                'Descripción activo',
                 'Proveedor',
                 'RFC',
                 'Planta',
                 'Centro costo',
+                'Área',
+                'Ubicación',
                 'Fecha factura',
                 'Monto',
                 'Moneda',
-                'Estatus',
+                'Estatus documental',
+                'Estatus operativo',
             ]);
 
             foreach ($rows as $row) {
+                $ubicacion = trim(implode(' / ', array_filter([
+                    $row->ubicacion_codigo,
+                    $row->ubicacion_descripcion,
+                ])));
+
                 fputcsv($output, [
                     $row->folio_factura,
                     $row->uuid_cfdi,
                     $row->numero_activo,
+                    $row->activo_descripcion,
                     $row->proveedor_nombre,
                     $row->proveedor_rfc,
                     $row->planta_nombre,
                     $row->centro_costo_clave,
+                    $row->area_nombre,
+                    $ubicacion,
                     $row->fecha_factura,
                     $row->monto_factura,
                     $row->moneda,
                     $row->estatus,
+                    $row->estatus_operativo,
                 ]);
             }
 
@@ -363,5 +525,62 @@ class BusquedaController extends Controller
         }, 'consulta_swafi_' . now()->format('Ymd_His') . '.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    private function hasMeaningfulFilters(Request $request): bool
+    {
+        foreach (self::CAMPOS_GUARDABLES as $field) {
+            if (in_array($field, ['ordenar_por', 'direccion', 'per_page'], true)) {
+                continue;
+            }
+
+            if ($request->filled($field)) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private function filtersForAudit(Request $request): array
+    {
+        $filters = [];
+
+        foreach (self::CAMPOS_GUARDABLES as $field) {
+            if ($request->filled($field)) {
+                $filters[$field] = $request->input($field);
+            }
+        }
+
+        return $filters;
+    }
+
+    private function registrarBitacoraConsulta(string $accion, array $filtros): void
+    {
+        try {
+            DB::table('bitacora_auditoria')->insert([
+                'numero_activo' => $filtros['numero_activo'] ?? null,
+                'user_id' => $this->userId(),
+                'modulo' => 'M03 Consultas, reportes y seguimiento',
+                'accion' => $accion,
+                'tabla_afectada' => 'expedientes',
+                'registro_clave' => null,
+                'antes' => null,
+                'despues' => json_encode($filtros, JSON_UNESCAPED_UNICODE),
+                'ip' => request()->ip(),
+                'fecha_evento' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Throwable $exception) {
+            // La consulta o exportación no debe fallar por un error de bitácora.
+        }
+    }
+
+    private function userId(): ?int
+    {
+        $userId = (int) (session('swafi_user_id') ?: auth()->id());
+
+        return $userId > 0 ? $userId : null;
     }
 }
