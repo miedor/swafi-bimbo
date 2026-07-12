@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\DocumentoExpediente;
+use App\Services\CfdiValidationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -414,36 +415,11 @@ class DocumentoExpedienteController extends Controller
 
     private function updateDocumentalStatus(int $expedienteId, string $numeroActivo): string
     {
-        $tipos = DB::table('documentos_expediente')
-            ->where('expediente_id', $expedienteId)
-            ->where('vigente', true)
-            ->pluck('tipo_documento')
-            ->map(fn ($tipo) => strtoupper((string) $tipo))
-            ->unique()
-            ->values()
-            ->all();
-
-        $estatus = in_array('PDF', $tipos, true) && in_array('XML', $tipos, true)
-            ? 'completo'
-            : 'incompleto';
-
-        DB::table('expedientes')
-            ->where('id', $expedienteId)
-            ->update([
-                'estatus' => $estatus,
-                'actualizado_por' => auth()->id(),
-                'updated_at' => now(),
-            ]);
-
-        DB::table('activos')
-            ->where('numero_activo', $numeroActivo)
-            ->update([
-                'estatus_documental' => $estatus,
-                'actualizado_por' => auth()->id(),
-                'updated_at' => now(),
-            ]);
-
-        return $estatus;
+        return app(CfdiValidationService::class)->recalculateExpedienteStatus(
+            $expedienteId,
+            $numeroActivo,
+            auth()->id()
+        );
     }
 
     private function findDocumentContext(int $documento): array
