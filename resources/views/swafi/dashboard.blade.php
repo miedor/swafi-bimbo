@@ -650,6 +650,16 @@
             $motivos[] = ['texto' => 'Valores sin conciliar con CFDI', 'clase' => ''];
         }
 
+        if (in_array(($item->estatus_localizacion ?? ''), ['no_encontrado', 'diferencia', 'pendiente'], true)) {
+            $inventarioTexto = [
+                'no_encontrado' => 'Activo no encontrado en inventario',
+                'diferencia' => 'Diferencia de ubicación en inventario',
+                'pendiente' => 'Inventario pendiente de revisión',
+            ][$item->estatus_localizacion] ?? 'Discrepancia de inventario';
+
+            $motivos[] = ['texto' => $inventarioTexto, 'clase' => 'danger'];
+        }
+
         if (empty($motivos)) {
             $motivos[] = ['texto' => 'Sin corrección pendiente', 'clase' => 'ok'];
         }
@@ -857,7 +867,8 @@
                     XML: {{ ((int) $item->total_xml) > 0 ? 'Sí' : 'No' }}<br>
                     <span class="dash-mini">
                       Valores: {{ ((int) $item->total_valores) > 0 ? 'Sí' : 'No' }}<br>
-                      CFDI validado: {{ ((int) ($item->total_cfdi_validos ?? 0)) > 0 ? 'Sí' : 'No' }}
+                      CFDI validado: {{ ((int) ($item->total_cfdi_validos ?? 0)) > 0 ? 'Sí' : 'No' }}<br>
+                      Inventario: {{ $item->estatus_localizacion ? ucfirst(str_replace('_', ' ', $item->estatus_localizacion)) : 'Sin registro' }}
                     </span>
                   </td>
 
@@ -875,8 +886,8 @@
                         <a href="{{ route('valores', ['numero_activo' => $item->numero_activo]) }}">Valores</a>
                       @endif
 
-                      @if($can('ubicaciones.administrar') && empty($item->ubicacion_id))
-                        <a href="{{ route('ubicacion', ['numero_activo' => $item->numero_activo]) }}">Ubicación</a>
+                      @if($can('ubicaciones.administrar') && (empty($item->ubicacion_id) || in_array(($item->estatus_localizacion ?? ''), ['no_encontrado', 'diferencia', 'pendiente'], true)))
+                        <a href="{{ route('ubicacion', ['numero_activo' => $item->numero_activo]) }}">Ubicación / Inventario</a>
                       @endif
                     </div>
                   </td>
