@@ -539,7 +539,9 @@
   @endif
 
   @if(session('import_summary'))
-    @php($summary = session('import_summary'))
+    @php
+      $summary = session('import_summary');
+    @endphp
     <div class="vf-message vf-info">
       <strong>Carga masiva:</strong>
       {{ $summary['procesados'] ?? 0 }} procesados,
