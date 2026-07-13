@@ -10,11 +10,14 @@ use DOMElement;
 use DOMXPath;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Support\Facades\Storage;
 use RuntimeException;
 
 class CfdiValidationService
 {
+    public function __construct(private readonly SwafiStorageService $storage)
+    {
+    }
+
     private const MONEY_TOLERANCE = 0.01;
     private const EXCHANGE_TOLERANCE = 0.000001;
 
@@ -36,6 +39,7 @@ class CfdiValidationService
             ->select([
                 'd.id as documento_id',
                 'd.ruta_archivo',
+                'd.storage_disk',
                 'd.nombre_archivo',
                 'd.hash_sha256',
                 'd.vigente',
@@ -53,14 +57,23 @@ class CfdiValidationService
             throw new RuntimeException('No fue posible recuperar el contexto del XML.');
         }
 
-        $path = $this->locatePhysicalFile($context->ruta_archivo);
+        $storageValidation = $this->storage->validate(
+            $context->storage_disk ?? null,
+            (string) $context->ruta_archivo,
+            $context->hash_sha256 ?: null
+        );
 
-        if (!$path) {
+        if (!$storageValidation['ok']) {
             $validation = $this->persistInvalidValidation(
                 context: $context,
                 userId: $userId,
-                errors: ['El archivo XML no fue localizado en el almacenamiento privado.'],
-                extracted: ['nombre_archivo' => $context->nombre_archivo]
+                errors: [$storageValidation['message'] ?: 'El archivo XML no fue localizado o no superó la validación de integridad.'],
+                extracted: [
+                    'nombre_archivo' => $context->nombre_archivo,
+                    'storage_disk' => $context->storage_disk ?? 'local',
+                    'hash_registrado' => $context->hash_sha256,
+                    'hash_actual' => $storageValidation['hash_sha256'] ?? null,
+                ]
             );
 
             $this->recalculateExpedienteStatus((int) $context->expediente_id, (string) $context->numero_activo, $userId);
@@ -68,31 +81,10 @@ class CfdiValidationService
             return $validation;
         }
 
-        if (!empty($context->hash_sha256)) {
-            $actualHash = hash_file('sha256', $path);
-
-            if (!hash_equals(strtolower((string) $context->hash_sha256), strtolower((string) $actualHash))) {
-                $validation = $this->persistInvalidValidation(
-                    context: $context,
-                    userId: $userId,
-                    errors: ['El hash SHA-256 del XML no coincide con el registrado; el archivo pudo ser alterado.'],
-                    extracted: [
-                        'hash_registrado' => $context->hash_sha256,
-                        'hash_actual' => $actualHash,
-                    ]
-                );
-
-                $this->recalculateExpedienteStatus((int) $context->expediente_id, (string) $context->numero_activo, $userId);
-
-                return $validation;
-            }
-        }
-
-        $xml = file_get_contents($path);
-
-        if ($xml === false) {
-            throw new RuntimeException('No fue posible leer el archivo XML.');
-        }
+        $xml = $this->storage->contents(
+            $storageValidation['disk'],
+            $storageValidation['path']
+        );
 
         $extracted = $this->extractFromString($xml);
         $comparison = $this->compareAgainstExpediente($extracted, $context);
@@ -828,30 +820,6 @@ class CfdiValidationService
             'warnings' => [],
             'raw' => [],
         ];
-    }
-
-    private function locatePhysicalFile(?string $storedPath): ?string
-    {
-        $storedPath = ltrim(str_replace('\\', '/', trim((string) $storedPath)), '/');
-
-        if ($storedPath === '') {
-            return null;
-        }
-
-        $candidates = [
-            Storage::disk('local')->path($storedPath),
-            storage_path('app/private/' . $storedPath),
-            storage_path('app/' . $storedPath),
-            storage_path('app/public/' . $storedPath),
-        ];
-
-        foreach (array_unique($candidates) as $candidate) {
-            if (is_file($candidate)) {
-                return $candidate;
-            }
-        }
-
-        return null;
     }
 
     private function attribute(?\DOMNode $node, array $names): ?string
