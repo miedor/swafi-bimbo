@@ -64,7 +64,7 @@ class ExpedienteObservacionController extends Controller
 
         if ($validated['rol_destino'] !== $requiredRole) {
             return redirect()
-                ->route('expediente', $expedienteData->id)
+                ->route('expediente', ['expediente' => $expedienteData->id, 'tab' => 'observaciones'])
                 ->withErrors([
                     'observaciones' => "La observación seleccionada debe asignarse al rol {$requiredRole}.",
                 ])
@@ -75,7 +75,7 @@ class ExpedienteObservacionController extends Controller
 
         if (!$assignedUser) {
             return redirect()
-                ->route('expediente', $expedienteData->id)
+                ->route('expediente', ['expediente' => $expedienteData->id, 'tab' => 'observaciones'])
                 ->withErrors([
                     'observaciones' => 'El usuario asignado debe estar activo y pertenecer al rol responsable seleccionado.',
                 ])
@@ -90,7 +90,7 @@ class ExpedienteObservacionController extends Controller
 
         if ($existing) {
             return redirect()
-                ->route('expediente', $expedienteData->id)
+                ->route('expediente', ['expediente' => $expedienteData->id, 'tab' => 'observaciones'])
                 ->withErrors([
                     'observaciones' => 'Ya existe una observación activa de ese tipo para el expediente. Atiéndela o ciérrala antes de generar otra igual.',
                 ])
@@ -130,7 +130,7 @@ class ExpedienteObservacionController extends Controller
         $notificationMessage = $this->notifyAssignedUser($observacion, $assignedUser, $expedienteData, $request);
 
         return redirect()
-            ->route('expediente', $expedienteData->id)
+            ->route('expediente', ['expediente' => $expedienteData->id, 'tab' => 'observaciones'])
             ->with('success', 'La observación fue registrada, asignada y el expediente quedó observado. ' . $notificationMessage);
     }
 
@@ -175,7 +175,7 @@ class ExpedienteObservacionController extends Controller
         });
 
         return redirect()
-            ->route('expediente', $observacionData->expediente_id)
+            ->route('expediente', ['expediente' => $observacionData->expediente_id, 'tab' => 'observaciones'])
             ->with('success', 'La observación quedó en atención. Cuando termines la corrección, marca la observación como atendida.');
     }
 
@@ -229,7 +229,7 @@ class ExpedienteObservacionController extends Controller
         });
 
         return redirect()
-            ->route('expediente', $observacionData->expediente_id)
+            ->route('expediente', ['expediente' => $observacionData->expediente_id, 'tab' => 'observaciones'])
             ->with('success', 'La observación fue marcada como atendida. Ahora debe ser validada por Consulta/Auditoría.');
     }
 
@@ -294,7 +294,7 @@ class ExpedienteObservacionController extends Controller
             : 'La corrección fue rechazada y regresa a atención del usuario asignado.';
 
         return redirect()
-            ->route('expediente', $observacionData->expediente_id)
+            ->route('expediente', ['expediente' => $observacionData->expediente_id, 'tab' => 'observaciones'])
             ->with('success', $message);
     }
 
@@ -342,7 +342,7 @@ class ExpedienteObservacionController extends Controller
         });
 
         return redirect()
-            ->route('expediente', $observacionData->expediente_id)
+            ->route('expediente', ['expediente' => $observacionData->expediente_id, 'tab' => 'observaciones'])
             ->with('success', 'La observación fue cancelada. La trazabilidad se conserva en bitácora.');
     }
 
@@ -384,7 +384,7 @@ class ExpedienteObservacionController extends Controller
         }
 
         try {
-            $urlExpediente = route('expediente', $expedienteData->id);
+            $urlExpediente = route('expediente', ['expediente' => $expedienteData->id, 'tab' => 'observaciones']);
 
             Mail::to($assignedUser->email)->send(
                 new SwafiObservacionAsignadaMail(
@@ -574,7 +574,7 @@ class ExpedienteObservacionController extends Controller
     private function redirectDenied(int $expedienteId, string $message): RedirectResponse
     {
         return redirect()
-            ->route('expediente', $expedienteId)
+            ->route('expediente', ['expediente' => $expedienteId, 'tab' => 'observaciones'])
             ->withErrors([
                 'observaciones' => $message,
             ]);

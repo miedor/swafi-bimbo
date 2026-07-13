@@ -6,6 +6,7 @@ use App\Models\BusquedaGuardada;
 use App\Services\SimplePdfTableExporter;
 use App\Services\SimpleXlsxExporter;
 use Illuminate\Http\Request;
+use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -81,20 +82,26 @@ class BusquedaController extends Controller
         ]);
     }
 
-    public function show(?int $expediente = null)
+    public function show(Request $request, ?int $expediente = null)
     {
+        $activeTab = $this->resolveDetailTab((string) $request->input('tab', 'resumen'));
+
         if (!$expediente) {
             $expediente = DB::table('expedientes')->latest('id')->value('id');
 
             if (!$expediente) {
                 return view('swafi.expediente', [
                     'expediente' => null,
-                    'documentos' => collect(),
+                    'documentos' => $this->emptyPaginator('doc_page'),
                     'valor' => null,
-                    'bitacora' => collect(),
-                    'observaciones' => collect(),
+                    'bitacora' => $this->emptyPaginator('audit_page'),
+                    'observaciones' => $this->emptyPaginator('obs_page'),
                     'usuariosAsignablesObservacion' => collect(),
-                    'cfdiValidaciones' => collect(),
+                    'cfdiValidaciones' => $this->emptyPaginator('cfdi_page'),
+                    'inventarios' => $this->emptyPaginator('inv_page'),
+                    'movimientos' => $this->emptyPaginator('mov_page'),
+                    'activeTab' => $activeTab,
+                    'resumenContadores' => [],
                 ]);
             }
         }
@@ -147,13 +154,20 @@ class BusquedaController extends Controller
 
         abort_if(!$detalle, 404);
 
-        $documentos = DB::table('documentos_expediente')
+        $documentosQuery = DB::table('documentos_expediente')
             ->where('expediente_id', $detalle->expediente_id)
             ->where('vigente', true)
             ->orderBy('tipo_documento')
             ->orderBy('nombre_archivo')
-            ->orderByDesc('version')
-            ->get();
+            ->orderByDesc('version');
+
+        $documentos = $this->paginateForDetail(
+            query: $documentosQuery,
+            request: $request,
+            perPage: 6,
+            pageName: 'doc_page',
+            tab: 'documentos'
+        );
 
         $valor = DB::table('valores_activo')
             ->where('numero_activo', $detalle->numero_activo)
@@ -161,8 +175,8 @@ class BusquedaController extends Controller
             ->orderByDesc('id')
             ->first();
 
-        $cfdiValidaciones = Schema::hasTable('cfdi_validaciones')
-            ? DB::table('cfdi_validaciones as cv')
+        if (Schema::hasTable('cfdi_validaciones')) {
+            $cfdiQuery = DB::table('cfdi_validaciones as cv')
                 ->join('documentos_expediente as d', 'd.id', '=', 'cv.documento_id')
                 ->leftJoin('users as uval', 'uval.id', '=', 'cv.validado_por')
                 ->where('cv.expediente_id', $detalle->expediente_id)
@@ -175,35 +189,97 @@ class BusquedaController extends Controller
                     'uval.name as validado_por_nombre',
                     'uval.email as validado_por_email',
                 ])
-                ->orderByDesc('cv.validado_at')
-                ->get()
-            : collect();
+                ->orderByDesc('cv.validado_at');
 
-        $observaciones = $this->observacionesExpediente($detalle->expediente_id);
+            $cfdiValidaciones = $this->paginateForDetail(
+                query: $cfdiQuery,
+                request: $request,
+                perPage: 4,
+                pageName: 'cfdi_page',
+                tab: 'documentos'
+            );
+        } else {
+            $cfdiValidaciones = $this->emptyPaginator('cfdi_page');
+        }
 
-        $bitacora = DB::table('bitacora_auditoria')
-            ->where('numero_activo', $detalle->numero_activo)
-            ->orderByDesc('fecha_evento')
-            ->limit(10)
-            ->get();
+        $observaciones = $this->observacionesExpediente($detalle->expediente_id, $request);
+        $inventarios = $this->inventariosExpediente($detalle->numero_activo, $request);
+        $movimientos = $this->movimientosExpediente($detalle->numero_activo, $request);
 
-        DB::table('bitacora_auditoria')->insert([
-            'numero_activo' => $detalle->numero_activo,
-            'user_id' => $this->userId(),
-            'modulo' => 'M03 Consultas',
-            'accion' => 'CONSULTA',
-            'tabla_afectada' => 'expedientes',
-            'registro_clave' => (string) $detalle->expediente_id,
-            'antes' => null,
-            'despues' => json_encode([
-                'folio_factura' => $detalle->folio_factura,
-                'numero_activo' => $detalle->numero_activo,
-            ], JSON_UNESCAPED_UNICODE),
-            'ip' => request()->ip(),
-            'fecha_evento' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
+        $bitacoraQuery = DB::table('bitacora_auditoria as b')
+            ->leftJoin('users as ub', 'ub.id', '=', 'b.user_id')
+            ->where('b.numero_activo', $detalle->numero_activo)
+            ->select([
+                'b.*',
+                'ub.name as usuario_nombre',
+                'ub.email as usuario_email',
+            ])
+            ->orderByDesc('b.fecha_evento')
+            ->orderByDesc('b.id');
+
+        $bitacora = $this->paginateForDetail(
+            query: $bitacoraQuery,
+            request: $request,
+            perPage: 8,
+            pageName: 'audit_page',
+            tab: 'bitacora'
+        );
+
+        $resumenContadores = [
+            'documentos' => DB::table('documentos_expediente')
+                ->where('expediente_id', $detalle->expediente_id)
+                ->where('vigente', true)
+                ->count(),
+            'cfdi' => Schema::hasTable('cfdi_validaciones')
+                ? DB::table('cfdi_validaciones as cv')
+                    ->join('documentos_expediente as d', 'd.id', '=', 'cv.documento_id')
+                    ->where('cv.expediente_id', $detalle->expediente_id)
+                    ->where('d.vigente', true)
+                    ->count()
+                : 0,
+            'cfdi_observados' => Schema::hasTable('cfdi_validaciones')
+                ? DB::table('cfdi_validaciones as cv')
+                    ->join('documentos_expediente as d', 'd.id', '=', 'cv.documento_id')
+                    ->where('cv.expediente_id', $detalle->expediente_id)
+                    ->where('d.vigente', true)
+                    ->where('cv.estatus_validacion', 'observado')
+                    ->count()
+                : 0,
+            'cfdi_invalidos' => Schema::hasTable('cfdi_validaciones')
+                ? DB::table('cfdi_validaciones as cv')
+                    ->join('documentos_expediente as d', 'd.id', '=', 'cv.documento_id')
+                    ->where('cv.expediente_id', $detalle->expediente_id)
+                    ->where('d.vigente', true)
+                    ->where('cv.estatus_validacion', 'invalido')
+                    ->count()
+                : 0,
+            'observaciones' => Schema::hasTable('expediente_observaciones')
+                ? DB::table('expediente_observaciones')
+                    ->where('expediente_id', $detalle->expediente_id)
+                    ->count()
+                : 0,
+            'observaciones_pendientes' => Schema::hasTable('expediente_observaciones')
+                ? DB::table('expediente_observaciones')
+                    ->where('expediente_id', $detalle->expediente_id)
+                    ->whereIn('estatus', ['abierta', 'en_atencion', 'atendida', 'rechazada'])
+                    ->count()
+                : 0,
+            'inventarios' => DB::table('inventarios_activo')
+                ->where('numero_activo', $detalle->numero_activo)
+                ->count(),
+            'discrepancias' => DB::table('inventarios_activo')
+                ->where('numero_activo', $detalle->numero_activo)
+                ->whereIn('estatus_localizacion', ['no_encontrado', 'diferencia', 'pendiente'])
+                ->count(),
+            'movimientos' => DB::table('movimientos_ubicacion')
+                ->where('numero_activo', $detalle->numero_activo)
+                ->count(),
+            'bitacora' => DB::table('bitacora_auditoria')
+                ->where('numero_activo', $detalle->numero_activo)
+                ->count(),
+        ];
+
+        $this->registrarConsultaDetalle($request, $detalle);
 
         return view('swafi.expediente', [
             'expediente' => $detalle,
@@ -213,13 +289,17 @@ class BusquedaController extends Controller
             'observaciones' => $observaciones,
             'usuariosAsignablesObservacion' => $this->usuariosAsignablesObservacion(),
             'cfdiValidaciones' => $cfdiValidaciones,
+            'inventarios' => $inventarios,
+            'movimientos' => $movimientos,
+            'activeTab' => $activeTab,
+            'resumenContadores' => $resumenContadores,
         ]);
     }
 
-    private function observacionesExpediente(int $expedienteId)
+    private function observacionesExpediente(int $expedienteId, Request $request): LengthAwarePaginator
     {
         if (!Schema::hasTable('expediente_observaciones')) {
-            return collect();
+            return $this->emptyPaginator('obs_page');
         }
 
         $hasAsignado = Schema::hasColumn('expediente_observaciones', 'asignado_a');
@@ -278,12 +358,192 @@ class BusquedaController extends Controller
             $selects[] = DB::raw('NULL as notificacion_error');
         }
 
-        return $query
-            ->select($selects)
+        $query->select($selects)
             ->orderByRaw("FIELD(o.estatus, 'rechazada', 'abierta', 'en_atencion', 'atendida', 'cerrada', 'cancelada')")
             ->orderByRaw("FIELD(o.prioridad, 'critica', 'alta', 'media', 'baja')")
-            ->orderByDesc('o.updated_at')
-            ->get();
+            ->orderByDesc('o.updated_at');
+
+        return $this->paginateForDetail(
+            query: $query,
+            request: $request,
+            perPage: 5,
+            pageName: 'obs_page',
+            tab: 'observaciones'
+        );
+    }
+
+    private function inventariosExpediente(string $numeroActivo, Request $request): LengthAwarePaginator
+    {
+        $query = DB::table('inventarios_activo as ia')
+            ->leftJoin('ubicaciones as uv', 'uv.id', '=', 'ia.ubicacion_verificada_id')
+            ->leftJoin('plantas as pv', 'pv.id', '=', 'uv.planta_id')
+            ->leftJoin('areas as av', 'av.id', '=', 'uv.area_id')
+            ->leftJoin('users as ver', 'ver.id', '=', 'ia.verificado_por')
+            ->leftJoin('users as notif', 'notif.id', '=', 'ia.notificar_a')
+            ->where('ia.numero_activo', $numeroActivo)
+            ->select([
+                'ia.*',
+                'uv.codigo_interno as ubicacion_verificada_codigo',
+                'uv.descripcion as ubicacion_verificada_descripcion',
+                'pv.nombre as ubicacion_verificada_planta',
+                'av.nombre as ubicacion_verificada_area',
+                'ver.name as verificado_por_nombre',
+                'ver.email as verificado_por_email',
+                'notif.name as notificado_a_nombre',
+                'notif.email as notificado_a_email',
+            ])
+            ->orderByDesc('ia.fecha_inventario')
+            ->orderByDesc('ia.id');
+
+        $paginator = $this->paginateForDetail(
+            query: $query,
+            request: $request,
+            perPage: 5,
+            pageName: 'inv_page',
+            tab: 'ubicacion'
+        );
+
+        if (!Schema::hasTable('inventario_evidencias')) {
+            foreach ($paginator->items() as $item) {
+                $item->evidencias = collect();
+            }
+
+            return $paginator;
+        }
+
+        $inventarioIds = collect($paginator->items())
+            ->pluck('id')
+            ->filter()
+            ->values();
+
+        $evidencias = $inventarioIds->isEmpty()
+            ? collect()
+            : DB::table('inventario_evidencias as ie')
+                ->leftJoin('users as ue', 'ue.id', '=', 'ie.cargado_por')
+                ->whereIn('ie.inventario_id', $inventarioIds)
+                ->where('ie.vigente', true)
+                ->select([
+                    'ie.*',
+                    'ue.name as cargado_por_nombre',
+                    'ue.email as cargado_por_email',
+                ])
+                ->orderBy('ie.tipo_evidencia')
+                ->orderBy('ie.nombre_archivo')
+                ->get()
+                ->groupBy('inventario_id');
+
+        foreach ($paginator->items() as $item) {
+            $item->evidencias = $evidencias->get($item->id, collect());
+        }
+
+        return $paginator;
+    }
+
+    private function movimientosExpediente(string $numeroActivo, Request $request): LengthAwarePaginator
+    {
+        $query = DB::table('movimientos_ubicacion as mu')
+            ->leftJoin('ubicaciones as uo', 'uo.id', '=', 'mu.ubicacion_origen_id')
+            ->leftJoin('ubicaciones as ud', 'ud.id', '=', 'mu.ubicacion_destino_id')
+            ->leftJoin('responsables as r', 'r.id', '=', 'mu.responsable_id')
+            ->leftJoin('users as ur', 'ur.id', '=', 'mu.registrado_por')
+            ->where('mu.numero_activo', $numeroActivo)
+            ->select([
+                'mu.*',
+                'uo.codigo_interno as origen_codigo',
+                'uo.descripcion as origen_descripcion',
+                'ud.codigo_interno as destino_codigo',
+                'ud.descripcion as destino_descripcion',
+                'r.nombre as responsable_nombre',
+                'ur.name as registrado_por_nombre',
+                'ur.email as registrado_por_email',
+            ])
+            ->orderByDesc('mu.fecha_movimiento')
+            ->orderByDesc('mu.id');
+
+        return $this->paginateForDetail(
+            query: $query,
+            request: $request,
+            perPage: 5,
+            pageName: 'mov_page',
+            tab: 'ubicacion'
+        );
+    }
+
+    private function paginateForDetail(
+        $query,
+        Request $request,
+        int $perPage,
+        string $pageName,
+        string $tab
+    ): LengthAwarePaginator {
+        $paginator = $query->paginate($perPage, ['*'], $pageName);
+        $pageNames = ['doc_page', 'cfdi_page', 'obs_page', 'inv_page', 'mov_page', 'audit_page'];
+        $queryParams = $request->except($pageNames);
+        $queryParams['tab'] = $tab;
+
+        return $paginator->appends($queryParams);
+    }
+
+    private function emptyPaginator(string $pageName): LengthAwarePaginator
+    {
+        return new LengthAwarePaginator(
+            items: [],
+            total: 0,
+            perPage: 1,
+            currentPage: 1,
+            options: [
+                'path' => request()->url(),
+                'pageName' => $pageName,
+            ]
+        );
+    }
+
+    private function resolveDetailTab(string $tab): string
+    {
+        $allowed = ['resumen', 'ubicacion', 'documentos', 'observaciones', 'bitacora'];
+
+        return in_array($tab, $allowed, true) ? $tab : 'resumen';
+    }
+
+    private function registrarConsultaDetalle(Request $request, object $detalle): void
+    {
+        foreach (['doc_page', 'cfdi_page', 'obs_page', 'inv_page', 'mov_page', 'audit_page'] as $pageName) {
+            if ($request->filled($pageName)) {
+                return;
+            }
+        }
+
+        $sessionKey = 'swafi_consulta_expediente_' . $detalle->expediente_id;
+        $lastRegisteredAt = (int) $request->session()->get($sessionKey, 0);
+
+        if ($lastRegisteredAt > 0 && (now()->timestamp - $lastRegisteredAt) < 300) {
+            return;
+        }
+
+        try {
+            DB::table('bitacora_auditoria')->insert([
+                'numero_activo' => $detalle->numero_activo,
+                'user_id' => $this->userId(),
+                'modulo' => 'M03 Consultas',
+                'accion' => 'CONSULTA',
+                'tabla_afectada' => 'expedientes',
+                'registro_clave' => (string) $detalle->expediente_id,
+                'antes' => null,
+                'despues' => json_encode([
+                    'folio_factura' => $detalle->folio_factura,
+                    'numero_activo' => $detalle->numero_activo,
+                    'tab_inicial' => $request->input('tab', 'resumen'),
+                ], JSON_UNESCAPED_UNICODE),
+                'ip' => $request->ip(),
+                'fecha_evento' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+
+            $request->session()->put($sessionKey, now()->timestamp);
+        } catch (\Throwable $exception) {
+            // La visualización del expediente no debe fallar por una incidencia secundaria de bitácora.
+        }
     }
 
     private function usuariosAsignablesObservacion()

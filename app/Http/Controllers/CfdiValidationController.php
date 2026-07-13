@@ -16,7 +16,7 @@ class CfdiValidationController extends Controller
         $result = $service->validateExpedienteXmls($expediente, auth()->id());
 
         return redirect()
-            ->route('expediente', $expediente)
+            ->route('expediente', ['expediente' => $expediente, 'tab' => 'documentos'])
             ->with(
                 $result['invalidados'] > 0 ? 'warning' : 'success',
                 sprintf(

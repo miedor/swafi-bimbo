@@ -176,6 +176,10 @@ class DashboardController extends Controller
             )
             ->groupBy('dx.expediente_id');
 
+        $latestInventoryIds = DB::table('inventarios_activo')
+            ->select('numero_activo', DB::raw('MAX(id) as inventario_id'))
+            ->groupBy('numero_activo');
+
         $query = DB::table('expedientes as e')
             ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
             ->leftJoin('proveedores as p', 'p.id', '=', 'a.proveedor_id')
@@ -189,6 +193,10 @@ class DashboardController extends Controller
             ->leftJoinSub($cfdiCounts, 'cfc', function ($join) {
                 $join->on('cfc.expediente_id', '=', 'e.id');
             })
+            ->leftJoinSub($latestInventoryIds, 'li', function ($join) {
+                $join->on('li.numero_activo', '=', 'a.numero_activo');
+            })
+            ->leftJoin('inventarios_activo as ia', 'ia.id', '=', 'li.inventario_id')
             ->where(function ($query) {
                 $query->whereIn('e.estatus', ['incompleto', 'observado'])
                     ->orWhereRaw('COALESCE(dc.total_pdf, 0) = 0')
@@ -197,7 +205,8 @@ class DashboardController extends Controller
                     ->orWhereRaw('COALESCE(vc.total_valores_validos, 0) = 0')
                     ->orWhereRaw('COALESCE(vc.total_valores_conciliados, 0) = 0')
                     ->orWhereRaw('COALESCE(cfc.total_xml_validados, 0) < COALESCE(cfc.total_xml_cfdi, 0)')
-                    ->orWhereRaw('COALESCE(cfc.total_cfdi_inconsistentes, 0) > 0');
+                    ->orWhereRaw('COALESCE(cfc.total_cfdi_inconsistentes, 0) > 0')
+                    ->orWhereIn('ia.estatus_localizacion', ['no_encontrado', 'diferencia', 'pendiente']);
             })
             ->select([
                 'e.id as expediente_id',
@@ -217,6 +226,10 @@ class DashboardController extends Controller
                 DB::raw('COALESCE(cfc.total_cfdi_validos, 0) as total_cfdi_validos'),
                 DB::raw('COALESCE(cfc.total_cfdi_inconsistentes, 0) as total_cfdi_inconsistentes'),
                 'a.ubicacion_id',
+                'ia.id as inventario_id',
+                'ia.fecha_inventario',
+                'ia.estatus_localizacion',
+                'ia.requiere_atencion as inventario_requiere_atencion',
                 'e.fecha_factura',
                 'e.created_at',
                 'e.updated_at',

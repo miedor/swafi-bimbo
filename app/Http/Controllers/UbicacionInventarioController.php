@@ -4,15 +4,27 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\StoreInventarioActivoRequest;
 use App\Http\Requests\StoreMovimientoUbicacionRequest;
+use App\Mail\SwafiDiscrepanciaInventarioMail;
 use App\Models\Activo;
 use App\Models\InventarioActivo;
+use App\Models\InventarioEvidencia;
 use App\Models\MovimientoUbicacion;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Storage;
+use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class UbicacionInventarioController extends Controller
 {
+    private const DISCREPANCY_STATUSES = [
+        'no_encontrado',
+        'diferencia',
+        'pendiente',
+    ];
+
     public function index(Request $request)
     {
         $query = $this->baseQuery();
@@ -23,10 +35,16 @@ class UbicacionInventarioController extends Controller
             return $this->exportCsv($query);
         }
 
+        $perPage = (int) $request->input('per_page', 10);
+
+        if (!in_array($perPage, [10, 25, 50], true)) {
+            $perPage = 10;
+        }
+
         $resultados = $query
             ->orderBy('pl.nombre')
             ->orderBy('a.numero_activo')
-            ->paginate((int) $request->input('per_page', 10))
+            ->paginate($perPage)
             ->withQueryString();
 
         return view('swafi.ubicacion', [
@@ -55,13 +73,13 @@ class UbicacionInventarioController extends Controller
                 'evidencia' => $data['evidencia'] ?? null,
                 'fecha_movimiento' => Carbon::parse($data['fecha_movimiento']),
                 'responsable_id' => $data['responsable_id'] ?? null,
-                'registrado_por' => auth()->id(),
+                'registrado_por' => $this->userId(),
             ]);
 
             $activo->update([
                 'ubicacion_id' => $data['ubicacion_destino_id'],
                 'responsable_id' => $data['responsable_id'] ?? $activo->responsable_id,
-                'actualizado_por' => auth()->id(),
+                'actualizado_por' => $this->userId(),
             ]);
 
             $despues = $activo->fresh()->toArray();
@@ -91,8 +109,19 @@ class UbicacionInventarioController extends Controller
     public function storeInventario(StoreInventarioActivoRequest $request)
     {
         $data = $request->validated();
+        $isDiscrepancy = in_array($data['estatus_localizacion'], self::DISCREPANCY_STATUSES, true);
+        $recipient = $isDiscrepancy
+            ? $this->resolveAuditRecipient((int) $data['notificar_a'])
+            : null;
 
-        DB::transaction(function () use ($data, $request) {
+        $storedPaths = [];
+        $inventario = null;
+        $activo = null;
+        $evidenceCount = 0;
+
+        DB::beginTransaction();
+
+        try {
             $activo = Activo::where('numero_activo', $data['numero_activo'])
                 ->lockForUpdate()
                 ->firstOrFail();
@@ -105,8 +134,39 @@ class UbicacionInventarioController extends Controller
                 'estatus_localizacion' => $data['estatus_localizacion'],
                 'ubicacion_verificada_id' => $data['ubicacion_verificada_id'] ?? null,
                 'observaciones' => $data['observaciones'] ?? null,
-                'verificado_por' => auth()->id(),
+                'verificado_por' => $this->userId(),
+                'notificar_a' => $recipient?->id,
+                'notificado_at' => null,
+                'notificacion_error' => null,
+                'requiere_atencion' => $isDiscrepancy,
             ]);
+
+            foreach ($request->file('evidencias', []) as $file) {
+                $storedPath = $this->storeInventoryEvidenceFile(
+                    file: $file,
+                    numeroActivo: $activo->numero_activo,
+                    inventarioId: (int) $inventario->id
+                );
+
+                $storedPaths[] = $storedPath;
+                $absolutePath = Storage::disk('local')->path($storedPath);
+                $mimeType = $file->getMimeType() ?: 'application/octet-stream';
+
+                InventarioEvidencia::create([
+                    'inventario_id' => $inventario->id,
+                    'numero_activo' => $activo->numero_activo,
+                    'tipo_evidencia' => str_starts_with($mimeType, 'image/') ? 'FOTO' : 'DOCUMENTO',
+                    'nombre_archivo' => $file->getClientOriginalName(),
+                    'ruta_archivo' => $storedPath,
+                    'mime_type' => $mimeType,
+                    'tamano_bytes' => is_file($absolutePath) ? filesize($absolutePath) : $file->getSize(),
+                    'hash_sha256' => is_file($absolutePath) ? hash_file('sha256', $absolutePath) : null,
+                    'vigente' => true,
+                    'cargado_por' => $this->userId(),
+                ]);
+
+                $evidenceCount++;
+            }
 
             $actualizoUbicacion = false;
 
@@ -116,7 +176,7 @@ class UbicacionInventarioController extends Controller
             ) {
                 $activo->update([
                     'ubicacion_id' => $data['ubicacion_verificada_id'],
-                    'actualizado_por' => auth()->id(),
+                    'actualizado_por' => $this->userId(),
                 ]);
 
                 $actualizoUbicacion = true;
@@ -126,7 +186,7 @@ class UbicacionInventarioController extends Controller
 
             $this->registrarBitacora(
                 numeroActivo: $activo->numero_activo,
-                accion: 'REGISTRO_INVENTARIO',
+                accion: $isDiscrepancy ? 'REGISTRO_DISCREPANCIA_INVENTARIO' : 'REGISTRO_INVENTARIO',
                 tablaAfectada: 'inventarios_activo',
                 registroClave: (string) $inventario->id,
                 antes: [
@@ -136,15 +196,49 @@ class UbicacionInventarioController extends Controller
                     'activo' => $despues,
                     'inventario' => $inventario->toArray(),
                     'actualizo_ubicacion' => $actualizoUbicacion,
+                    'total_evidencias' => $evidenceCount,
+                    'notificar_a' => $recipient?->email,
                 ]
             );
-        });
 
-        return redirect()
+            DB::commit();
+        } catch (\Throwable $exception) {
+            DB::rollBack();
+
+            foreach ($storedPaths as $path) {
+                Storage::disk('local')->delete($path);
+            }
+
+            throw $exception;
+        }
+
+        $notificationWarning = null;
+
+        if ($isDiscrepancy && $recipient && $inventario && $activo) {
+            $notificationWarning = $this->sendDiscrepancyNotification(
+                inventario: $inventario,
+                activo: $activo->fresh(),
+                recipient: $recipient,
+                evidenceCount: $evidenceCount
+            );
+        }
+
+        $redirect = redirect()
             ->route('ubicacion', [
                 'numero_activo' => $data['numero_activo'],
             ])
-            ->with('success', 'La toma de inventario se registró correctamente.');
+            ->with(
+                'success',
+                $isDiscrepancy
+                    ? 'La discrepancia de inventario se registró con evidencia y trazabilidad.'
+                    : 'La toma de inventario se registró correctamente.'
+            );
+
+        if ($notificationWarning) {
+            $redirect->with('warning', $notificationWarning);
+        }
+
+        return $redirect;
     }
 
     private function baseQuery()
@@ -157,16 +251,32 @@ class UbicacionInventarioController extends Controller
             ->select('numero_activo', DB::raw('MAX(id) as movimiento_id'))
             ->groupBy('numero_activo');
 
+        $evidenceCounts = DB::table('inventario_evidencias')
+            ->where('vigente', true)
+            ->select('inventario_id', DB::raw('COUNT(*) as total_evidencias'))
+            ->groupBy('inventario_id');
+
+        $latestExpedientes = DB::table('expedientes')
+            ->select('numero_activo', DB::raw('MAX(id) as expediente_id'))
+            ->groupBy('numero_activo');
+
         return DB::table('activos as a')
             ->leftJoin('ubicaciones as u', 'u.id', '=', 'a.ubicacion_id')
             ->leftJoin('plantas as pl', 'pl.id', '=', 'a.planta_id')
             ->leftJoin('areas as ar', 'ar.id', '=', 'u.area_id')
             ->leftJoin('responsables as r', 'r.id', '=', 'a.responsable_id')
+            ->leftJoinSub($latestExpedientes, 'le', function ($join) {
+                $join->on('le.numero_activo', '=', 'a.numero_activo');
+            })
             ->leftJoinSub($latestInventarios, 'li', function ($join) {
                 $join->on('li.numero_activo', '=', 'a.numero_activo');
             })
             ->leftJoin('inventarios_activo as ia', 'ia.id', '=', 'li.inventario_id')
             ->leftJoin('ubicaciones as uv', 'uv.id', '=', 'ia.ubicacion_verificada_id')
+            ->leftJoin('users as un', 'un.id', '=', 'ia.notificar_a')
+            ->leftJoinSub($evidenceCounts, 'ec', function ($join) {
+                $join->on('ec.inventario_id', '=', 'ia.id');
+            })
             ->leftJoinSub($latestMovimientos, 'lm', function ($join) {
                 $join->on('lm.numero_activo', '=', 'a.numero_activo');
             })
@@ -179,6 +289,7 @@ class UbicacionInventarioController extends Controller
                 'a.estatus_documental',
                 'a.ubicacion_id',
                 'a.responsable_id',
+                'le.expediente_id',
 
                 'pl.id as planta_id',
                 'pl.nombre as planta_nombre',
@@ -199,6 +310,12 @@ class UbicacionInventarioController extends Controller
                 'ia.fecha_inventario',
                 'ia.estatus_localizacion',
                 'ia.observaciones as inventario_observaciones',
+                'ia.requiere_atencion',
+                'ia.notificado_at',
+                'ia.notificacion_error',
+                'un.name as notificado_a_nombre',
+                'un.email as notificado_a_email',
+                DB::raw('COALESCE(ec.total_evidencias, 0) as total_evidencias'),
                 'uv.codigo_interno as ubicacion_verificada_codigo',
                 'uv.descripcion as ubicacion_verificada_descripcion',
 
@@ -213,23 +330,23 @@ class UbicacionInventarioController extends Controller
     private function applyFilters($query, Request $request): void
     {
         if ($request->filled('numero_activo')) {
-            $query->where('a.numero_activo', 'like', '%' . $request->numero_activo . '%');
+            $query->where('a.numero_activo', 'like', '%' . trim((string) $request->numero_activo) . '%');
         }
 
         if ($request->filled('planta_id')) {
-            $query->where('a.planta_id', $request->planta_id);
+            $query->where('a.planta_id', (int) $request->planta_id);
         }
 
         if ($request->filled('area_id')) {
-            $query->where('u.area_id', $request->area_id);
+            $query->where('u.area_id', (int) $request->area_id);
         }
 
         if ($request->filled('ubicacion_id')) {
-            $query->where('a.ubicacion_id', $request->ubicacion_id);
+            $query->where('a.ubicacion_id', (int) $request->ubicacion_id);
         }
 
         if ($request->filled('responsable_id')) {
-            $query->where('a.responsable_id', $request->responsable_id);
+            $query->where('a.responsable_id', (int) $request->responsable_id);
         }
 
         if ($request->filled('estatus_operativo')) {
@@ -294,7 +411,190 @@ class UbicacionInventarioController extends Controller
                 ->where('estatus', 'activo')
                 ->orderBy('nombre')
                 ->get(),
+
+            'usuariosContabilidad' => $this->auditRecipients(),
         ];
+    }
+
+    private function auditRecipients()
+    {
+        return DB::table('users as u')
+            ->join('role_user as ru', 'ru.user_id', '=', 'u.id')
+            ->join('roles as r', 'r.id', '=', 'ru.role_id')
+            ->where('u.estatus', 'activo')
+            ->where('r.activo', 1)
+            ->whereIn('r.nombre', ['Usuario Consulta / Auditoría', 'Usuario Consulta / Auditoria'])
+            ->select([
+                'u.id',
+                'u.usuario',
+                'u.name',
+                'u.email',
+            ])
+            ->distinct()
+            ->orderBy('u.name')
+            ->get();
+    }
+
+    private function resolveAuditRecipient(int $userId): object
+    {
+        $recipient = DB::table('users as u')
+            ->join('role_user as ru', 'ru.user_id', '=', 'u.id')
+            ->join('roles as r', 'r.id', '=', 'ru.role_id')
+            ->where('u.id', $userId)
+            ->where('u.estatus', 'activo')
+            ->where('r.activo', 1)
+            ->whereIn('r.nombre', ['Usuario Consulta / Auditoría', 'Usuario Consulta / Auditoria'])
+            ->select([
+                'u.id',
+                'u.usuario',
+                'u.name',
+                'u.email',
+            ])
+            ->first();
+
+        if (!$recipient) {
+            throw ValidationException::withMessages([
+                'notificar_a' => 'La persona seleccionada debe ser un usuario activo con rol Usuario Consulta / Auditoría.',
+            ]);
+        }
+
+        return $recipient;
+    }
+
+    private function storeInventoryEvidenceFile($file, string $numeroActivo, int $inventarioId): string
+    {
+        $originalName = $file->getClientOriginalName();
+        $extension = strtolower($file->getClientOriginalExtension() ?: 'dat');
+        $baseName = pathinfo($originalName, PATHINFO_FILENAME);
+        $safeBase = Str::slug($baseName) ?: 'evidencia';
+        $storedName = now()->format('YmdHis')
+            . '_'
+            . Str::random(10)
+            . '_'
+            . $safeBase
+            . '.'
+            . $extension;
+
+        $directory = 'swafi/inventarios/'
+            . Str::slug($numeroActivo)
+            . '/'
+            . $inventarioId;
+
+        return $file->storeAs($directory, $storedName, 'local');
+    }
+
+    private function sendDiscrepancyNotification(
+        InventarioActivo $inventario,
+        Activo $activo,
+        object $recipient,
+        int $evidenceCount
+    ): ?string {
+        $registeredLocation = $this->locationDescription($activo->ubicacion_id);
+        $verifiedLocation = $this->locationDescription($inventario->ubicacion_verificada_id);
+        $expedienteId = DB::table('expedientes')
+            ->where('numero_activo', $activo->numero_activo)
+            ->orderByDesc('id')
+            ->value('id');
+
+        $detailUrl = $expedienteId
+            ? route('expediente', [
+                'expediente' => $expedienteId,
+                'tab' => 'ubicacion',
+            ])
+            : route('ubicacion', [
+                'numero_activo' => $activo->numero_activo,
+            ]);
+
+        try {
+            Mail::to($recipient->email)->send(new SwafiDiscrepanciaInventarioMail(
+                recipientName: $recipient->name ?: $recipient->email,
+                reportedBy: session('swafi_nombre', session('swafi_usuario', 'Usuario SWAFI')),
+                numeroActivo: $activo->numero_activo,
+                descripcionActivo: $activo->descripcion,
+                fechaInventario: Carbon::parse($inventario->fecha_inventario)->format('d/m/Y'),
+                estatusLocalizacion: $this->statusLabel($inventario->estatus_localizacion),
+                ubicacionRegistrada: $registeredLocation,
+                ubicacionVerificada: $verifiedLocation,
+                observaciones: (string) ($inventario->observaciones ?: 'Sin observaciones adicionales.'),
+                evidenceCount: $evidenceCount,
+                detailUrl: $detailUrl
+            ));
+
+            $inventario->update([
+                'notificado_at' => now(),
+                'notificacion_error' => null,
+            ]);
+
+            $this->registrarBitacora(
+                numeroActivo: $activo->numero_activo,
+                accion: 'NOTIFICACION_DISCREPANCIA_ENVIADA',
+                tablaAfectada: 'inventarios_activo',
+                registroClave: (string) $inventario->id,
+                antes: null,
+                despues: [
+                    'destinatario' => $recipient->email,
+                    'fecha_notificacion' => now()->toDateTimeString(),
+                ]
+            );
+
+            return null;
+        } catch (\Throwable $exception) {
+            $error = Str::limit($exception->getMessage(), 1500);
+
+            $inventario->update([
+                'notificacion_error' => $error,
+            ]);
+
+            $this->registrarBitacora(
+                numeroActivo: $activo->numero_activo,
+                accion: 'NOTIFICACION_DISCREPANCIA_FALLIDA',
+                tablaAfectada: 'inventarios_activo',
+                registroClave: (string) $inventario->id,
+                antes: null,
+                despues: [
+                    'destinatario' => $recipient->email,
+                    'error' => $error,
+                ]
+            );
+
+            return 'La discrepancia se guardó, pero el correo no pudo enviarse. El error quedó registrado para revisión administrativa.';
+        }
+    }
+
+    private function locationDescription(?int $locationId): string
+    {
+        if (!$locationId) {
+            return 'Sin ubicación registrada';
+        }
+
+        $location = DB::table('ubicaciones as u')
+            ->leftJoin('plantas as p', 'p.id', '=', 'u.planta_id')
+            ->leftJoin('areas as a', 'a.id', '=', 'u.area_id')
+            ->where('u.id', $locationId)
+            ->select([
+                'u.codigo_interno',
+                'u.descripcion',
+                'u.edificio',
+                'u.piso',
+                'u.pasillo',
+                'p.nombre as planta_nombre',
+                'a.nombre as area_nombre',
+            ])
+            ->first();
+
+        if (!$location) {
+            return 'Ubicación no disponible';
+        }
+
+        return implode(' / ', array_filter([
+            $location->planta_nombre,
+            $location->area_nombre,
+            $location->codigo_interno,
+            $location->descripcion,
+            $location->edificio,
+            $location->piso,
+            $location->pasillo,
+        ]));
     }
 
     private function exportCsv($query)
@@ -319,6 +619,9 @@ class UbicacionInventarioController extends Controller
                 'Estatus operativo',
                 'Fecha inventario',
                 'Estatus localizacion',
+                'Evidencias vigentes',
+                'Notificado a',
+                'Fecha notificacion',
                 'Ultimo movimiento',
                 'Motivo movimiento',
             ]);
@@ -334,6 +637,9 @@ class UbicacionInventarioController extends Controller
                     $row->estatus_operativo,
                     $row->fecha_inventario,
                     $row->estatus_localizacion,
+                    $row->total_evidencias,
+                    $row->notificado_a_email,
+                    $row->notificado_at,
                     $row->fecha_movimiento,
                     $row->movimiento_motivo,
                 ]);
@@ -358,6 +664,16 @@ class UbicacionInventarioController extends Controller
         return $parts ? implode(' / ', $parts) : 'Sin ubicación';
     }
 
+    private function statusLabel(string $status): string
+    {
+        return [
+            'localizado' => 'Localizado',
+            'no_encontrado' => 'No encontrado',
+            'diferencia' => 'Diferencia de ubicación',
+            'pendiente' => 'Pendiente de revisión',
+        ][$status] ?? ucfirst(str_replace('_', ' ', $status));
+    }
+
     private function registrarBitacora(
         ?string $numeroActivo,
         string $accion,
@@ -368,7 +684,7 @@ class UbicacionInventarioController extends Controller
     ): void {
         DB::table('bitacora_auditoria')->insert([
             'numero_activo' => $numeroActivo,
-            'user_id' => auth()->id(),
+            'user_id' => $this->userId(),
             'modulo' => 'M02 Control fiscal, financiero y ubicación física',
             'accion' => $accion,
             'tabla_afectada' => $tablaAfectada,
@@ -380,5 +696,12 @@ class UbicacionInventarioController extends Controller
             'created_at' => now(),
             'updated_at' => now(),
         ]);
+    }
+
+    private function userId(): ?int
+    {
+        $userId = (int) (session('swafi_user_id') ?: auth()->id());
+
+        return $userId > 0 ? $userId : null;
     }
 }

@@ -272,7 +272,7 @@ class DocumentoExpedienteController extends Controller
         });
 
         return redirect()
-            ->route('expediente', $expedienteData->id)
+            ->route('expediente', ['expediente' => $expedienteData->id, 'tab' => 'documentos'])
             ->with('success', 'Los documentos fueron ligados correctamente al expediente. Agregados/Reemplazados: ' . count($guardados));
     }
 
@@ -282,7 +282,7 @@ class DocumentoExpedienteController extends Controller
 
         if (!(bool) $documentoData->vigente) {
             return redirect()
-                ->route('expediente', $expediente->id)
+                ->route('expediente', ['expediente' => $expediente->id, 'tab' => 'documentos'])
                 ->withErrors([
                     'documentos' => 'El documento seleccionado ya se encuentra eliminado del expediente.',
                 ]);
@@ -314,7 +314,7 @@ class DocumentoExpedienteController extends Controller
         });
 
         return redirect()
-            ->route('expediente', $expediente->id)
+            ->route('expediente', ['expediente' => $expediente->id, 'tab' => 'documentos'])
             ->with('success', 'El documento fue eliminado del expediente. Se conserva trazabilidad en bitácora.');
     }
 
@@ -535,7 +535,7 @@ class DocumentoExpedienteController extends Controller
     private function redirectWithDocumentError(object $expediente, string $message): RedirectResponse
     {
         return redirect()
-            ->route('expediente', $expediente->id)
+            ->route('expediente', ['expediente' => $expediente->id, 'tab' => 'documentos'])
             ->withErrors([
                 'documentos' => $message,
             ]);
