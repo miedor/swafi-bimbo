@@ -7,9 +7,9 @@ return [
     | Default Filesystem Disk
     |--------------------------------------------------------------------------
     |
-    | Here you may specify the default filesystem disk that should be used
-    | by the framework. The "local" disk, as well as a variety of cloud
-    | based disks are available to your application for file storage.
+    | Laravel Cloud puede inyectar FILESYSTEM_DISK cuando un bucket de Object
+    | Storage se adjunta al ambiente. En desarrollo local puede permanecer
+    | como "local".
     |
     */
 
@@ -17,15 +17,25 @@ return [
 
     /*
     |--------------------------------------------------------------------------
-    | Filesystem Disks
+    | Disco documental de SWAFI
     |--------------------------------------------------------------------------
     |
-    | Below you may configure as many filesystem disks as necessary, and you
-    | may even configure multiple disks for the same driver. Examples for
-    | most supported storage drivers are configured here for reference.
+    | Todos los avatares, PDF, XML y evidencias nuevas se guardan en este disco.
+    | En producción se recomienda SWAFI_STORAGE_DISK=s3 y un bucket privado.
+    | Los registros históricos sin metadata de disco se interpretan como local.
     |
-    | Supported drivers: "local", "ftp", "sftp", "s3"
-    |
+    */
+
+    'swafi_disk' => env('SWAFI_STORAGE_DISK', env('FILESYSTEM_DISK', 'local')),
+    'swafi_legacy_disk' => env('SWAFI_LEGACY_STORAGE_DISK', 'local'),
+    'swafi_allow_local_in_production' => (bool) env('SWAFI_ALLOW_LOCAL_IN_PRODUCTION', false),
+    'swafi_audit_scheduled' => (bool) env('SWAFI_STORAGE_AUDIT_SCHEDULED', true),
+    'swafi_audit_time' => env('SWAFI_STORAGE_AUDIT_TIME', '02:30'),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Filesystem Disks
+    |--------------------------------------------------------------------------
     */
 
     'disks' => [
@@ -51,13 +61,13 @@ return [
             'driver' => 's3',
             'key' => env('AWS_ACCESS_KEY_ID'),
             'secret' => env('AWS_SECRET_ACCESS_KEY'),
-            'region' => env('AWS_DEFAULT_REGION'),
+            'region' => env('AWS_DEFAULT_REGION', 'auto'),
             'bucket' => env('AWS_BUCKET'),
             'url' => env('AWS_URL'),
             'endpoint' => env('AWS_ENDPOINT'),
             'use_path_style_endpoint' => env('AWS_USE_PATH_STYLE_ENDPOINT', false),
-            'throw' => false,
-            'report' => false,
+            'throw' => true,
+            'report' => true,
         ],
 
     ],
@@ -66,11 +76,6 @@ return [
     |--------------------------------------------------------------------------
     | Symbolic Links
     |--------------------------------------------------------------------------
-    |
-    | Here you may configure the symbolic links that will be created when the
-    | `storage:link` Artisan command is executed. The array keys should be
-    | the locations of the links and the values should be their targets.
-    |
     */
 
     'links' => [
