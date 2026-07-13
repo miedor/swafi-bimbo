@@ -6,18 +6,30 @@ use App\Http\Requests\ImportValoresActivoRequest;
 use App\Http\Requests\StoreValorActivoRequest;
 use App\Models\ValorActivo;
 use App\Services\CfdiValidationService;
+use App\Services\SwafiAuthorizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 
 class ValoresActivoController extends Controller
 {
+    public function __construct(
+        private readonly SwafiAuthorizationService $authorization
+    ) {
+    }
+
     public function index(Request $request)
     {
         $query = $this->baseQuery();
         $this->applyFilters($query, $request);
 
         if ($request->input('export') === 'csv') {
+            abort_unless(
+                $this->canExportValues(),
+                403,
+                'No tienes permiso para exportar valores fiscales y financieros.'
+            );
+
             return $this->exportCsv($query);
         }
 
@@ -42,6 +54,7 @@ class ValoresActivoController extends Controller
             'filtros' => $request->all(),
             'valorEdit' => $valorEdit,
             'canAdministrarValores' => $this->canManageValues(),
+            'canExportarValores' => $this->canExportValues(),
         ]);
     }
 
@@ -606,11 +619,12 @@ class ValoresActivoController extends Controller
 
     private function canManageValues(): bool
     {
-        $roles = session('swafi_roles', []);
-        $permissions = session('swafi_permissions', []);
+        return $this->authorization->canCurrentUser('valores.administrar');
+    }
 
-        return in_array('Administrador SWAFI', $roles, true)
-            || in_array('valores.administrar', $permissions, true);
+    private function canExportValues(): bool
+    {
+        return $this->authorization->canCurrentUser('reportes.exportar');
     }
 
     private function abortUnlessCanManageValues(): void
