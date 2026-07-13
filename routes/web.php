@@ -9,6 +9,7 @@ use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentoExpedienteController;
 use App\Http\Controllers\ExpedienteGestionController;
 use App\Http\Controllers\ExpedienteObservacionController;
+use App\Http\Controllers\InventarioEvidenciaController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RegistroIndividualController;
@@ -60,6 +61,18 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/ubicacion-inventario', [UbicacionInventarioController::class, 'index'])->name('ubicacion');
     Route::post('/ubicacion-inventario/movimiento', [UbicacionInventarioController::class, 'storeMovimiento'])->name('ubicacion.movimiento');
     Route::post('/ubicacion-inventario/inventario', [UbicacionInventarioController::class, 'storeInventario'])->name('ubicacion.inventario');
+
+    Route::get('/inventario-evidencias/{evidencia}/ver', [InventarioEvidenciaController::class, 'show'])
+        ->whereNumber('evidencia')
+        ->name('inventario-evidencias.ver');
+
+    Route::get('/inventario-evidencias/{evidencia}/descargar', [InventarioEvidenciaController::class, 'download'])
+        ->whereNumber('evidencia')
+        ->name('inventario-evidencias.descargar');
+
+    Route::delete('/inventario-evidencias/{evidencia}', [InventarioEvidenciaController::class, 'destroy'])
+        ->whereNumber('evidencia')
+        ->name('inventario-evidencias.eliminar');
 
     Route::get('/busqueda-avanzada', [BusquedaController::class, 'index'])->name('busqueda');
 
