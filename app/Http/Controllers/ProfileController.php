@@ -2,15 +2,19 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\SwafiStorageService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class ProfileController extends Controller
 {
+    public function __construct(private readonly SwafiStorageService $storage)
+    {
+    }
+
     public function show(Request $request)
     {
         $user = $this->currentUser($request);
@@ -47,34 +51,59 @@ class ProfileController extends Controller
         ]);
 
         $antes = (array) $user;
+        $newStoredFile = null;
+        $oldDisk = $user->avatar_disk ?? null;
+        $oldPath = $user->avatar_path ?? null;
 
-        $payload = [
-            'name' => trim($validated['name']),
-            'updated_at' => now(),
-        ];
+        try {
+            $payload = [
+                'name' => trim($validated['name']),
+                'updated_at' => now(),
+            ];
 
-        if ($request->hasFile('avatar')) {
-            $file = $request->file('avatar');
-            $extension = strtolower($file->getClientOriginalExtension() ?: 'jpg');
-            $extension = in_array($extension, ['jpg', 'jpeg', 'png', 'webp'], true) ? $extension : 'jpg';
+            if ($request->hasFile('avatar')) {
+                $file = $request->file('avatar');
+                $extension = strtolower($file->getClientOriginalExtension() ?: 'jpg');
+                $extension = in_array($extension, ['jpg', 'jpeg', 'png', 'webp'], true) ? $extension : 'jpg';
 
-            $path = $file->storeAs(
-                'profile_avatars/user_' . $user->id,
-                'avatar_' . now()->format('Ymd_His') . '_' . Str::random(8) . '.' . $extension,
-                'local'
-            );
+                $storedName = 'avatar_'
+                    . now()->format('Ymd_His')
+                    . '_'
+                    . Str::random(10)
+                    . '.'
+                    . $extension;
 
-            if (!empty($user->avatar_path) && Storage::disk('local')->exists($user->avatar_path)) {
-                Storage::disk('local')->delete($user->avatar_path);
+                $newStoredFile = $this->storage->storeUploadedFile(
+                    file: $file,
+                    directory: 'swafi/avatars/user_' . $user->id,
+                    storedName: $storedName
+                );
+
+                $payload['avatar_path'] = $newStoredFile['path'];
+                $payload['avatar_disk'] = $newStoredFile['disk'];
+                $payload['avatar_mime'] = $newStoredFile['mime_type'];
             }
 
-            $payload['avatar_path'] = $path;
-            $payload['avatar_mime'] = $file->getMimeType() ?: 'image/' . $extension;
+            DB::transaction(function () use ($user, $payload): void {
+                DB::table('users')
+                    ->where('id', $user->id)
+                    ->update($payload);
+            });
+        } catch (\Throwable $exception) {
+            if ($newStoredFile) {
+                $this->storage->delete($newStoredFile['disk'], $newStoredFile['path']);
+            }
+
+            throw $exception;
         }
 
-        DB::table('users')
-            ->where('id', $user->id)
-            ->update($payload);
+        if (
+            $newStoredFile
+            && $oldPath
+            && ($oldPath !== $newStoredFile['path'] || $oldDisk !== $newStoredFile['disk'])
+        ) {
+            $this->storage->delete($oldDisk, $oldPath);
+        }
 
         $updatedUser = DB::table('users')
             ->where('id', $user->id)
@@ -82,6 +111,7 @@ class ProfileController extends Controller
 
         $request->session()->put('swafi_nombre', $updatedUser->name);
         $request->session()->put('swafi_avatar_path', $updatedUser->avatar_path ?? null);
+        $request->session()->put('swafi_avatar_disk', $updatedUser->avatar_disk ?? null);
         $request->session()->put('swafi_avatar_version', now()->timestamp);
 
         $this->registrarBitacora(
@@ -91,6 +121,7 @@ class ProfileController extends Controller
             despues: [
                 'name' => $updatedUser->name,
                 'avatar_path' => $updatedUser->avatar_path,
+                'avatar_disk' => $updatedUser->avatar_disk,
             ]
         );
 
@@ -104,12 +135,21 @@ class ProfileController extends Controller
         $user = $this->currentUser($request);
 
         abort_if(!$user || empty($user->avatar_path), 404);
-        abort_if(!Storage::disk('local')->exists($user->avatar_path), 404);
 
-        return Storage::disk('local')->response($user->avatar_path, 'avatar-swafi', [
-            'Content-Type' => $user->avatar_mime ?: 'image/jpeg',
-            'Cache-Control' => 'private, max-age=120',
-        ]);
+        $validation = $this->storage->validate(
+            $user->avatar_disk ?? null,
+            (string) $user->avatar_path
+        );
+
+        abort_if(!$validation['ok'], 404);
+
+        return $this->storage->inlineResponse(
+            disk: $validation['disk'],
+            path: $validation['path'],
+            downloadName: 'avatar-swafi.' . $this->avatarExtension((string) ($user->avatar_mime ?: $validation['mime_type'])),
+            mimeType: $user->avatar_mime ?: $validation['mime_type'],
+            headers: ['Cache-Control' => 'private, max-age=120']
+        );
     }
 
     public function destroyAvatar(Request $request): RedirectResponse
@@ -119,27 +159,38 @@ class ProfileController extends Controller
         abort_if(!$user, 404, 'El usuario de la sesión no existe.');
 
         $antes = (array) $user;
+        $oldDisk = $user->avatar_disk ?? null;
+        $oldPath = $user->avatar_path ?? null;
 
-        if (!empty($user->avatar_path) && Storage::disk('local')->exists($user->avatar_path)) {
-            Storage::disk('local')->delete($user->avatar_path);
+        DB::transaction(function () use ($user): void {
+            DB::table('users')
+                ->where('id', $user->id)
+                ->update([
+                    'avatar_path' => null,
+                    'avatar_disk' => null,
+                    'avatar_mime' => null,
+                    'updated_at' => now(),
+                ]);
+        });
+
+        if ($oldPath) {
+            $this->storage->delete($oldDisk, $oldPath);
         }
 
-        DB::table('users')
-            ->where('id', $user->id)
-            ->update([
-                'avatar_path' => null,
-                'avatar_mime' => null,
-                'updated_at' => now(),
-            ]);
-
-        $request->session()->forget(['swafi_avatar_path']);
+        $request->session()->forget([
+            'swafi_avatar_path',
+            'swafi_avatar_disk',
+        ]);
         $request->session()->put('swafi_avatar_version', now()->timestamp);
 
         $this->registrarBitacora(
             userId: (int) $user->id,
             accion: 'PERFIL_AVATAR_ELIMINADO',
             antes: $antes,
-            despues: ['avatar_path' => null]
+            despues: [
+                'avatar_path' => null,
+                'avatar_disk' => null,
+            ]
         );
 
         return redirect()
@@ -160,6 +211,16 @@ class ProfileController extends Controller
             ->first();
     }
 
+    private function avatarExtension(string $mimeType): string
+    {
+        return match (strtolower($mimeType)) {
+            'image/png' => 'png',
+            'image/webp' => 'webp',
+            'image/jpeg', 'image/jpg' => 'jpg',
+            default => 'jpg',
+        };
+    }
+
     private function registrarBitacora(int $userId, string $accion, ?array $antes, ?array $despues): void
     {
         try {
@@ -177,7 +238,7 @@ class ProfileController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-        } catch (\Throwable $exception) {
+        } catch (\Throwable) {
             // La actualización del perfil no debe fallar por bitácora.
         }
     }

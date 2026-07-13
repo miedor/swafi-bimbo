@@ -9,16 +9,20 @@ use App\Models\Activo;
 use App\Models\InventarioActivo;
 use App\Models\InventarioEvidencia;
 use App\Models\MovimientoUbicacion;
+use App\Services\SwafiStorageService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 
 class UbicacionInventarioController extends Controller
 {
+    public function __construct(private readonly SwafiStorageService $storage)
+    {
+    }
+
     private const DISCREPANCY_STATUSES = [
         'no_encontrado',
         'diferencia',
@@ -142,25 +146,25 @@ class UbicacionInventarioController extends Controller
             ]);
 
             foreach ($request->file('evidencias', []) as $file) {
-                $storedPath = $this->storeInventoryEvidenceFile(
+                $stored = $this->storeInventoryEvidenceFile(
                     file: $file,
                     numeroActivo: $activo->numero_activo,
                     inventarioId: (int) $inventario->id
                 );
 
-                $storedPaths[] = $storedPath;
-                $absolutePath = Storage::disk('local')->path($storedPath);
-                $mimeType = $file->getMimeType() ?: 'application/octet-stream';
+                $storedPaths[] = $stored;
+                $mimeType = $stored['mime_type'];
 
                 InventarioEvidencia::create([
                     'inventario_id' => $inventario->id,
                     'numero_activo' => $activo->numero_activo,
                     'tipo_evidencia' => str_starts_with($mimeType, 'image/') ? 'FOTO' : 'DOCUMENTO',
                     'nombre_archivo' => $file->getClientOriginalName(),
-                    'ruta_archivo' => $storedPath,
-                    'mime_type' => $mimeType,
-                    'tamano_bytes' => is_file($absolutePath) ? filesize($absolutePath) : $file->getSize(),
-                    'hash_sha256' => is_file($absolutePath) ? hash_file('sha256', $absolutePath) : null,
+                    'ruta_archivo' => $stored['path'],
+                    'storage_disk' => $stored['disk'],
+                    'mime_type' => $stored['mime_type'],
+                    'tamano_bytes' => $stored['tamano_bytes'],
+                    'hash_sha256' => $stored['hash_sha256'],
                     'vigente' => true,
                     'cargado_por' => $this->userId(),
                 ]);
@@ -205,8 +209,8 @@ class UbicacionInventarioController extends Controller
         } catch (\Throwable $exception) {
             DB::rollBack();
 
-            foreach ($storedPaths as $path) {
-                Storage::disk('local')->delete($path);
+            foreach ($storedPaths as $storedFile) {
+                $this->storage->delete($storedFile['disk'], $storedFile['path']);
             }
 
             throw $exception;
@@ -461,7 +465,10 @@ class UbicacionInventarioController extends Controller
         return $recipient;
     }
 
-    private function storeInventoryEvidenceFile($file, string $numeroActivo, int $inventarioId): string
+    /**
+     * @return array{disk:string,path:string,mime_type:string,tamano_bytes:int,hash_sha256:string}
+     */
+    private function storeInventoryEvidenceFile($file, string $numeroActivo, int $inventarioId): array
     {
         $originalName = $file->getClientOriginalName();
         $extension = strtolower($file->getClientOriginalExtension() ?: 'dat');
@@ -480,7 +487,11 @@ class UbicacionInventarioController extends Controller
             . '/'
             . $inventarioId;
 
-        return $file->storeAs($directory, $storedName, 'local');
+        return $this->storage->storeUploadedFile(
+            file: $file,
+            directory: $directory,
+            storedName: $storedName
+        );
     }
 
     private function sendDiscrepancyNotification(

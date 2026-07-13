@@ -148,6 +148,7 @@ class AuthController extends Controller
             'swafi_usuario',
             'swafi_nombre',
             'swafi_avatar_path',
+            'swafi_avatar_disk',
             'swafi_avatar_version',
             'swafi_roles',
             'swafi_permissions',
@@ -170,6 +171,7 @@ class AuthController extends Controller
         $request->session()->put('swafi_usuario', $user->usuario ?: $user->email);
         $request->session()->put('swafi_nombre', $user->name);
         $request->session()->put('swafi_avatar_path', $user->avatar_path ?? null);
+        $request->session()->put('swafi_avatar_disk', $user->avatar_disk ?? null);
         $request->session()->put('swafi_avatar_version', now()->timestamp);
         $request->session()->put('swafi_roles', $roles);
         $request->session()->put('swafi_permissions', $permissions);

@@ -6,16 +6,20 @@ use App\Http\Requests\ImportRegistroMasivoRequest;
 use App\Models\Activo;
 use App\Models\DocumentoExpediente;
 use App\Models\Expediente;
+use App\Services\SwafiStorageService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
-use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 use ZipArchive;
 
 class RegistroMasivoController extends Controller
 {
+    public function __construct(private readonly SwafiStorageService $storage)
+    {
+    }
+
     public function index(Request $request)
     {
         $query = $this->baseQuery();
@@ -108,6 +112,8 @@ class RegistroMasivoController extends Controller
 
         $headerIndexes = array_flip($normalizedHeaders);
         $headersToRead = array_merge($requiredHeaders, $optionalHeaders);
+
+        $persistentFiles = [];
 
         $summary = [
             'procesados' => 0,
@@ -308,7 +314,8 @@ class RegistroMasivoController extends Controller
                     expediente: $expediente,
                     documentos: $documentosPendientes['documentos'],
                     numeroActivo: $numeroActivo,
-                    folioFactura: $folioFactura
+                    folioFactura: $folioFactura,
+                    persistentFiles: $persistentFiles
                 );
 
                 $estatusDocumental = $this->resolveDocumentStatusFromDatabase($expediente->id);
@@ -351,6 +358,11 @@ class RegistroMasivoController extends Controller
             DB::commit();
         } catch (\Throwable $exception) {
             DB::rollBack();
+
+            foreach ($persistentFiles as $storedFile) {
+                $this->storage->delete($storedFile['disk'], $storedFile['path']);
+            }
+
             $this->deleteDirectoryIfExists($zipTempDirectory);
 
             return back()->withErrors([
@@ -708,26 +720,27 @@ class RegistroMasivoController extends Controller
         Expediente $expediente,
         array $documentos,
         string $numeroActivo,
-        string $folioFactura
+        string $folioFactura,
+        array &$persistentFiles
     ): array {
         $guardados = [];
 
         foreach ($documentos as $doc) {
-            $storedPath = $this->storeDocumentFile(
+            $stored = $this->storeDocumentFile(
                 sourcePath: $doc['source_path'],
                 numeroActivo: $numeroActivo,
                 folioFactura: $folioFactura,
-                originalName: $doc['nombre_archivo']
+                originalName: $doc['nombre_archivo'],
+                mimeType: $doc['mime_type']
             );
+
+            $persistentFiles[] = $stored;
 
             $resultado = $this->storeOrReplaceDocumentRecord(
                 expediente: $expediente,
                 tipoDocumento: $doc['tipo_documento'],
                 nombreArchivo: $doc['nombre_archivo'],
-                rutaArchivo: $storedPath,
-                mimeType: $doc['mime_type'],
-                tamanoBytes: $doc['tamano_bytes'],
-                hashSha256: $doc['hash_sha256']
+                stored: $stored
             );
 
             $guardados[] = $resultado;
@@ -736,12 +749,16 @@ class RegistroMasivoController extends Controller
         return $guardados;
     }
 
+    /**
+     * @return array{disk:string,path:string,mime_type:string,tamano_bytes:int,hash_sha256:string}
+     */
     private function storeDocumentFile(
         string $sourcePath,
         string $numeroActivo,
         string $folioFactura,
-        string $originalName
-    ): string {
+        string $originalName,
+        ?string $mimeType
+    ): array {
         $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
         $safeName = $this->safeFileName($originalName, $extension ?: 'dat');
 
@@ -756,22 +773,20 @@ class RegistroMasivoController extends Controller
             . '_'
             . $safeName;
 
-        $storedPath = $basePath . '/' . $storedName;
-
-        Storage::disk('local')->put($storedPath, file_get_contents($sourcePath));
-
-        return $storedPath;
+        return $this->storage->storeLocalFile(
+            sourcePath: $sourcePath,
+            targetPath: $basePath . '/' . $storedName,
+            mimeType: $mimeType
+        );
     }
 
     private function storeOrReplaceDocumentRecord(
         Expediente $expediente,
         string $tipoDocumento,
         string $nombreArchivo,
-        string $rutaArchivo,
-        ?string $mimeType,
-        ?int $tamanoBytes,
-        ?string $hashSha256
+        array $stored
     ): array {
+        $hashSha256 = $stored['hash_sha256'];
         $normalizedName = $this->normalizeDocumentIdentity($nombreArchivo);
 
         $existingDocument = DocumentoExpediente::where('expediente_id', $expediente->id)
@@ -812,10 +827,11 @@ class RegistroMasivoController extends Controller
             'expediente_id' => $expediente->id,
             'tipo_documento' => $tipoDocumento,
             'nombre_archivo' => $nombreArchivo,
-            'ruta_archivo' => $rutaArchivo,
-            'mime_type' => $mimeType,
-            'tamano_bytes' => $tamanoBytes,
-            'hash_sha256' => $hashSha256,
+            'ruta_archivo' => $stored['path'],
+            'storage_disk' => $stored['disk'],
+            'mime_type' => $stored['mime_type'],
+            'tamano_bytes' => $stored['tamano_bytes'],
+            'hash_sha256' => $stored['hash_sha256'],
             'version' => $version,
             'vigente' => true,
             'cargado_por' => auth()->id(),
@@ -828,6 +844,7 @@ class RegistroMasivoController extends Controller
             'nombre_archivo' => $documento->nombre_archivo,
             'version' => $documento->version,
             'hash_sha256' => $documento->hash_sha256,
+            'storage_disk' => $documento->storage_disk,
         ];
     }
 

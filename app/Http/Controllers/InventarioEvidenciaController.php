@@ -3,17 +3,21 @@
 namespace App\Http\Controllers;
 
 use App\Models\InventarioEvidencia;
+use App\Services\SwafiStorageService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Storage;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class InventarioEvidenciaController extends Controller
 {
-    public function show(InventarioEvidencia $evidencia): BinaryFileResponse|RedirectResponse
+    public function __construct(private readonly SwafiStorageService $storage)
+    {
+    }
+
+    public function show(InventarioEvidencia $evidencia): StreamedResponse|RedirectResponse
     {
         $context = $this->resolveContext($evidencia);
-        $validation = $this->validatePhysicalFile($evidencia);
+        $validation = $this->validateStoredFile($evidencia);
 
         if (!$validation['ok']) {
             return $this->redirectWithError($context->expediente_id, $validation['message']);
@@ -25,17 +29,18 @@ class InventarioEvidenciaController extends Controller
             evidencia: $evidencia
         );
 
-        return response()->file($validation['path'], [
-            'Content-Type' => $evidencia->mime_type ?: 'application/octet-stream',
-            'Content-Disposition' => 'inline; filename="' . addslashes($evidencia->nombre_archivo) . '"',
-            'Cache-Control' => 'private, no-store, no-cache, must-revalidate',
-        ]);
+        return $this->storage->inlineResponse(
+            disk: $validation['disk'],
+            path: $validation['path'],
+            downloadName: $evidencia->nombre_archivo,
+            mimeType: $evidencia->mime_type ?: $validation['mime_type']
+        );
     }
 
-    public function download(InventarioEvidencia $evidencia): BinaryFileResponse|RedirectResponse
+    public function download(InventarioEvidencia $evidencia): StreamedResponse|RedirectResponse
     {
         $context = $this->resolveContext($evidencia);
-        $validation = $this->validatePhysicalFile($evidencia);
+        $validation = $this->validateStoredFile($evidencia);
 
         if (!$validation['ok']) {
             return $this->redirectWithError($context->expediente_id, $validation['message']);
@@ -47,10 +52,11 @@ class InventarioEvidenciaController extends Controller
             evidencia: $evidencia
         );
 
-        return response()->download(
-            $validation['path'],
-            $evidencia->nombre_archivo,
-            ['Content-Type' => $evidencia->mime_type ?: 'application/octet-stream']
+        return $this->storage->downloadResponse(
+            disk: $validation['disk'],
+            path: $validation['path'],
+            downloadName: $evidencia->nombre_archivo,
+            mimeType: $evidencia->mime_type ?: $validation['mime_type']
         );
     }
 
@@ -65,7 +71,7 @@ class InventarioEvidenciaController extends Controller
             );
         }
 
-        DB::transaction(function () use ($evidencia) {
+        DB::transaction(function () use ($evidencia): void {
             $antes = $evidencia->toArray();
 
             $evidencia->update([
@@ -119,45 +125,24 @@ class InventarioEvidenciaController extends Controller
         return $context;
     }
 
-    private function validatePhysicalFile(InventarioEvidencia $evidencia): array
+    private function validateStoredFile(InventarioEvidencia $evidencia): array
     {
         $path = trim((string) $evidencia->ruta_archivo);
 
-        if ($path === '' || !Storage::disk('local')->exists($path)) {
+        if ($path === '') {
             return [
                 'ok' => false,
-                'path' => null,
-                'message' => 'La evidencia está registrada, pero el archivo físico no se localizó en el almacenamiento privado.',
+                'disk' => $evidencia->storage_disk ?: 'local',
+                'path' => '',
+                'message' => 'La evidencia no tiene una ruta de almacenamiento registrada.',
             ];
         }
 
-        $absolutePath = Storage::disk('local')->path($path);
-
-        if (!is_file($absolutePath)) {
-            return [
-                'ok' => false,
-                'path' => null,
-                'message' => 'La ruta de la evidencia no corresponde a un archivo físico válido.',
-            ];
-        }
-
-        if ($evidencia->hash_sha256) {
-            $currentHash = hash_file('sha256', $absolutePath);
-
-            if (!hash_equals((string) $evidencia->hash_sha256, (string) $currentHash)) {
-                return [
-                    'ok' => false,
-                    'path' => null,
-                    'message' => 'La evidencia no superó la validación de integridad SHA-256. No se permite abrir ni descargar el archivo.',
-                ];
-            }
-        }
-
-        return [
-            'ok' => true,
-            'path' => $absolutePath,
-            'message' => null,
-        ];
+        return $this->storage->validate(
+            $evidencia->storage_disk,
+            $path,
+            $evidencia->hash_sha256
+        );
     }
 
     private function redirectWithError(?int $expedienteId, string $message): RedirectResponse
@@ -193,6 +178,7 @@ class InventarioEvidenciaController extends Controller
                 'despues' => json_encode([
                     'inventario_id' => $evidencia->inventario_id,
                     'nombre_archivo' => $evidencia->nombre_archivo,
+                    'storage_disk' => $evidencia->storage_disk ?: 'local',
                     'hash_sha256' => $evidencia->hash_sha256,
                 ], JSON_UNESCAPED_UNICODE),
                 'ip' => request()->ip(),
@@ -200,7 +186,7 @@ class InventarioEvidenciaController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-        } catch (\Throwable $exception) {
+        } catch (\Throwable) {
             // La entrega del archivo no debe fallar por una incidencia secundaria de bitácora.
         }
     }
