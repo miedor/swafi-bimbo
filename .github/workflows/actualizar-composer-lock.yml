@@ -1,0 +1,104 @@
+name: Actualizar composer.lock
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: actualizar-composer-lock-main
+  cancel-in-progress: false
+
+jobs:
+  actualizar-lock:
+    name: Regenerar composer.lock para S3
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Configurar PHP y Composer
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.4'
+          tools: composer:v2
+          coverage: none
+
+      - name: Mostrar versiones
+        run: |
+          php --version
+          composer --version
+
+      - name: Validar composer.json antes de actualizar
+        run: composer validate --no-check-publish --no-check-lock
+
+      - name: Actualizar únicamente el adaptador S3 y sus dependencias
+        run: |
+          composer update league/flysystem-aws-s3-v3 \
+            --with-all-dependencies \
+            --no-install \
+            --no-scripts \
+            --no-interaction \
+            --prefer-dist \
+            --no-progress
+
+      - name: Validar archivos de Composer
+        run: composer validate --no-check-publish
+
+      - name: Confirmar que el adaptador S3 quedó bloqueado
+        shell: bash
+        run: |
+          php -r '
+          $lock = json_decode(
+              file_get_contents("composer.lock"),
+              true,
+              512,
+              JSON_THROW_ON_ERROR
+          );
+
+          $packages = array_merge(
+              $lock["packages"] ?? [],
+              $lock["packages-dev"] ?? []
+          );
+
+          foreach ($packages as $package) {
+              if (
+                  ($package["name"] ?? null)
+                  === "league/flysystem-aws-s3-v3"
+              ) {
+                  echo "Adaptador S3 encontrado: "
+                      .($package["version"] ?? "sin versión")
+                      .PHP_EOL;
+
+                  exit(0);
+              }
+          }
+
+          fwrite(
+              STDERR,
+              "ERROR: league/flysystem-aws-s3-v3 no quedó registrado en composer.lock"
+              .PHP_EOL
+          );
+
+          exit(1);
+          '
+
+      - name: Guardar composer.lock en la rama main
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+          git add composer.json composer.lock
+
+          if git diff --cached --quiet; then
+            echo "composer.lock ya estaba sincronizado; no hay cambios para guardar."
+          else
+            git commit -m "Sincroniza composer.lock para almacenamiento S3"
+            git push origin HEAD:main
+          fi
