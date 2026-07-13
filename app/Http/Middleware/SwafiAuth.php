@@ -120,7 +120,9 @@ class SwafiAuth
             'expediente',
             'documentos.ver',
             'documentos.descargar',
-            'documentos.descargar-todos' => 'expedientes.ver',
+            'documentos.descargar-todos',
+            'inventario-evidencias.ver',
+            'inventario-evidencias.descargar' => 'expedientes.ver',
 
             'expedientes.editar',
             'expedientes.actualizar',
@@ -148,7 +150,8 @@ class SwafiAuth
 
             'ubicacion',
             'ubicacion.movimiento',
-            'ubicacion.inventario' => 'ubicaciones.administrar',
+            'ubicacion.inventario',
+            'inventario-evidencias.eliminar' => 'ubicaciones.administrar',
 
             'reportes' => 'reportes.exportar',
 
