@@ -23,8 +23,19 @@
     return '<svg class="'.$class.'" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'.$paths.'</svg>';
   };
 
-  $swafiRoles = session('swafi_roles', []);
-  $swafiPermissions = session('swafi_permissions', []);
+  $swafiRoles = collect(session('swafi_roles', []))
+    ->map(fn ($role) => trim((string) $role))
+    ->filter()
+    ->unique()
+    ->values()
+    ->all();
+
+  $swafiPermissions = collect(session('swafi_permissions', []))
+    ->map(fn ($permission) => trim((string) $permission))
+    ->filter()
+    ->unique()
+    ->values()
+    ->all();
   $swafiNombre = session('swafi_nombre', 'Usuario SWAFI');
   $swafiUsuario = session('swafi_usuario', 'usuario');
   $swafiAvatarPath = session('swafi_avatar_path');
@@ -75,14 +86,34 @@
   <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-icons.css') }}?v={{ file_exists(public_path('assets/swafi/css/swafi-icons.css')) ? filemtime(public_path('assets/swafi/css/swafi-icons.css')) : time() }}">
 
   <style>
+    html,
+    body {
+      width: 100%;
+      max-width: 100%;
+      overflow-x: hidden;
+    }
+
     .app-shell {
+      width: 100%;
+      max-width: 100%;
       min-height: 100vh;
+      grid-template-columns: 230px minmax(0, 1fr) !important;
+      overflow-x: hidden;
     }
 
     .main {
       position: relative !important;
+      width: 100%;
+      max-width: 100%;
+      min-width: 0;
       min-height: 100vh;
-      overflow: visible !important;
+      overflow-x: hidden !important;
+      overflow-y: visible !important;
+    }
+
+    .main > * {
+      min-width: 0;
+      max-width: 100%;
     }
 
     .swafi-page-header {
@@ -100,7 +131,7 @@
 
     .swafi-page-header .topbar {
       display: grid !important;
-      grid-template-columns: minmax(320px, 1fr) auto auto !important;
+      grid-template-columns: minmax(0, 1fr) auto auto !important;
       align-items: center !important;
       column-gap: 24px !important;
       margin-bottom: 8px !important;
@@ -120,8 +151,12 @@
 
     .swafi-user-slot {
       display: flex;
+      flex: 0 0 auto;
       align-items: center;
       justify-content: flex-end;
+      min-width: 54px;
+      position: relative;
+      z-index: 1001;
     }
 
     .global-dashboard-btn {
@@ -434,7 +469,7 @@
 
     @media (max-width: 1200px) {
       .swafi-page-header .topbar {
-        grid-template-columns: minmax(260px, 1fr) auto auto !important;
+        grid-template-columns: minmax(0, 1fr) auto auto !important;
         column-gap: 16px !important;
       }
 
@@ -445,6 +480,10 @@
     }
 
     @media (max-width: 900px) {
+      .app-shell {
+        grid-template-columns: minmax(0, 1fr) !important;
+      }
+
       .swafi-page-header {
         position: sticky !important;
         top: 0 !important;
