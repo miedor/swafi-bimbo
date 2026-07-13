@@ -946,7 +946,7 @@
                   <div><strong>Ubicación verificada:</strong> {{ $inventario->ubicacion_verificada_codigo ?: 'No indicada' }} · {{ $inventario->ubicacion_verificada_descripcion ?: 'Sin descripción' }}</div>
                   <div><strong>Planta / Área:</strong> {{ $inventario->ubicacion_verificada_planta ?: 'Sin planta' }} / {{ $inventario->ubicacion_verificada_area ?: 'Sin área' }}</div>
                   <div><strong>Observaciones:</strong> {{ $inventario->observaciones ?: 'Sin observaciones' }}</div>
-                  @if($inventario->notificar_a_email)
+                  @if(!empty($inventario->notificado_a_email))
                     <div class="detail-muted">
                       Notificación: {{ $inventario->notificado_at ? 'Enviada el ' . $inventario->notificado_at : 'Pendiente o fallida' }}
                       · {{ $inventario->notificado_a_nombre ?: $inventario->notificado_a_email }}
