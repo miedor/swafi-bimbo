@@ -21,6 +21,7 @@ class User extends Authenticatable
         'ultimo_acceso',
         'ultimo_ip',
         'avatar_path',
+        'avatar_disk',
         'avatar_mime',
         'password_changed_at',
         'intentos_fallidos',

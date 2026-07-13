@@ -14,6 +14,7 @@ class InventarioEvidencia extends Model
         'tipo_evidencia',
         'nombre_archivo',
         'ruta_archivo',
+        'storage_disk',
         'mime_type',
         'tamano_bytes',
         'hash_sha256',

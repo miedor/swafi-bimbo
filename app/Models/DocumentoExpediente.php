@@ -16,6 +16,7 @@ class DocumentoExpediente extends Model
         'tipo_documento',
         'nombre_archivo',
         'ruta_archivo',
+        'storage_disk',
         'mime_type',
         'tamano_bytes',
         'hash_sha256',
