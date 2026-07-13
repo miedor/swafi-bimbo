@@ -2,6 +2,7 @@
 
 namespace App\Http\Middleware;
 
+use App\Services\SwafiAuthorizationService;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -12,6 +13,11 @@ use Symfony\Component\HttpFoundation\Response;
 class SwafiAuth
 {
     private int $inactiveSeconds = 600;
+
+    public function __construct(
+        private readonly SwafiAuthorizationService $authorization
+    ) {
+    }
 
     public function handle(Request $request, Closure $next): Response
     {
@@ -49,6 +55,18 @@ class SwafiAuth
                 ->withErrors([
                     'usuario' => 'La sesión ya no es válida, el usuario fue desactivado o se encuentra bloqueado.',
                 ]);
+        }
+
+        /*
+        |--------------------------------------------------------------------------
+        | Permisos siempre vigentes
+        |--------------------------------------------------------------------------
+        | Se actualizan en cada solicitud protegida. Así, una modificación hecha
+        | en Seguridad y acceso surte efecto inmediatamente y no queda una sesión
+        | con permisos anteriores.
+        */
+        if ($userId > 0) {
+            $this->authorization->refreshSession($request, $userId);
         }
 
         if ($this->sessionExpiredByInactivity($request)) {
@@ -177,14 +195,7 @@ class SwafiAuth
 
     private function can(Request $request, string $permission): bool
     {
-        $roles = $request->session()->get('swafi_roles', []);
-        $permissions = $request->session()->get('swafi_permissions', []);
-
-        if (in_array('Administrador SWAFI', $roles, true)) {
-            return true;
-        }
-
-        return in_array($permission, $permissions, true);
+        return $this->authorization->canFromSession($request, $permission);
     }
 
     private function sessionExpiredByInactivity(Request $request): bool
@@ -204,8 +215,9 @@ class SwafiAuth
             return;
         }
 
-        $roles = $this->rolesForUser($userId);
-        $permissions = $this->permissionsForUser($userId);
+        $context = $this->authorization->contextForUser($userId);
+        $roles = $context['roles'];
+        $permissions = $context['permissions'];
 
         $request->session()->put('swafi_user_id', $user->id);
         $request->session()->put('swafi_usuario', $user->usuario ?: $user->email);
@@ -233,37 +245,6 @@ class SwafiAuth
         }
 
         return ($user->estatus ?? 'activo') === 'activo';
-    }
-
-    private function rolesForUser(int $userId): array
-    {
-        if (!Schema::hasTable('roles') || !Schema::hasTable('role_user')) {
-            return [];
-        }
-
-        return DB::table('roles as r')
-            ->join('role_user as ru', 'ru.role_id', '=', 'r.id')
-            ->where('ru.user_id', $userId)
-            ->where('r.activo', 1)
-            ->pluck('r.nombre')
-            ->all();
-    }
-
-    private function permissionsForUser(int $userId): array
-    {
-        if (!Schema::hasTable('permissions') || !Schema::hasTable('permission_role') || !Schema::hasTable('role_user')) {
-            return [];
-        }
-
-        return DB::table('permissions as p')
-            ->join('permission_role as pr', 'pr.permission_id', '=', 'p.id')
-            ->join('role_user as ru', 'ru.role_id', '=', 'pr.role_id')
-            ->join('roles as r', 'r.id', '=', 'ru.role_id')
-            ->where('ru.user_id', $userId)
-            ->where('r.activo', 1)
-            ->distinct()
-            ->pluck('p.clave')
-            ->all();
     }
 
     private function invalidateSession(Request $request): void
