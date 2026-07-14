@@ -7,6 +7,7 @@ use App\Http\Controllers\CatalogosController;
 use App\Http\Controllers\CfdiValidationController;
 use App\Http\Controllers\DashboardController;
 use App\Http\Controllers\DocumentoExpedienteController;
+use App\Http\Controllers\EtiquetaActivoController;
 use App\Http\Controllers\ExpedienteGestionController;
 use App\Http\Controllers\ExpedienteObservacionController;
 use App\Http\Controllers\InventarioEvidenciaController;
@@ -57,6 +58,12 @@ Route::middleware('swafi.auth')->group(function () {
     Route::delete('/valores-fiscales-financieros/{valor}', [ValoresActivoController::class, 'destroy'])
         ->whereNumber('valor')
         ->name('valores.destroy');
+
+    Route::get('/activos/{activo}/etiqueta', [EtiquetaActivoController::class, 'show'])
+        ->name('activos.etiqueta');
+
+    Route::post('/activos/{activo}/etiqueta/auditar', [EtiquetaActivoController::class, 'audit'])
+        ->name('activos.etiqueta.auditar');
 
     Route::get('/ubicacion-inventario', [UbicacionInventarioController::class, 'index'])->name('ubicacion');
     Route::post('/ubicacion-inventario/movimiento', [UbicacionInventarioController::class, 'storeMovimiento'])->name('ubicacion.movimiento');
