@@ -140,7 +140,9 @@ class SwafiAuth
             'documentos.descargar',
             'documentos.descargar-todos',
             'inventario-evidencias.ver',
-            'inventario-evidencias.descargar' => 'expedientes.ver',
+            'inventario-evidencias.descargar',
+            'activos.etiqueta',
+            'activos.etiqueta.auditar' => 'expedientes.ver',
 
             'expedientes.editar',
             'expedientes.actualizar',
