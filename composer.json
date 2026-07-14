@@ -49,7 +49,7 @@
         ],
         "test": [
             "@php artisan config:clear --ansi",
-            "@php artisan test"
+            "@php vendor/bin/phpunit"
         ],
         "post-autoload-dump": [
             "Illuminate\\Foundation\\ComposerScripts::postAutoloadDump",
@@ -68,6 +68,15 @@
         ],
         "pre-package-uninstall": [
             "Illuminate\\Foundation\\ComposerScripts::prePackageUninstall"
+        ],
+        "test:cloud": [
+            "bash scripts/run-cloud-tests.sh"
+        ],
+        "test:cloud:unit": [
+            "bash scripts/run-cloud-tests.sh --testsuite=Unit"
+        ],
+        "test:cloud:feature": [
+            "bash scripts/run-cloud-tests.sh --testsuite=Feature"
         ]
     },
     "extra": {
