@@ -16,6 +16,7 @@ class ReporteGuardadoController extends Controller
         'activos_sin_documentacion',
         'valores_fiscales',
         'ubicacion_inventario',
+        'activos_no_verificados',
         'discrepancias_inventario',
         'actividad_bitacora',
     ];
@@ -26,6 +27,7 @@ class ReporteGuardadoController extends Controller
         'activos_sin_documentacion' => 'reportes.documentales',
         'valores_fiscales' => 'reportes.valores',
         'ubicacion_inventario' => 'reportes.inventario',
+        'activos_no_verificados' => 'reportes.inventario',
         'discrepancias_inventario' => 'reportes.inventario',
         'actividad_bitacora' => 'reportes.bitacora',
     ];

@@ -31,7 +31,9 @@ class ReportesController extends Controller
             array_keys($availableReportTypes)
         );
 
-        $query = $this->queryForReport($tipoReporte);
+        $this->normalizeInventoryVerificationPeriod($request, $tipoReporte);
+
+        $query = $this->queryForReport($tipoReporte, $request);
         $this->applyFilters($query, $request, $tipoReporte);
 
         $availableColumns = $this->columnsFor($tipoReporte);
@@ -105,6 +107,10 @@ class ReportesController extends Controller
                 'label' => 'Ubicación física e inventario',
                 'permission' => 'reportes.inventario',
             ],
+            'activos_no_verificados' => [
+                'label' => 'Activos no verificados en el periodo',
+                'permission' => 'reportes.inventario',
+            ],
             'discrepancias_inventario' => [
                 'label' => 'Discrepancias de inventario',
                 'permission' => 'reportes.inventario',
@@ -140,13 +146,39 @@ class ReportesController extends Controller
         return $allowedTypes[0] ?? 'expedientes_documentales';
     }
 
-    private function queryForReport(string $tipoReporte): Builder
+    private function normalizeInventoryVerificationPeriod(Request $request, string $tipoReporte): void
+    {
+        if ($tipoReporte !== 'activos_no_verificados') {
+            return;
+        }
+
+        $request->validate([
+            'fecha_desde' => ['nullable', 'date'],
+            'fecha_hasta' => ['nullable', 'date', 'after_or_equal:fecha_desde'],
+        ], [
+            'fecha_desde.date' => 'La fecha inicial del periodo de verificación no es válida.',
+            'fecha_hasta.date' => 'La fecha final del periodo de verificación no es válida.',
+            'fecha_hasta.after_or_equal' => 'La fecha final debe ser igual o posterior a la fecha inicial.',
+        ]);
+
+        $request->merge([
+            'fecha_desde' => $request->filled('fecha_desde')
+                ? (string) $request->input('fecha_desde')
+                : now()->startOfYear()->toDateString(),
+            'fecha_hasta' => $request->filled('fecha_hasta')
+                ? (string) $request->input('fecha_hasta')
+                : now()->toDateString(),
+        ]);
+    }
+
+    private function queryForReport(string $tipoReporte, Request $request): Builder
     {
         return match ($tipoReporte) {
             'expedientes_incompletos' => $this->queryExpedientesIncompletos(),
             'activos_sin_documentacion' => $this->queryActivosSinDocumentacion(),
             'valores_fiscales' => $this->queryValoresFiscales(),
             'ubicacion_inventario' => $this->queryUbicacionInventario(),
+            'activos_no_verificados' => $this->queryActivosNoVerificados($request),
             'discrepancias_inventario' => $this->queryDiscrepanciasInventario(),
             'actividad_bitacora' => $this->queryActividadBitacora(),
             default => $this->queryExpedientesDocumentales(),
@@ -352,6 +384,72 @@ class ReportesController extends Controller
             ]);
     }
 
+    private function queryActivosNoVerificados(Request $request): Builder
+    {
+        $fechaDesde = (string) $request->input('fecha_desde');
+        $fechaHasta = (string) $request->input('fecha_hasta');
+
+        $latestInventarios = DB::table('inventarios_activo')
+            ->whereDate('fecha_inventario', '<=', $fechaHasta)
+            ->select([
+                'id',
+                'numero_activo',
+                'fecha_inventario',
+                'estatus_localizacion',
+                'ubicacion_verificada_id',
+                'verificado_por',
+                DB::raw('ROW_NUMBER() OVER (PARTITION BY numero_activo ORDER BY fecha_inventario DESC, id DESC) as fila'),
+            ]);
+
+        return DB::table('activos as a')
+            ->leftJoin('ubicaciones as u', 'u.id', '=', 'a.ubicacion_id')
+            ->leftJoin('plantas as pl', 'pl.id', '=', 'a.planta_id')
+            ->leftJoin('areas as ar', 'ar.id', '=', 'u.area_id')
+            ->leftJoin('responsables as r', 'r.id', '=', 'a.responsable_id')
+            ->leftJoinSub($latestInventarios, 'ia', function ($join) {
+                $join
+                    ->on('ia.numero_activo', '=', 'a.numero_activo')
+                    ->where('ia.fila', 1);
+            })
+            ->leftJoin('ubicaciones as uv', 'uv.id', '=', 'ia.ubicacion_verificada_id')
+            ->leftJoin('users as usuario_verificador', 'usuario_verificador.id', '=', 'ia.verificado_por')
+            ->where('a.activo', true)
+            ->whereNotExists(function ($subquery) use ($fechaDesde, $fechaHasta): void {
+                $subquery
+                    ->selectRaw('1')
+                    ->from('inventarios_activo as inventario_periodo')
+                    ->whereColumn('inventario_periodo.numero_activo', 'a.numero_activo')
+                    ->whereDate('inventario_periodo.fecha_inventario', '>=', $fechaDesde)
+                    ->whereDate('inventario_periodo.fecha_inventario', '<=', $fechaHasta);
+            })
+            ->select([
+                'a.numero_activo',
+                'a.descripcion as activo_descripcion',
+                'pl.nombre as planta_nombre',
+                'ar.nombre as area_nombre',
+                DB::raw("NULLIF(CONCAT_WS(' / ', u.codigo_interno, u.descripcion, u.edificio, u.piso, u.pasillo), '') as ubicacion_actual"),
+                'r.nombre as responsable_nombre',
+                'a.estatus_operativo',
+                'ia.fecha_inventario as ultima_fecha_inventario',
+                'ia.estatus_localizacion as ultimo_estatus_localizacion',
+                DB::raw("NULLIF(CONCAT_WS(' / ', uv.codigo_interno, uv.descripcion), '') as ultima_ubicacion_verificada"),
+                'usuario_verificador.name as ultimo_verificado_por',
+                DB::raw("CASE
+                    WHEN ia.fecha_inventario IS NULL THEN NULL
+                    ELSE DATEDIFF('{$fechaHasta}', ia.fecha_inventario)
+                END as dias_desde_ultimo_inventario"),
+                DB::raw("CASE
+                    WHEN ia.id IS NULL THEN 'Sin inventario histórico'
+                    WHEN ia.estatus_localizacion = 'localizado' THEN 'Último inventario localizado antes del periodo seleccionado'
+                    WHEN ia.estatus_localizacion = 'no_encontrado' THEN 'Último inventario: activo no encontrado'
+                    WHEN ia.estatus_localizacion = 'diferencia' THEN 'Último inventario: diferencia de ubicación'
+                    WHEN ia.estatus_localizacion = 'pendiente' THEN 'Último inventario pendiente de resolución'
+                    ELSE 'Sin inventario dentro del periodo seleccionado'
+                END as motivo_no_verificacion"),
+                'a.created_at',
+            ]);
+    }
+
     private function queryDiscrepanciasInventario(): Builder
     {
         return DB::table('inventarios_activo as ia')
@@ -455,7 +553,11 @@ class ReportesController extends Controller
             $query->where('a.tipo_activo_id', (int) $request->tipo_activo_id);
         }
 
-        if ($request->filled('area_id') && in_array($tipoReporte, ['ubicacion_inventario', 'discrepancias_inventario'], true)) {
+        if ($request->filled('area_id') && in_array($tipoReporte, [
+            'ubicacion_inventario',
+            'activos_no_verificados',
+            'discrepancias_inventario',
+        ], true)) {
             $areaColumn = $tipoReporte === 'discrepancias_inventario'
                 ? 'uverificada.area_id'
                 : 'u.area_id';
@@ -463,7 +565,10 @@ class ReportesController extends Controller
             $query->where($areaColumn, (int) $request->area_id);
         }
 
-        if ($request->filled('responsable_id') && $tipoReporte === 'ubicacion_inventario') {
+        if ($request->filled('responsable_id') && in_array($tipoReporte, [
+            'ubicacion_inventario',
+            'activos_no_verificados',
+        ], true)) {
             $query->where('a.responsable_id', (int) $request->responsable_id);
         }
 
@@ -485,21 +590,27 @@ class ReportesController extends Controller
 
         if ($request->filled('estatus_localizacion') && in_array($tipoReporte, [
             'ubicacion_inventario',
+            'activos_no_verificados',
             'discrepancias_inventario',
         ], true)) {
-            if ($request->estatus_localizacion === 'sin_inventario' && $tipoReporte === 'ubicacion_inventario') {
+            if (
+                $request->estatus_localizacion === 'sin_inventario'
+                && in_array($tipoReporte, ['ubicacion_inventario', 'activos_no_verificados'], true)
+            ) {
                 $query->whereNull('ia.id');
             } else {
                 $query->where('ia.estatus_localizacion', $request->estatus_localizacion);
             }
         }
 
-        if ($request->filled('fecha_desde')) {
-            $query->whereDate($this->dateColumnFor($tipoReporte), '>=', $request->fecha_desde);
-        }
+        if ($tipoReporte !== 'activos_no_verificados') {
+            if ($request->filled('fecha_desde')) {
+                $query->whereDate($this->dateColumnFor($tipoReporte), '>=', $request->fecha_desde);
+            }
 
-        if ($request->filled('fecha_hasta')) {
-            $query->whereDate($this->dateColumnFor($tipoReporte), '<=', $request->fecha_hasta);
+            if ($request->filled('fecha_hasta')) {
+                $query->whereDate($this->dateColumnFor($tipoReporte), '<=', $request->fecha_hasta);
+            }
         }
 
         $amountColumn = $this->amountColumnFor($tipoReporte);
@@ -527,7 +638,7 @@ class ReportesController extends Controller
     {
         return match ($tipoReporte) {
             'valores_fiscales' => 'v.fecha_corte',
-            'ubicacion_inventario', 'discrepancias_inventario' => 'ia.fecha_inventario',
+            'ubicacion_inventario', 'activos_no_verificados', 'discrepancias_inventario' => 'ia.fecha_inventario',
             'actividad_bitacora' => 'b.fecha_evento',
             'activos_sin_documentacion' => 'a.created_at',
             default => 'e.fecha_factura',
@@ -559,6 +670,7 @@ class ReportesController extends Controller
             match ($tipoReporte) {
                 'valores_fiscales' => $query->orderByDesc('v.fecha_corte')->orderByDesc('v.id'),
                 'ubicacion_inventario' => $query->orderBy('pl.nombre')->orderBy('a.numero_activo'),
+                'activos_no_verificados' => $query->orderBy('pl.nombre')->orderBy('a.numero_activo'),
                 'discrepancias_inventario' => $query->orderByDesc('ia.fecha_inventario')->orderByDesc('ia.id'),
                 'actividad_bitacora' => $query->orderByDesc('b.fecha_evento')->orderByDesc('b.id'),
                 'activos_sin_documentacion' => $query->orderBy('a.numero_activo'),
@@ -577,6 +689,12 @@ class ReportesController extends Controller
                 'planta' => 'pl.nombre',
             ],
             'ubicacion_inventario' => [
+                'numero_activo' => 'a.numero_activo',
+                'fecha' => 'ia.fecha_inventario',
+                'planta' => 'pl.nombre',
+                'estatus' => 'ia.estatus_localizacion',
+            ],
+            'activos_no_verificados' => [
                 'numero_activo' => 'a.numero_activo',
                 'fecha' => 'ia.fecha_inventario',
                 'planta' => 'pl.nombre',
@@ -695,6 +813,21 @@ class ReportesController extends Controller
                 'inventario_observaciones' => 'Observaciones inventario',
                 'fecha_movimiento' => 'Último movimiento',
                 'movimiento_motivo' => 'Motivo movimiento',
+            ],
+            'activos_no_verificados' => [
+                'numero_activo' => 'Activo',
+                'activo_descripcion' => 'Descripción',
+                'planta_nombre' => 'Planta',
+                'area_nombre' => 'Área',
+                'ubicacion_actual' => 'Ubicación actual',
+                'responsable_nombre' => 'Responsable',
+                'estatus_operativo' => 'Estatus operativo',
+                'ultima_fecha_inventario' => 'Último inventario',
+                'ultimo_estatus_localizacion' => 'Último estatus de inventario',
+                'ultima_ubicacion_verificada' => 'Última ubicación verificada',
+                'ultimo_verificado_por' => 'Último verificado por',
+                'dias_desde_ultimo_inventario' => 'Días desde último inventario',
+                'motivo_no_verificacion' => 'Motivo de pendiente',
             ],
             'discrepancias_inventario' => [
                 'numero_activo' => 'Activo',
