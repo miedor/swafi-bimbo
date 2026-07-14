@@ -551,6 +551,7 @@
             <div class="table-actions">
               <a href="{{ route('busqueda', ['numero_activo' => $row->numero_activo]) }}">Buscar</a>
               <a href="{{ route('ubicacion', ['numero_activo' => $row->numero_activo]) }}">Filtrar</a>
+              <a href="{{ route('activos.etiqueta', $row->numero_activo) }}" target="_blank" rel="noopener">Etiqueta QR</a>
               @if($row->expediente_id)
                 <a href="{{ route('expediente', ['expediente' => $row->expediente_id, 'tab' => 'ubicacion']) }}">Detalle</a>
               @endif

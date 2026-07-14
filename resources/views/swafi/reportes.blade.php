@@ -337,6 +337,7 @@
         'estatus_contable',
         'estatus_operativo',
         'estatus_localizacion',
+        'ultimo_estatus_localizacion',
     ];
 
     $selectedColumnKeys = array_keys($columnasSeleccionadas);
@@ -381,12 +382,12 @@
                     </label>
 
                     <label class="rp-field" data-report-group="general">
-                        <span>Fecha desde</span>
+                        <span>{{ $tipoReporte === 'activos_no_verificados' ? 'Periodo de verificación desde' : 'Fecha desde' }}</span>
                         <input type="date" name="fecha_desde" value="{{ $filtros['fecha_desde'] ?? '' }}">
                     </label>
 
                     <label class="rp-field" data-report-group="general">
-                        <span>Fecha hasta</span>
+                        <span>{{ $tipoReporte === 'activos_no_verificados' ? 'Periodo de verificación hasta' : 'Fecha hasta' }}</span>
                         <input type="date" name="fecha_hasta" value="{{ $filtros['fecha_hasta'] ?? '' }}">
                     </label>
                 </div>
@@ -751,6 +752,7 @@
 
                                     @if (isset($row->numero_activo) && $row->numero_activo)
                                         <a href="{{ route('busqueda', ['numero_activo' => $row->numero_activo]) }}">Buscar</a>
+                                        <a href="{{ route('activos.etiqueta', $row->numero_activo) }}" target="_blank" rel="noopener">Etiqueta QR</a>
                                     @endif
                                 </div>
                             </td>
@@ -809,6 +811,7 @@
             activos_sin_documentacion: ['general', 'asset', 'documental'],
             valores_fiscales: ['general', 'asset', 'valores', 'monetario'],
             ubicacion_inventario: ['general', 'asset', 'inventario', 'ubicacion'],
+            activos_no_verificados: ['general', 'asset', 'inventario', 'ubicacion'],
             discrepancias_inventario: ['general', 'asset', 'inventario'],
             actividad_bitacora: ['general', 'bitacora']
         };
