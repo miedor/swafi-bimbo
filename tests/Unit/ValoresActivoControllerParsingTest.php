@@ -3,20 +3,22 @@
 namespace Tests\Unit;
 
 use App\Http\Controllers\ValoresActivoController;
+use App\Services\SwafiAuthorizationService;
 use PHPUnit\Framework\Attributes\DataProvider;
-use Tests\TestCase;
+use PHPUnit\Framework\TestCase;
+use ReflectionMethod;
 
 class ValoresActivoControllerParsingTest extends TestCase
 {
     #[DataProvider('decimalProvider')]
     public function test_parses_common_decimal_formats(string $input, int $scale, float $expected): void
     {
-        $controller = new ValoresActivoController();
-        $method = new \ReflectionMethod($controller, 'toDecimal');
+        $controller = $this->controller();
+        $method = new ReflectionMethod($controller, 'toDecimal');
 
         $result = $method->invoke($controller, $input, $scale);
 
-        $this->assertSame($expected, $result);
+        self::assertSame($expected, $result);
     }
 
     public static function decimalProvider(): array
@@ -32,22 +34,27 @@ class ValoresActivoControllerParsingTest extends TestCase
 
     public function test_validates_dates_without_normalizing_invalid_calendar_days(): void
     {
-        $controller = new ValoresActivoController();
-        $method = new \ReflectionMethod($controller, 'parseDate');
+        $controller = $this->controller();
+        $method = new ReflectionMethod($controller, 'parseDate');
 
-        $this->assertSame('2026-06-25', $method->invoke($controller, '25/06/2026'));
-        $this->assertSame('2026-06-25', $method->invoke($controller, '2026-06-25'));
-        $this->assertNull($method->invoke($controller, '31/02/2026'));
+        self::assertSame('2026-06-25', $method->invoke($controller, '25/06/2026'));
+        self::assertSame('2026-06-25', $method->invoke($controller, '2026-06-25'));
+        self::assertNull($method->invoke($controller, '31/02/2026'));
     }
 
     public function test_rejects_unknown_accounting_status_instead_of_converting_it_to_vigente(): void
     {
-        $controller = new ValoresActivoController();
-        $method = new \ReflectionMethod($controller, 'normalizeStatus');
+        $controller = $this->controller();
+        $method = new ReflectionMethod($controller, 'normalizeStatus');
 
-        $this->assertSame('vigente', $method->invoke($controller, 'Vigente'));
-        $this->assertSame('en_revision', $method->invoke($controller, 'En revisión'));
-        $this->assertSame('baja', $method->invoke($controller, 'Baja'));
-        $this->assertNull($method->invoke($controller, 'vigentee'));
+        self::assertSame('vigente', $method->invoke($controller, 'Vigente'));
+        self::assertSame('en_revision', $method->invoke($controller, 'En revisión'));
+        self::assertSame('baja', $method->invoke($controller, 'Baja'));
+        self::assertNull($method->invoke($controller, 'vigentee'));
+    }
+
+    private function controller(): ValoresActivoController
+    {
+        return new ValoresActivoController(new SwafiAuthorizationService());
     }
 }

@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Services\CfdiValidationService;
+use App\Services\SwafiStorageService;
 use PHPUnit\Framework\TestCase;
 
 class CfdiValidationServiceTest extends TestCase
@@ -20,7 +21,7 @@ class CfdiValidationServiceTest extends TestCase
 </cfdi:Comprobante>
 XML;
 
-        $result = (new CfdiValidationService())->extractFromString($xml);
+        $result = $this->service()->extractFromString($xml);
 
         self::assertTrue($result['xml_bien_formado']);
         self::assertSame('4.0', $result['version_cfdi']);
@@ -36,7 +37,7 @@ XML;
 
     public function test_rejects_malformed_xml_without_throwing(): void
     {
-        $result = (new CfdiValidationService())->extractFromString('<cfdi:Comprobante>');
+        $result = $this->service()->extractFromString('<cfdi:Comprobante>');
 
         self::assertFalse($result['xml_bien_formado']);
         self::assertNotEmpty($result['errors']);
@@ -53,8 +54,15 @@ XML;
 </Comprobante>
 XML;
 
-        $result = (new CfdiValidationService())->extractFromString($xml);
+        $result = $this->service()->extractFromString($xml);
 
+        self::assertFalse($result['xml_bien_formado']);
+        self::assertNotEmpty($result['errors']);
         self::assertStringNotContainsString('root:', (string) ($result['nombre_emisor'] ?? ''));
+    }
+
+    private function service(): CfdiValidationService
+    {
+        return new CfdiValidationService(new SwafiStorageService());
     }
 }
