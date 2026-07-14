@@ -6,223 +6,436 @@ use App\Services\SwafiStorageService;
 use Illuminate\Console\Command;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Support\Facades\Storage;
+use Throwable;
 
 class AuditSwafiStorageCommand extends Command
 {
     protected $signature = 'swafi:storage-audit
-        {--type=all : all, avatars, documents o evidences}
-        {--repair-metadata : Busca una copia íntegra en los discos configurados y corrige la metadata}
-        {--disk=* : Discos adicionales que deben revisarse}
-        {--quiet-success : Solo muestra incidencias y resumen}';
+        {--disk= : Disco alternativo donde se buscarán copias}
+        {--repair-metadata : Corrige únicamente la metadata cuando existe una copia íntegra}
+        {--quiet-success : No muestra los registros correctos}';
 
-    protected $description = 'Audita existencia, disco e integridad SHA-256 de los archivos de SWAFI.';
+    protected $description = 'Audita la existencia e integridad de avatares, documentos y evidencias almacenados por SWAFI.';
 
-    public function handle(SwafiStorageService $storage): int
+    public function handle(SwafiStorageService $storageService): int
     {
-        $type = strtolower(trim((string) $this->option('type')));
+        $diskAlternativo = trim((string) $this->option('disk'));
+        $repararMetadata = (bool) $this->option('repair-metadata');
+        $silenciarCorrectos = (bool) $this->option('quiet-success');
 
-        if (!in_array($type, ['all', 'avatars', 'documents', 'evidences'], true)) {
-            $this->error('El tipo debe ser all, avatars, documents o evidences.');
-            return self::FAILURE;
-        }
-
-        $disks = array_values(array_unique(array_filter([
-            $storage->defaultDisk(),
-            $storage->legacyDisk(),
-            ...array_map(fn ($disk) => trim((string) $disk), (array) $this->option('disk')),
-        ])));
-
-        $summary = [
+        $estadisticas = [
             'revisados' => 0,
             'correctos' => 0,
             'reparados' => 0,
             'faltantes' => 0,
-            'integridad_fallida' => 0,
+            'hash_invalidos' => 0,
             'errores' => 0,
         ];
 
-        if (in_array($type, ['all', 'avatars'], true)) {
-            $this->auditAvatars($storage, $disks, $summary);
-        }
+        $this->auditarAvatares(
+            $storageService,
+            $diskAlternativo,
+            $repararMetadata,
+            $silenciarCorrectos,
+            $estadisticas
+        );
 
-        if (in_array($type, ['all', 'documents'], true)) {
-            $this->auditDocuments($storage, $disks, $summary);
-        }
+        $this->auditarDocumentos(
+            $storageService,
+            $diskAlternativo,
+            $repararMetadata,
+            $silenciarCorrectos,
+            $estadisticas
+        );
 
-        if (in_array($type, ['all', 'evidences'], true)) {
-            $this->auditEvidences($storage, $disks, $summary);
-        }
+        $this->auditarEvidencias(
+            $storageService,
+            $diskAlternativo,
+            $repararMetadata,
+            $silenciarCorrectos,
+            $estadisticas
+        );
 
         $this->newLine();
+
         $this->table(
-            ['Revisados', 'Correctos', 'Reparados', 'Faltantes', 'Hash inválido', 'Errores'],
+            [
+                'Revisados',
+                'Correctos',
+                'Reparados',
+                'Faltantes',
+                'Hash inválido',
+                'Errores',
+            ],
             [[
-                $summary['revisados'],
-                $summary['correctos'],
-                $summary['reparados'],
-                $summary['faltantes'],
-                $summary['integridad_fallida'],
-                $summary['errores'],
+                $estadisticas['revisados'],
+                $estadisticas['correctos'],
+                $estadisticas['reparados'],
+                $estadisticas['faltantes'],
+                $estadisticas['hash_invalidos'],
+                $estadisticas['errores'],
             ]]
         );
 
-        $this->registerAudit($summary);
+        if (
+            $estadisticas['faltantes'] > 0
+            || $estadisticas['hash_invalidos'] > 0
+            || $estadisticas['errores'] > 0
+        ) {
+            return self::FAILURE;
+        }
 
-        return ($summary['faltantes'] + $summary['integridad_fallida'] + $summary['errores']) > 0
-            ? self::FAILURE
-            : self::SUCCESS;
+        return self::SUCCESS;
     }
 
-    private function auditAvatars(SwafiStorageService $storage, array $disks, array &$summary): void
-    {
-        if (!Schema::hasTable('users') || !Schema::hasColumn('users', 'avatar_disk')) {
-            return;
-        }
-
-        foreach (DB::table('users')->whereNotNull('avatar_path')->where('avatar_path', '<>', '')->orderBy('id')->cursor() as $row) {
-            $this->auditRecord(
-                storage: $storage,
-                label: "avatar usuario {$row->id}",
-                table: 'users',
-                id: (int) $row->id,
-                diskColumn: 'avatar_disk',
-                currentDisk: $row->avatar_disk ?: $storage->legacyDisk(),
-                path: (string) $row->avatar_path,
-                expectedHash: null,
-                candidateDisks: $disks,
-                summary: $summary
-            );
-        }
-    }
-
-    private function auditDocuments(SwafiStorageService $storage, array $disks, array &$summary): void
-    {
-        if (!Schema::hasTable('documentos_expediente') || !Schema::hasColumn('documentos_expediente', 'storage_disk')) {
-            return;
-        }
-
-        foreach (DB::table('documentos_expediente')->whereNotNull('ruta_archivo')->where('ruta_archivo', '<>', '')->orderBy('id')->cursor() as $row) {
-            $this->auditRecord(
-                storage: $storage,
-                label: "documento {$row->id}",
-                table: 'documentos_expediente',
-                id: (int) $row->id,
-                diskColumn: 'storage_disk',
-                currentDisk: $row->storage_disk ?: $storage->legacyDisk(),
-                path: (string) $row->ruta_archivo,
-                expectedHash: $row->hash_sha256 ?: null,
-                candidateDisks: $disks,
-                summary: $summary
-            );
-        }
-    }
-
-    private function auditEvidences(SwafiStorageService $storage, array $disks, array &$summary): void
-    {
-        if (!Schema::hasTable('inventario_evidencias') || !Schema::hasColumn('inventario_evidencias', 'storage_disk')) {
-            return;
-        }
-
-        foreach (DB::table('inventario_evidencias')->whereNotNull('ruta_archivo')->where('ruta_archivo', '<>', '')->orderBy('id')->cursor() as $row) {
-            $this->auditRecord(
-                storage: $storage,
-                label: "evidencia {$row->id}",
-                table: 'inventario_evidencias',
-                id: (int) $row->id,
-                diskColumn: 'storage_disk',
-                currentDisk: $row->storage_disk ?: $storage->legacyDisk(),
-                path: (string) $row->ruta_archivo,
-                expectedHash: $row->hash_sha256 ?: null,
-                candidateDisks: $disks,
-                summary: $summary
-            );
-        }
-    }
-
-    private function auditRecord(
-        SwafiStorageService $storage,
-        string $label,
-        string $table,
-        int $id,
-        string $diskColumn,
-        string $currentDisk,
-        string $path,
-        ?string $expectedHash,
-        array $candidateDisks,
-        array &$summary
+    private function auditarAvatares(
+        SwafiStorageService $storageService,
+        string $diskAlternativo,
+        bool $repararMetadata,
+        bool $silenciarCorrectos,
+        array &$estadisticas
     ): void {
-        $summary['revisados']++;
-
-        try {
-            $validation = $storage->validate($currentDisk, $path, $expectedHash);
-
-            if ($validation['ok']) {
-                $summary['correctos']++;
-
-                if (!$this->option('quiet-success')) {
-                    $this->line("[OK] {$label} · {$currentDisk} · {$path}");
-                }
-
-                return;
-            }
-
-            if ((bool) $this->option('repair-metadata')) {
-                foreach ($candidateDisks as $candidateDisk) {
-                    if ($candidateDisk === $currentDisk) {
-                        continue;
-                    }
-
-                    $candidate = $storage->validate($candidateDisk, $path, $expectedHash);
-
-                    if ($candidate['ok']) {
-                        DB::table($table)->where('id', $id)->update([
-                            $diskColumn => $candidateDisk,
-                            'updated_at' => now(),
-                        ]);
-
-                        $summary['reparados']++;
-                        $this->warn("[REPARADO] {$label}: metadata {$currentDisk} → {$candidateDisk}");
-                        return;
-                    }
-                }
-            }
-
-            if (str_contains(strtolower((string) $validation['message']), 'sha-256')) {
-                $summary['integridad_fallida']++;
-            } else {
-                $summary['faltantes']++;
-            }
-
-            $this->error("[INCIDENCIA] {$label}: {$validation['message']}");
-        } catch (\Throwable $exception) {
-            $summary['errores']++;
-            $this->error("[ERROR] {$label}: {$exception->getMessage()}");
-        }
-    }
-
-    private function registerAudit(array $summary): void
-    {
-        if (!Schema::hasTable('bitacora_auditoria')) {
+        if (
+            !Schema::hasTable('users')
+            || !Schema::hasColumn('users', 'avatar_path')
+        ) {
             return;
         }
 
-        try {
-            DB::table('bitacora_auditoria')->insert([
-                'numero_activo' => null,
-                'user_id' => null,
-                'modulo' => 'M04 Administración y seguridad del sistema',
-                'accion' => 'AUDITORIA_STORAGE',
-                'tabla_afectada' => null,
-                'registro_clave' => null,
-                'antes' => null,
-                'despues' => json_encode($summary, JSON_UNESCAPED_UNICODE),
-                'ip' => 'artisan',
-                'fecha_evento' => now(),
-                'created_at' => now(),
+        DB::table('users')
+            ->whereNotNull('avatar_path')
+            ->where('avatar_path', '<>', '')
+            ->orderBy('id')
+            ->chunkById(100, function ($usuarios) use (
+                $storageService,
+                $diskAlternativo,
+                $repararMetadata,
+                $silenciarCorrectos,
+                &$estadisticas
+            ): void {
+                foreach ($usuarios as $usuario) {
+                    $estadisticas['revisados']++;
+
+                    $disk = $usuario->avatar_disk
+                        ?? config('filesystems.swafi_legacy_disk', 'local');
+
+                    $path = trim((string) $usuario->avatar_path);
+
+                    try {
+                        if ($this->archivoCorrecto(
+                            $storageService,
+                            $disk,
+                            $path,
+                            null
+                        )) {
+                            $estadisticas['correctos']++;
+
+                            if (!$silenciarCorrectos) {
+                                $this->line(
+                                    "[OK] avatar usuario {$usuario->id} · {$disk} · {$path}"
+                                );
+                            }
+
+                            continue;
+                        }
+
+                        if (
+                            $this->repararMetadataSiEsPosible(
+                                'users',
+                                (int) $usuario->id,
+                                'avatar_disk',
+                                $path,
+                                null,
+                                $diskAlternativo,
+                                $repararMetadata,
+                                $storageService
+                            )
+                        ) {
+                            $estadisticas['reparados']++;
+
+                            $this->info(
+                                "[REPARADO] avatar usuario {$usuario->id} · {$diskAlternativo}"
+                            );
+
+                            continue;
+                        }
+
+                        $estadisticas['faltantes']++;
+
+                        $this->warn(
+                            "[INCIDENCIA] avatar usuario {$usuario->id}: "
+                            ."El archivo no fue localizado en el disco [{$disk}]."
+                        );
+                    } catch (Throwable $exception) {
+                        $estadisticas['errores']++;
+
+                        $this->error(
+                            "[ERROR] avatar usuario {$usuario->id}: "
+                            .$exception->getMessage()
+                        );
+                    }
+                }
+            }, 'id');
+    }
+
+    private function auditarDocumentos(
+        SwafiStorageService $storageService,
+        string $diskAlternativo,
+        bool $repararMetadata,
+        bool $silenciarCorrectos,
+        array &$estadisticas
+    ): void {
+        if (!Schema::hasTable('documentos_expediente')) {
+            return;
+        }
+
+        DB::table('documentos_expediente')
+            ->where('vigente', true)
+            ->whereNotNull('ruta_archivo')
+            ->where('ruta_archivo', '<>', '')
+            ->orderBy('id')
+            ->chunkById(100, function ($documentos) use (
+                $storageService,
+                $diskAlternativo,
+                $repararMetadata,
+                $silenciarCorrectos,
+                &$estadisticas
+            ): void {
+                foreach ($documentos as $documento) {
+                    $estadisticas['revisados']++;
+
+                    $disk = $documento->storage_disk
+                        ?? config('filesystems.swafi_legacy_disk', 'local');
+
+                    $path = trim((string) $documento->ruta_archivo);
+                    $hash = $documento->hash_sha256 ?: null;
+
+                    try {
+                        if (!Storage::disk($disk)->exists($path)) {
+                            if (
+                                $this->repararMetadataSiEsPosible(
+                                    'documentos_expediente',
+                                    (int) $documento->id,
+                                    'storage_disk',
+                                    $path,
+                                    $hash,
+                                    $diskAlternativo,
+                                    $repararMetadata,
+                                    $storageService
+                                )
+                            ) {
+                                $estadisticas['reparados']++;
+
+                                $this->info(
+                                    "[REPARADO] documento {$documento->id} · {$diskAlternativo}"
+                                );
+
+                                continue;
+                            }
+
+                            $estadisticas['faltantes']++;
+
+                            $this->warn(
+                                "[INCIDENCIA] documento {$documento->id}: "
+                                ."El archivo no fue localizado en el disco [{$disk}]."
+                            );
+
+                            continue;
+                        }
+
+                        if (
+                            $hash !== null
+                            && !$storageService->verifyHash($disk, $path, $hash)
+                        ) {
+                            $estadisticas['hash_invalidos']++;
+
+                            $this->warn(
+                                "[INCIDENCIA] documento {$documento->id}: "
+                                .'El hash SHA-256 no coincide.'
+                            );
+
+                            continue;
+                        }
+
+                        $estadisticas['correctos']++;
+
+                        if (!$silenciarCorrectos) {
+                            $this->line(
+                                "[OK] documento {$documento->id} · {$disk} · {$path}"
+                            );
+                        }
+                    } catch (Throwable $exception) {
+                        $estadisticas['errores']++;
+
+                        $this->error(
+                            "[ERROR] documento {$documento->id}: "
+                            .$exception->getMessage()
+                        );
+                    }
+                }
+            }, 'id');
+    }
+
+    private function auditarEvidencias(
+        SwafiStorageService $storageService,
+        string $diskAlternativo,
+        bool $repararMetadata,
+        bool $silenciarCorrectos,
+        array &$estadisticas
+    ): void {
+        if (!Schema::hasTable('inventario_evidencias')) {
+            return;
+        }
+
+        DB::table('inventario_evidencias')
+            ->where('vigente', true)
+            ->whereNotNull('ruta_archivo')
+            ->where('ruta_archivo', '<>', '')
+            ->orderBy('id')
+            ->chunkById(100, function ($evidencias) use (
+                $storageService,
+                $diskAlternativo,
+                $repararMetadata,
+                $silenciarCorrectos,
+                &$estadisticas
+            ): void {
+                foreach ($evidencias as $evidencia) {
+                    $estadisticas['revisados']++;
+
+                    $disk = $evidencia->storage_disk
+                        ?? config('filesystems.swafi_legacy_disk', 'local');
+
+                    $path = trim((string) $evidencia->ruta_archivo);
+                    $hash = $evidencia->hash_sha256 ?: null;
+
+                    try {
+                        if (!Storage::disk($disk)->exists($path)) {
+                            if (
+                                $this->repararMetadataSiEsPosible(
+                                    'inventario_evidencias',
+                                    (int) $evidencia->id,
+                                    'storage_disk',
+                                    $path,
+                                    $hash,
+                                    $diskAlternativo,
+                                    $repararMetadata,
+                                    $storageService
+                                )
+                            ) {
+                                $estadisticas['reparados']++;
+
+                                $this->info(
+                                    "[REPARADO] evidencia {$evidencia->id} · {$diskAlternativo}"
+                                );
+
+                                continue;
+                            }
+
+                            $estadisticas['faltantes']++;
+
+                            $this->warn(
+                                "[INCIDENCIA] evidencia {$evidencia->id}: "
+                                ."El archivo no fue localizado en el disco [{$disk}]."
+                            );
+
+                            continue;
+                        }
+
+                        if (
+                            $hash !== null
+                            && !$storageService->verifyHash($disk, $path, $hash)
+                        ) {
+                            $estadisticas['hash_invalidos']++;
+
+                            $this->warn(
+                                "[INCIDENCIA] evidencia {$evidencia->id}: "
+                                .'El hash SHA-256 no coincide.'
+                            );
+
+                            continue;
+                        }
+
+                        $estadisticas['correctos']++;
+
+                        if (!$silenciarCorrectos) {
+                            $this->line(
+                                "[OK] evidencia {$evidencia->id} · {$disk} · {$path}"
+                            );
+                        }
+                    } catch (Throwable $exception) {
+                        $estadisticas['errores']++;
+
+                        $this->error(
+                            "[ERROR] evidencia {$evidencia->id}: "
+                            .$exception->getMessage()
+                        );
+                    }
+                }
+            }, 'id');
+    }
+
+    private function archivoCorrecto(
+        SwafiStorageService $storageService,
+        string $disk,
+        string $path,
+        ?string $hash
+    ): bool {
+        if ($path === '' || !Storage::disk($disk)->exists($path)) {
+            return false;
+        }
+
+        if ($hash === null || $hash === '') {
+            return true;
+        }
+
+        return $storageService->verifyHash($disk, $path, $hash);
+    }
+
+    private function repararMetadataSiEsPosible(
+        string $tabla,
+        int $id,
+        string $columnaDisco,
+        string $path,
+        ?string $hash,
+        string $diskAlternativo,
+        bool $repararMetadata,
+        SwafiStorageService $storageService
+    ): bool {
+        if (
+            !$repararMetadata
+            || $diskAlternativo === ''
+            || !array_key_exists(
+                $diskAlternativo,
+                config('filesystems.disks', [])
+            )
+        ) {
+            return false;
+        }
+
+        if (!Storage::disk($diskAlternativo)->exists($path)) {
+            return false;
+        }
+
+        if (
+            $hash !== null
+            && $hash !== ''
+            && !$storageService->verifyHash(
+                $diskAlternativo,
+                $path,
+                $hash
+            )
+        ) {
+            return false;
+        }
+
+        DB::table($tabla)
+            ->where('id', $id)
+            ->update([
+                $columnaDisco => $diskAlternativo,
                 'updated_at' => now(),
             ]);
-        } catch (\Throwable) {
-            // La auditoría de archivos no debe fallar por la bitácora.
-        }
+
+        return true;
     }
 }
