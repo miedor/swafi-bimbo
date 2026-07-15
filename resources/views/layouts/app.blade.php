@@ -80,6 +80,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="csrf-token" content="{{ csrf_token() }}">
   <title>@yield('title', 'SWAFI')</title>
 
   <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi.css') }}?v={{ filemtime(public_path('assets/swafi/css/swafi.css')) }}">
@@ -342,10 +343,59 @@
       min-width: 0;
     }
 
-    .nav-item-logout {
-      margin-top: 8px !important;
+    .nav-item-logout-form {
+      width: 100%;
+      margin: 8px 0 0;
+      padding: 0;
     }
 
+    button.nav-item-logout {
+      width: 100%;
+      margin-top: 0 !important;
+      border: 0;
+      font: inherit;
+      text-align: left;
+      cursor: pointer;
+    }
+
+    .swafi-profile-logout-form {
+      margin: 0;
+    }
+
+    button.swafi-profile-link {
+      width: 100%;
+      font-family: inherit;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .swafi-session-warning {
+      position: fixed;
+      right: 20px;
+      bottom: 20px;
+      z-index: 5000;
+      width: min(390px, calc(100vw - 40px));
+      display: none;
+      padding: 16px 18px;
+      border: 1px solid #f5c36a;
+      border-radius: 16px;
+      background: #fff8e8;
+      color: #6f4300;
+      box-shadow: 0 20px 46px rgba(15, 23, 42, .22);
+      font-size: 13px;
+      line-height: 1.45;
+    }
+
+    .swafi-session-warning.is-visible {
+      display: block;
+    }
+
+    .swafi-session-warning strong {
+      display: block;
+      margin-bottom: 3px;
+      color: #9a5b00;
+      font-size: 14px;
+    }
 
     .swafi-profile-menu {
       position: relative;
@@ -515,7 +565,15 @@
   @yield('page_styles')
 </head>
 
-<body>
+<body
+  data-swafi-protected="true"
+  data-swafi-login-url="{{ route('login') }}"
+  data-swafi-logout-url="{{ route('logout') }}"
+  data-swafi-heartbeat-url="{{ route('session.heartbeat') }}"
+  data-swafi-inactivity-ms="{{ (int) config('session.swafi_inactivity_seconds', 600) * 1000 }}"
+  data-swafi-warning-ms="{{ (int) config('session.swafi_warning_seconds', 60) * 1000 }}"
+  data-swafi-heartbeat-ms="{{ (int) config('session.swafi_heartbeat_seconds', 60) * 1000 }}"
+>
 <div class="app-shell">
   <aside class="sidebar">
     <div class="brand-panel">
@@ -672,10 +730,14 @@
         </div>
       @endif
 
-      <a class="nav-item nav-item-logout" href="{{ route('logout') }}">
-        {!! $swafiIcon('logout', 'nav-icon') !!}
-        <span>Cerrar sesión</span>
-      </a>
+      <form class="nav-item-logout-form" action="{{ route('logout') }}" method="POST">
+        @csrf
+        <input type="hidden" name="motivo" value="manual">
+        <button class="nav-item nav-item-logout" type="submit">
+          {!! $swafiIcon('logout', 'nav-icon') !!}
+          <span>Cerrar sesión</span>
+        </button>
+      </form>
     </nav>
   </aside>
 
@@ -733,14 +795,18 @@
                   <span>→</span>
                 </a>
 
-                <a class="swafi-profile-link" href="{{ route('logout') }}">
-                  <span>Cerrar sesión</span>
-                  <span>→</span>
-                </a>
+                <form class="swafi-profile-logout-form" action="{{ route('logout') }}" method="POST">
+                  @csrf
+                  <input type="hidden" name="motivo" value="manual">
+                  <button class="swafi-profile-link" type="submit">
+                    <span>Cerrar sesión</span>
+                    <span>→</span>
+                  </button>
+                </form>
               </div>
 
               <div class="swafi-session-note">
-                Por seguridad, SWAFI cerrará automáticamente la sesión después de 10 minutos sin actividad.
+                Por seguridad, SWAFI cierra la sesión después de 10 minutos sin actividad y al utilizar Atrás en el navegador.
               </div>
             </div>
           </div>
@@ -757,7 +823,13 @@
   </main>
 </div>
 
+<div id="swafiSessionWarning" class="swafi-session-warning" role="status" aria-live="polite">
+  <strong>La sesión está por finalizar</strong>
+  <span id="swafiSessionWarningText">La sesión se cerrará por inactividad.</span>
+</div>
+
 <script src="{{ asset('assets/swafi/js/swafi.js') }}?v={{ filemtime(public_path('assets/swafi/js/swafi.js')) }}"></script>
+<script src="{{ asset('assets/swafi/js/swafi-session.js') }}?v={{ filemtime(public_path('assets/swafi/js/swafi-session.js')) }}"></script>
 
 <script>
   document.addEventListener('DOMContentLoaded', function () {
@@ -778,22 +850,6 @@
         }
       });
     }
-
-    const inactivityLimitMs = 10 * 60 * 1000;
-    let inactivityTimer = null;
-
-    function resetInactivityTimer() {
-      window.clearTimeout(inactivityTimer);
-      inactivityTimer = window.setTimeout(function () {
-        window.location.href = "{{ route('logout', ['motivo' => 'inactividad']) }}";
-      }, inactivityLimitMs);
-    }
-
-    ['click', 'mousemove', 'keydown', 'scroll', 'touchstart'].forEach(function (eventName) {
-      document.addEventListener(eventName, resetInactivityTimer, { passive: true });
-    });
-
-    resetInactivityTimer();
   });
 </script>
 
