@@ -49,6 +49,19 @@ Route::middleware('swafi.auth')->group(function () {
 
     Route::get('/registro-masivo', [RegistroMasivoController::class, 'index'])->name('registro-masivo');
     Route::post('/registro-masivo/importar', [RegistroMasivoController::class, 'importar'])->name('registro-masivo.importar');
+
+    Route::post('/registro-masivo/lotes/{lote}/aplicar', [RegistroMasivoController::class, 'aplicar'])
+        ->whereUuid('lote')
+        ->name('registro-masivo.aplicar');
+
+    Route::delete('/registro-masivo/lotes/{lote}', [RegistroMasivoController::class, 'cancelar'])
+        ->whereUuid('lote')
+        ->name('registro-masivo.cancelar');
+
+    Route::get('/registro-masivo/lotes/{lote}/incidencias.xlsx', [RegistroMasivoController::class, 'exportarIncidencias'])
+        ->whereUuid('lote')
+        ->name('registro-masivo.incidencias');
+
     Route::get('/registro-masivo/plantilla-csv', [RegistroMasivoController::class, 'plantillaCsv'])->name('registro-masivo.plantilla');
 
     Route::get('/valores-fiscales-financieros', [ValoresActivoController::class, 'index'])->name('valores');
