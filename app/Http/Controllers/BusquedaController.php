@@ -87,7 +87,7 @@ class BusquedaController extends Controller
         $activeTab = $this->resolveDetailTab((string) $request->input('tab', 'resumen'));
 
         if (!$expediente) {
-            $expediente = DB::table('expedientes')->latest('id')->value('id');
+            $expediente = DB::table('expedientes')->whereNull('deleted_at')->latest('id')->value('id');
 
             if (!$expediente) {
                 return view('swafi.expediente', [
@@ -116,6 +116,7 @@ class BusquedaController extends Controller
             ->leftJoin('areas as ar', 'ar.id', '=', 'u.area_id')
             ->leftJoin('responsables as r', 'r.id', '=', 'a.responsable_id')
             ->where('e.id', $expediente)
+            ->whereNull('e.deleted_at')
             ->select([
                 'e.id as expediente_id',
                 'e.folio_factura',
@@ -171,6 +172,7 @@ class BusquedaController extends Controller
 
         $valor = DB::table('valores_activo')
             ->where('numero_activo', $detalle->numero_activo)
+            ->whereNull('deleted_at')
             ->orderByDesc('fecha_corte')
             ->orderByDesc('id')
             ->first();
@@ -573,6 +575,7 @@ class BusquedaController extends Controller
     private function baseQuery()
     {
         return DB::table('expedientes as e')
+            ->whereNull('e.deleted_at')
             ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
             ->leftJoin('proveedores as p', 'p.id', '=', 'a.proveedor_id')
             ->leftJoin('centros_costo as cc', 'cc.id', '=', 'a.centro_costo_id')

@@ -64,35 +64,50 @@ class BusquedaGuardadaController extends Controller
             ]);
         }
 
-        $before = BusquedaGuardada::query()
+        $nombre = trim($validated['nombre']);
+        $busqueda = BusquedaGuardada::withTrashed()
             ->where('user_id', $userId)
             ->where('modulo', self::MODULO)
-            ->where('nombre', trim($validated['nombre']))
+            ->where('nombre', $nombre)
             ->first();
+        $before = $busqueda?->toArray();
+        $wasDeleted = $busqueda?->trashed() ?? false;
 
-        $busqueda = BusquedaGuardada::updateOrCreate(
-            [
+        if ($busqueda) {
+            if ($wasDeleted) {
+                $busqueda->restore();
+            }
+
+            $busqueda->forceFill([
+                'filtros' => $filtros,
+                'deleted_by' => null,
+                'delete_reason' => null,
+            ])->save();
+        } else {
+            $busqueda = BusquedaGuardada::create([
                 'user_id' => $userId,
                 'modulo' => self::MODULO,
-                'nombre' => trim($validated['nombre']),
-            ],
-            [
+                'nombre' => $nombre,
                 'filtros' => $filtros,
-            ]
-        );
+            ]);
+        }
 
         $this->registrarBitacora(
-            accion: $before ? 'BUSQUEDA_GUARDADA_ACTUALIZADA' : 'BUSQUEDA_GUARDADA_CREADA',
+            accion: $wasDeleted
+                ? 'BUSQUEDA_GUARDADA_RESTAURADA'
+                : ($before ? 'BUSQUEDA_GUARDADA_ACTUALIZADA' : 'BUSQUEDA_GUARDADA_CREADA'),
             registroClave: (string) $busqueda->id,
-            antes: $before?->toArray(),
+            antes: $before,
             despues: $busqueda->fresh()->toArray()
         );
 
         return redirect()
             ->route('busqueda', $filtros)
-            ->with('success', $before
-                ? 'La búsqueda guardada fue actualizada correctamente.'
-                : 'La búsqueda fue guardada correctamente.');
+            ->with('success', $wasDeleted
+                ? 'La búsqueda guardada fue restaurada y actualizada correctamente.'
+                : ($before
+                    ? 'La búsqueda guardada fue actualizada correctamente.'
+                    : 'La búsqueda fue guardada correctamente.'));
     }
 
     public function apply(int $busqueda): RedirectResponse
@@ -113,22 +128,32 @@ class BusquedaGuardadaController extends Controller
         return redirect()->route('busqueda', $filtros);
     }
 
-    public function destroy(int $busqueda): RedirectResponse
+    public function destroy(Request $request, int $busqueda): RedirectResponse
     {
         $busquedaData = $this->findOwnedSearch($busqueda);
+        $validated = $request->validate([
+            'motivo_baja' => ['nullable', 'string', 'max:500'],
+        ]);
+        $motivoBaja = trim((string) ($validated['motivo_baja'] ?? ''))
+            ?: 'Baja lógica solicitada por la persona propietaria de la búsqueda.';
         $before = $busquedaData->toArray();
+
+        $busquedaData->forceFill([
+            'deleted_by' => $this->userId(),
+            'delete_reason' => $motivoBaja,
+        ])->save();
         $busquedaData->delete();
 
         $this->registrarBitacora(
-            accion: 'BUSQUEDA_GUARDADA_ELIMINADA',
+            accion: 'BUSQUEDA_GUARDADA_BAJA_LOGICA',
             registroClave: (string) $busqueda,
             antes: $before,
-            despues: null
+            despues: BusquedaGuardada::withTrashed()->find($busqueda)?->toArray()
         );
 
         return redirect()
             ->route('busqueda')
-            ->with('success', 'La búsqueda guardada fue eliminada correctamente.');
+            ->with('success', 'La búsqueda guardada fue dada de baja lógicamente y se conserva para trazabilidad.');
     }
 
     private function findOwnedSearch(int $busqueda): BusquedaGuardada

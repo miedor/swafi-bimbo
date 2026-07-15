@@ -261,6 +261,7 @@ class UbicacionInventarioController extends Controller
             ->groupBy('inventario_id');
 
         $latestExpedientes = DB::table('expedientes')
+            ->whereNull('deleted_at')
             ->select('numero_activo', DB::raw('MAX(id) as expediente_id'))
             ->groupBy('numero_activo');
 
@@ -504,6 +505,7 @@ class UbicacionInventarioController extends Controller
         $verifiedLocation = $this->locationDescription($inventario->ubicacion_verificada_id);
         $expedienteId = DB::table('expedientes')
             ->where('numero_activo', $activo->numero_activo)
+            ->whereNull('deleted_at')
             ->orderByDesc('id')
             ->value('id');
 

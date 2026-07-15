@@ -93,7 +93,7 @@ class ExpedienteGestionController extends Controller
         DB::transaction(function () use ($detalle, $validated, $folioFactura, $uuidCfdi, $request) {
             $antes = [
                 'activo' => DB::table('activos')->where('numero_activo', $detalle->numero_activo)->first(),
-                'expediente' => DB::table('expedientes')->where('id', $detalle->expediente_id)->first(),
+                'expediente' => DB::table('expedientes')->where('id', $detalle->expediente_id)->whereNull('deleted_at')->first(),
             ];
 
             DB::table('activos')
@@ -117,6 +117,7 @@ class ExpedienteGestionController extends Controller
 
             DB::table('expedientes')
                 ->where('id', $detalle->expediente_id)
+                ->whereNull('deleted_at')
                 ->update([
                     'folio_factura' => $folioFactura,
                     'uuid_cfdi' => $uuidCfdi,
@@ -130,7 +131,7 @@ class ExpedienteGestionController extends Controller
 
             $despues = [
                 'activo' => DB::table('activos')->where('numero_activo', $detalle->numero_activo)->first(),
-                'expediente' => DB::table('expedientes')->where('id', $detalle->expediente_id)->first(),
+                'expediente' => DB::table('expedientes')->where('id', $detalle->expediente_id)->whereNull('deleted_at')->first(),
             ];
 
             $this->registrarBitacora(
@@ -153,39 +154,56 @@ class ExpedienteGestionController extends Controller
     {
         $detalle = $this->findEditableExpediente($expediente);
         $numeroActivo = $detalle->numero_activo;
+        $validated = $request->validate([
+            'motivo_baja' => ['nullable', 'string', 'max:500'],
+        ]);
+        $motivoBaja = trim((string) ($validated['motivo_baja'] ?? ''))
+            ?: 'Baja lógica solicitada desde la búsqueda avanzada.';
 
-        DB::transaction(function () use ($detalle, $numeroActivo, $request) {
+        DB::transaction(function () use ($detalle, $numeroActivo, $request, $motivoBaja) {
             $antes = [
-                'expediente' => DB::table('expedientes')->where('id', $detalle->expediente_id)->first(),
+                'expediente' => DB::table('expedientes')->where('id', $detalle->expediente_id)->whereNull('deleted_at')->first(),
                 'documentos' => DB::table('documentos_expediente')
                     ->where('expediente_id', $detalle->expediente_id)
                     ->get()
                     ->toArray(),
             ];
 
+            DB::table('expedientes')
+                ->where('id', $detalle->expediente_id)
+                ->whereNull('deleted_at')
+                ->update([
+                    'deleted_at' => now(),
+                    'deleted_by' => auth()->id(),
+                    'delete_reason' => $motivoBaja,
+                    'actualizado_por' => auth()->id(),
+                    'updated_at' => now(),
+                ]);
+
+            $despues = DB::table('expedientes')
+                ->where('id', $detalle->expediente_id)
+                ->first();
+
             $this->registrarBitacora(
                 numeroActivo: $numeroActivo,
-                accion: 'EXPEDIENTE_ELIMINADO',
+                accion: 'EXPEDIENTE_BAJA_LOGICA',
                 tablaAfectada: 'expedientes',
                 registroClave: (string) $detalle->expediente_id,
                 antes: $antes,
                 despues: [
-                    'mensaje' => 'Expediente eliminado desde búsqueda avanzada. El activo fijo permanece registrado.',
-                    'folio_factura' => $detalle->folio_factura,
+                    'expediente' => $despues,
+                    'mensaje' => 'Baja lógica aplicada. El expediente, documentos y trazabilidad permanecen almacenados.',
+                    'motivo_baja' => $motivoBaja,
                 ],
                 ip: $request->ip()
             );
-
-            DB::table('expedientes')
-                ->where('id', $detalle->expediente_id)
-                ->delete();
 
             $this->actualizarEstatusDocumentalActivo($numeroActivo);
         });
 
         return redirect()
             ->route('busqueda', ['numero_activo' => $numeroActivo])
-            ->with('success', 'El expediente fue eliminado correctamente. El activo fijo no se eliminó.');
+            ->with('success', 'El expediente fue dado de baja lógicamente. El activo, sus documentos y la trazabilidad se conservan.');
     }
 
     private function findEditableExpediente(int $expediente): object
@@ -193,6 +211,7 @@ class ExpedienteGestionController extends Controller
         $detalle = DB::table('expedientes as e')
             ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
             ->where('e.id', $expediente)
+            ->whereNull('e.deleted_at')
             ->select([
                 'e.id as expediente_id',
                 'e.folio_factura',
@@ -228,6 +247,7 @@ class ExpedienteGestionController extends Controller
     {
         $expedientes = DB::table('expedientes')
             ->where('numero_activo', $numeroActivo)
+            ->whereNull('deleted_at')
             ->pluck('id');
 
         if ($expedientes->isEmpty()) {

@@ -58,6 +58,7 @@ class DashboardController extends Controller
             ->whereNotExists(function ($query) {
                 $query->select(DB::raw(1))
                     ->from('valores_activo as v')
+                    ->whereNull('v.deleted_at')
                     ->whereColumn('v.numero_activo', 'a.numero_activo')
                     ->where(function ($subquery) {
                         $subquery->where('v.estatus_contable', 'baja')
@@ -155,6 +156,7 @@ class DashboardController extends Controller
             ->groupBy('expediente_id');
 
         $valorCounts = DB::table('valores_activo')
+            ->whereNull('deleted_at')
             ->select(
                 'numero_activo',
                 DB::raw('COUNT(*) as total_valores_registrados'),
@@ -182,6 +184,7 @@ class DashboardController extends Controller
 
         $query = DB::table('expedientes as e')
             ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
+            ->whereNull('e.deleted_at')
             ->leftJoin('proveedores as p', 'p.id', '=', 'a.proveedor_id')
             ->leftJoin('plantas as pl', 'pl.id', '=', 'a.planta_id')
             ->leftJoinSub($documentCounts, 'dc', function ($join) {
@@ -276,6 +279,7 @@ class DashboardController extends Controller
         $query = DB::table('documentos_expediente as d')
             ->join('expedientes as e', 'e.id', '=', 'd.expediente_id')
             ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
+            ->whereNull('e.deleted_at')
             ->select([
                 'd.id',
                 'd.nombre_archivo',
@@ -305,6 +309,7 @@ class DashboardController extends Controller
         $query = DB::table('documentos_expediente as d')
             ->join('expedientes as e', 'e.id', '=', 'd.expediente_id')
             ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
+            ->whereNull('e.deleted_at')
             ->where('d.vigente', true)
             ->where('d.tipo_documento', $tipoDocumento);
 
@@ -322,6 +327,7 @@ class DashboardController extends Controller
             ->join('documentos_expediente as d', 'd.id', '=', 'cv.documento_id')
             ->join('expedientes as e', 'e.id', '=', 'cv.expediente_id')
             ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
+            ->whereNull('e.deleted_at')
             ->where('d.vigente', true)
             ->whereIn('cv.estatus_validacion', $statuses);
 
@@ -347,7 +353,8 @@ class DashboardController extends Controller
     private function expedientesBase(?int $plantaId, ?string $fechaDesde, ?string $fechaHasta)
     {
         $query = DB::table('expedientes as e')
-            ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo');
+            ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
+            ->whereNull('e.deleted_at');
 
         if ($plantaId) {
             $query->where('a.planta_id', $plantaId);

@@ -76,6 +76,7 @@ class EtiquetaActivoController extends Controller
     private function assetData(string $numeroActivo): ?object
     {
         $latestExpediente = DB::table('expedientes')
+            ->whereNull('deleted_at')
             ->select('numero_activo', DB::raw('MAX(id) as expediente_id'))
             ->groupBy('numero_activo');
 

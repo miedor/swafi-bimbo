@@ -96,6 +96,7 @@ class DocumentoExpedienteController extends Controller
     {
         $expedienteData = DB::table('expedientes')
             ->where('id', $expediente)
+            ->whereNull('deleted_at')
             ->first();
 
         abort_if(!$expedienteData, 404, 'El expediente solicitado no existe.');
@@ -244,6 +245,7 @@ class DocumentoExpedienteController extends Controller
     {
         $expedienteData = DB::table('expedientes')
             ->where('id', $expediente)
+            ->whereNull('deleted_at')
             ->first();
 
         abort_if(!$expedienteData, 404, 'El expediente solicitado no existe.');
@@ -326,7 +328,7 @@ class DocumentoExpedienteController extends Controller
             return redirect()
                 ->route('expediente', ['expediente' => $expediente->id, 'tab' => 'documentos'])
                 ->withErrors([
-                    'documentos' => 'El documento seleccionado ya se encuentra eliminado del expediente.',
+                    'documentos' => 'El documento seleccionado ya se encuentra dado de baja lógicamente.',
                 ]);
         }
 
@@ -342,7 +344,7 @@ class DocumentoExpedienteController extends Controller
 
             $this->registrarBitacora(
                 numeroActivo: $expediente->numero_activo,
-                accion: 'DOCUMENTO_ELIMINADO',
+                accion: 'DOCUMENTO_BAJA_LOGICA',
                 tablaAfectada: 'documentos_expediente',
                 registroClave: (string) $documentoData->id,
                 detalle: [
@@ -358,7 +360,7 @@ class DocumentoExpedienteController extends Controller
 
         return redirect()
             ->route('expediente', ['expediente' => $expediente->id, 'tab' => 'documentos'])
-            ->with('success', 'El documento fue eliminado del expediente. Se conserva trazabilidad en bitácora.');
+            ->with('success', 'El documento fue dado de baja lógicamente. El archivo físico y la trazabilidad se conservan.');
     }
 
     /**
@@ -477,6 +479,7 @@ class DocumentoExpedienteController extends Controller
 
         $expediente = DB::table('expedientes')
             ->where('id', $documentoData->expediente_id)
+            ->whereNull('deleted_at')
             ->first();
 
         abort_if(!$expediente, 404, 'El expediente relacionado con el documento no existe.');

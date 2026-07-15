@@ -82,7 +82,7 @@ class InventarioEvidenciaController extends Controller
                 'numero_activo' => $evidencia->numero_activo,
                 'user_id' => $this->userId(),
                 'modulo' => 'M02 Control fiscal, financiero y ubicación física',
-                'accion' => 'EVIDENCIA_INVENTARIO_ELIMINADA',
+                'accion' => 'EVIDENCIA_INVENTARIO_BAJA_LOGICA',
                 'tabla_afectada' => 'inventario_evidencias',
                 'registro_clave' => (string) $evidencia->id,
                 'antes' => json_encode($antes, JSON_UNESCAPED_UNICODE),
@@ -119,6 +119,7 @@ class InventarioEvidenciaController extends Controller
 
         $context->expediente_id = DB::table('expedientes')
             ->where('numero_activo', $context->numero_activo)
+            ->whereNull('deleted_at')
             ->orderByDesc('id')
             ->value('id');
 

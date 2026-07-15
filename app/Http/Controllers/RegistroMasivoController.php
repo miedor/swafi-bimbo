@@ -233,12 +233,14 @@ class RegistroMasivoController extends Controller
 
                 $uuidCfdi = $data['uuid_cfdi'] !== '' ? $data['uuid_cfdi'] : null;
 
-                $expedienteExistente = Expediente::where('numero_activo', $numeroActivo)
+                $expedienteExistente = Expediente::withTrashed()
+                    ->where('numero_activo', $numeroActivo)
                     ->where('folio_factura', $folioFactura)
                     ->first();
 
                 if ($uuidCfdi) {
-                    $uuidConflict = Expediente::where('uuid_cfdi', $uuidCfdi)
+                    $uuidConflict = Expediente::withTrashed()
+                        ->where('uuid_cfdi', $uuidCfdi)
                         ->when($expedienteExistente, function ($query) use ($expedienteExistente) {
                             $query->where('id', '<>', $expedienteExistente->id);
                         })
@@ -267,6 +269,15 @@ class RegistroMasivoController extends Controller
                 }
 
                 $estatusOperativo = $this->normalizeEstatusOperativo($data['estatus_operativo']);
+
+                if ($expedienteExistente?->trashed()) {
+                    $this->rejectRow(
+                        $summary,
+                        $lineNumber,
+                        'el expediente ya existe con baja lógica; debe restaurarse mediante un proceso autorizado antes de volver a importarlo.'
+                    );
+                    continue;
+                }
 
                 $activoAntes = Activo::where('numero_activo', $numeroActivo)->first();
                 $expedienteAntes = $expedienteExistente ? $expedienteExistente->toArray() : null;
@@ -457,6 +468,7 @@ class RegistroMasivoController extends Controller
             ->leftJoinSub($documentCounts, 'dc', function ($join) {
                 $join->on('dc.expediente_id', '=', 'e.id');
             })
+            ->whereNull('e.deleted_at')
             ->select([
                 'e.id as expediente_id',
                 'e.numero_activo',

@@ -69,9 +69,6 @@ class ReporteGuardadoController extends Controller
                 'string',
                 'min:3',
                 'max:120',
-                Rule::unique('reportes_guardados', 'nombre')->where(
-                    fn ($query) => $query->where('user_id', $userId)
-                ),
             ],
             'tipo_reporte' => ['required', Rule::in(self::REPORT_TYPES)],
             'columnas' => ['nullable', 'array', 'max:25'],
@@ -107,16 +104,43 @@ class ReporteGuardadoController extends Controller
             static fn ($column): bool => is_string($column) && trim($column) !== ''
         )));
 
-        $savedReport = ReporteGuardado::create([
-            'user_id' => $userId,
-            'nombre' => trim($validated['nombre_reporte_guardado']),
-            'tipo_reporte' => $validated['tipo_reporte'],
-            'filtros' => $filters,
-            'columnas' => $columns,
-            'orientacion' => $validated['orientacion'] ?? 'horizontal',
-        ]);
+        $nombre = trim($validated['nombre_reporte_guardado']);
+        $savedReport = ReporteGuardado::withTrashed()
+            ->where('user_id', $userId)
+            ->where('nombre', $nombre)
+            ->first();
+        $before = $savedReport?->toArray();
+        $wasDeleted = $savedReport?->trashed() ?? false;
 
-        $this->registerAudit('REPORTE_GUARDADO_CREADO', [
+        if ($savedReport && !$wasDeleted) {
+            return back()->withInput()->withErrors([
+                'nombre_reporte_guardado' => 'Ya tienes un reporte guardado con ese nombre.',
+            ]);
+        }
+
+        if ($savedReport) {
+            $savedReport->restore();
+            $savedReport->forceFill([
+                'tipo_reporte' => $validated['tipo_reporte'],
+                'filtros' => $filters,
+                'columnas' => $columns,
+                'orientacion' => $validated['orientacion'] ?? 'horizontal',
+                'deleted_by' => null,
+                'delete_reason' => null,
+            ])->save();
+        } else {
+            $savedReport = ReporteGuardado::create([
+                'user_id' => $userId,
+                'nombre' => $nombre,
+                'tipo_reporte' => $validated['tipo_reporte'],
+                'filtros' => $filters,
+                'columnas' => $columns,
+                'orientacion' => $validated['orientacion'] ?? 'horizontal',
+            ]);
+        }
+
+        $this->registerAudit($wasDeleted ? 'REPORTE_GUARDADO_RESTAURADO' : 'REPORTE_GUARDADO_CREADO', [
+            'antes' => $before,
             'reporte_guardado_id' => $savedReport->id,
             'nombre' => $savedReport->nombre,
             'tipo_reporte' => $savedReport->tipo_reporte,
@@ -126,7 +150,9 @@ class ReporteGuardadoController extends Controller
 
         return redirect()
             ->route('reportes', $filters)
-            ->with('success', 'Los parámetros del reporte fueron guardados correctamente.');
+            ->with('success', $wasDeleted
+                ? 'El reporte guardado fue restaurado con los nuevos parámetros.'
+                : 'Los parámetros del reporte fueron guardados correctamente.');
     }
 
     public function apply(int $reporte): RedirectResponse
@@ -159,21 +185,32 @@ class ReporteGuardadoController extends Controller
         return redirect()->route('reportes', $parameters);
     }
 
-    public function destroy(int $reporte): RedirectResponse
+    public function destroy(Request $request, int $reporte): RedirectResponse
     {
         $savedReport = ReporteGuardado::query()
             ->where('id', $reporte)
             ->where('user_id', $this->userId())
             ->firstOrFail();
 
+        $validated = $request->validate([
+            'motivo_baja' => ['nullable', 'string', 'max:500'],
+        ]);
+        $motivoBaja = trim((string) ($validated['motivo_baja'] ?? ''))
+            ?: 'Baja lógica solicitada por la persona propietaria del reporte.';
         $snapshot = $savedReport->toArray();
+
+        $savedReport->forceFill([
+            'deleted_by' => $this->userId(),
+            'delete_reason' => $motivoBaja,
+        ])->save();
         $savedReport->delete();
 
-        $this->registerAudit('REPORTE_GUARDADO_ELIMINADO', [
-            'reporte_guardado' => $snapshot,
+        $this->registerAudit('REPORTE_GUARDADO_BAJA_LOGICA', [
+            'reporte_guardado_antes' => $snapshot,
+            'reporte_guardado_despues' => ReporteGuardado::withTrashed()->find($reporte)?->toArray(),
         ]);
 
-        return back()->with('success', 'El reporte guardado fue eliminado.');
+        return back()->with('success', 'El reporte guardado fue dado de baja lógicamente y se conserva para trazabilidad.');
     }
 
     private function can(string $permission): bool

@@ -198,6 +198,7 @@ class ReportesController extends Controller
             ->leftJoinSub($documentCounts, 'dc', function ($join) {
                 $join->on('dc.expediente_id', '=', 'e.id');
             })
+            ->whereNull('e.deleted_at')
             ->select([
                 'e.id as expediente_id',
                 'e.numero_activo',
@@ -243,12 +244,14 @@ class ReportesController extends Controller
     private function queryActivosSinDocumentacion(): Builder
     {
         $latestExpedientes = DB::table('expedientes')
+            ->whereNull('deleted_at')
             ->select('numero_activo', DB::raw('MAX(id) as expediente_id'))
             ->groupBy('numero_activo');
 
         $documentCounts = $this->documentCountsSubquery();
 
         $validValues = DB::table('valores_activo')
+            ->whereNull('deleted_at')
             ->select(
                 'numero_activo',
                 DB::raw("MAX(CASE
@@ -310,6 +313,7 @@ class ReportesController extends Controller
     private function queryValoresFiscales(): Builder
     {
         $latestExpedientes = DB::table('expedientes')
+            ->whereNull('deleted_at')
             ->select('numero_activo', DB::raw('MAX(id) as expediente_id'))
             ->groupBy('numero_activo');
 
@@ -323,6 +327,7 @@ class ReportesController extends Controller
             ->leftJoin('plantas as pl', 'pl.id', '=', 'a.planta_id')
             ->leftJoin('centros_costo as cc', 'cc.id', '=', 'a.centro_costo_id')
             ->leftJoin('tipos_activo as ta', 'ta.id', '=', 'a.tipo_activo_id')
+            ->whereNull('v.deleted_at')
             ->select([
                 'v.id as valor_id',
                 'v.numero_activo',

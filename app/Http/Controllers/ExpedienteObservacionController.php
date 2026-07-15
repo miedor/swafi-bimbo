@@ -350,6 +350,7 @@ class ExpedienteObservacionController extends Controller
     {
         $expedienteData = DB::table('expedientes')
             ->where('id', $expediente)
+            ->whereNull('deleted_at')
             ->first();
 
         abort_if(!$expedienteData, 404, 'El expediente solicitado no existe.');
@@ -504,6 +505,7 @@ class ExpedienteObservacionController extends Controller
     {
         DB::table('expedientes')
             ->where('id', $expedienteId)
+            ->whereNull('deleted_at')
             ->update([
                 'estatus' => 'observado',
                 'actualizado_por' => $this->userId(),
@@ -546,6 +548,7 @@ class ExpedienteObservacionController extends Controller
 
         DB::table('expedientes')
             ->where('id', $expedienteId)
+            ->whereNull('deleted_at')
             ->update([
                 'estatus' => $estatusExpediente,
                 'actualizado_por' => $this->userId(),
@@ -554,6 +557,7 @@ class ExpedienteObservacionController extends Controller
 
         $estatusExpedientesActivo = DB::table('expedientes')
             ->where('numero_activo', $numeroActivo)
+            ->whereNull('deleted_at')
             ->pluck('estatus')
             ->map(fn ($estatus) => (string) $estatus)
             ->all();

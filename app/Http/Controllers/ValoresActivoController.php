@@ -63,8 +63,8 @@ class ValoresActivoController extends Controller
         $this->abortUnlessCanManageValues();
         $data = $request->validated();
         $existing = !empty($data['valor_id'])
-            ? ValorActivo::findOrFail((int) $data['valor_id'])
-            : ValorActivo::where('numero_activo', $data['numero_activo'])->first();
+            ? ValorActivo::withTrashed()->findOrFail((int) $data['valor_id'])
+            : ValorActivo::withTrashed()->where('numero_activo', $data['numero_activo'])->first();
 
         if ($existing && empty($data['motivo_cambio'])) {
             return back()->withInput()->withErrors([
@@ -73,7 +73,7 @@ class ValoresActivoController extends Controller
         }
 
         if ($existing && $existing->numero_activo !== $data['numero_activo']) {
-            $duplicate = ValorActivo::where('numero_activo', $data['numero_activo'])
+            $duplicate = ValorActivo::withTrashed()->where('numero_activo', $data['numero_activo'])
                 ->where('id', '<>', $existing->id)
                 ->exists();
 
@@ -123,12 +123,22 @@ class ValoresActivoController extends Controller
         DB::transaction(function () use ($existing, $payload): void {
             if ($existing) {
                 $before = $existing->toArray();
+                $wasDeleted = $existing->trashed();
+
+                if ($wasDeleted) {
+                    $existing->restore();
+                }
+
+                $existing->forceFill([
+                    'deleted_by' => null,
+                    'delete_reason' => null,
+                ]);
                 $existing->update($payload);
                 $fresh = $existing->fresh();
 
                 $this->registerAudit(
                     $fresh->numero_activo,
-                    'EDICION_VALOR',
+                    $wasDeleted ? 'RESTAURACION_VALOR' : 'EDICION_VALOR',
                     (string) $fresh->id,
                     $before,
                     $fresh->toArray()
@@ -253,13 +263,29 @@ class ValoresActivoController extends Controller
                 $payload['conciliacion_cfdi'] = $reconciliation['status'];
                 $payload['conciliacion_detalle'] = $reconciliation['details'];
 
-                $existing = ValorActivo::where('numero_activo', $numeroActivo)->first();
+                $existing = ValorActivo::withTrashed()->where('numero_activo', $numeroActivo)->first();
 
                 if ($existing) {
                     $before = $existing->toArray();
+                    $wasDeleted = $existing->trashed();
+
+                    if ($wasDeleted) {
+                        $existing->restore();
+                    }
+
+                    $existing->forceFill([
+                        'deleted_by' => null,
+                        'delete_reason' => null,
+                    ]);
                     $existing->update($payload);
                     $summary['actualizados']++;
-                    $this->registerAudit($numeroActivo, 'IMPORTACION_VALOR_EDICION', (string) $existing->id, $before, $existing->fresh()->toArray());
+                    $this->registerAudit(
+                        $numeroActivo,
+                        $wasDeleted ? 'IMPORTACION_VALOR_RESTAURACION' : 'IMPORTACION_VALOR_EDICION',
+                        (string) $existing->id,
+                        $before,
+                        $existing->fresh()->toArray()
+                    );
                 } else {
                     $value = ValorActivo::create($payload);
                     $summary['insertados']++;
@@ -304,23 +330,38 @@ class ValoresActivoController extends Controller
         }, 'plantilla_valores_activo_swafi.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
     }
 
-    public function destroy(int $valor)
+    public function destroy(Request $request, int $valor)
     {
         $this->abortUnlessCanManageValues();
 
-        DB::transaction(function () use ($valor): void {
-            $record = ValorActivo::findOrFail($valor);
+        $validated = $request->validate([
+            'motivo_baja' => ['nullable', 'string', 'max:500'],
+        ]);
+        $motivoBaja = trim((string) ($validated['motivo_baja'] ?? ''))
+            ?: 'Baja lógica solicitada desde el módulo de valores.';
+
+        DB::transaction(function () use ($valor, $motivoBaja): void {
+            $record = ValorActivo::query()->findOrFail($valor);
             $before = $record->toArray();
             $asset = $record->numero_activo;
 
+            $record->forceFill([
+                'deleted_by' => auth()->id(),
+                'delete_reason' => $motivoBaja,
+            ]);
+            $record->save();
             $record->delete();
 
             $this->registerAudit(
                 $asset,
-                'ELIMINACION_VALOR',
+                'BAJA_LOGICA_VALOR',
                 (string) $valor,
                 $before,
-                null
+                ValorActivo::withTrashed()->find($valor)?->toArray() ?? [
+                    'deleted_at' => $record->deleted_at,
+                    'deleted_by' => auth()->id(),
+                    'delete_reason' => $motivoBaja,
+                ]
             );
         });
 
@@ -328,17 +369,19 @@ class ValoresActivoController extends Controller
             ->route('valores')
             ->with(
                 'success',
-                'El registro fue eliminado. El Dashboard marcará el activo como pendiente de atención.'
+                'Los valores fueron dados de baja lógicamente. Se conservan para auditoría y el Dashboard marcará el activo como pendiente.'
             );
     }
 
     private function baseQuery()
     {
         $latestExpedientes = DB::table('expedientes')
+            ->whereNull('deleted_at')
             ->select('numero_activo', DB::raw('MAX(id) as expediente_id'))
             ->groupBy('numero_activo');
 
         return DB::table('valores_activo as v')
+            ->whereNull('v.deleted_at')
             ->join('activos as a', 'a.numero_activo', '=', 'v.numero_activo')
             ->leftJoinSub($latestExpedientes, 'le', fn ($join) => $join->on('le.numero_activo', '=', 'a.numero_activo'))
             ->leftJoin('expedientes as e', 'e.id', '=', 'le.expediente_id')

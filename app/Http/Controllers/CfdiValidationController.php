@@ -10,7 +10,7 @@ class CfdiValidationController extends Controller
 {
     public function revalidate(int $expediente, CfdiValidationService $service): RedirectResponse
     {
-        $expedienteData = DB::table('expedientes')->where('id', $expediente)->first();
+        $expedienteData = DB::table('expedientes')->where('id', $expediente)->whereNull('deleted_at')->first();
         abort_if(!$expedienteData, 404, 'El expediente solicitado no existe.');
 
         $result = $service->validateExpedienteXmls($expediente, auth()->id());
