@@ -2,11 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreBusquedaGuardadaRequest;
 use App\Models\BusquedaGuardada;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 
 class BusquedaGuardadaController extends Controller
 {
@@ -33,38 +33,21 @@ class BusquedaGuardadaController extends Controller
         'per_page',
     ];
 
-    public function store(Request $request): RedirectResponse
+    public function store(StoreBusquedaGuardadaRequest $request): RedirectResponse
     {
-        $validated = $request->validate([
-            'nombre' => [
-                'required',
-                'string',
-                'min:3',
-                'max:100',
-            ],
-            'filtros' => ['required', 'array'],
-            'filtros.estatus' => ['nullable', Rule::in(['completo', 'incompleto', 'observado'])],
-            'filtros.estatus_operativo' => ['nullable', Rule::in(['en_operacion', 'baja', 'traslado'])],
-            'filtros.direccion' => ['nullable', Rule::in(['asc', 'desc'])],
-            'filtros.per_page' => ['nullable', Rule::in(['10', '25', '50', '100', 10, 25, 50, 100])],
-        ], [
-            'nombre.required' => 'Debes asignar un nombre a la búsqueda.',
-            'nombre.min' => 'El nombre de la búsqueda debe contener al menos 3 caracteres.',
-            'nombre.max' => 'El nombre de la búsqueda no debe superar 100 caracteres.',
-            'filtros.required' => 'No se recibieron filtros para guardar.',
-            'filtros.array' => 'Los filtros recibidos no tienen un formato válido.',
-        ]);
-
+        $validated = $request->validated();
         $userId = $this->userId();
-        $filtros = $this->normalizeFilters($validated['filtros']);
+        $filtros = $this->normalizeFilters((array) $validated['filtros']);
 
         if ($this->hasNoMeaningfulFilters($filtros)) {
-            return back()->withErrors([
-                'busqueda_guardada' => 'Configura al menos un criterio antes de guardar la búsqueda.',
-            ]);
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'busqueda_guardada' => 'Configura al menos un criterio antes de guardar la búsqueda.',
+                ]);
         }
 
-        $nombre = trim($validated['nombre']);
+        $nombre = trim((string) $validated['nombre']);
         $busqueda = BusquedaGuardada::withTrashed()
             ->where('user_id', $userId)
             ->where('modulo', self::MODULO)
