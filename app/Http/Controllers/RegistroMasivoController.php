@@ -3,390 +3,205 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ImportRegistroMasivoRequest;
-use App\Models\Activo;
-use App\Models\DocumentoExpediente;
-use App\Models\Expediente;
-use App\Services\SwafiStorageService;
-use Carbon\Carbon;
+use App\Models\ImportacionMasiva;
+use App\Services\RegistroMasivoService;
+use App\Services\SimpleXlsxExporter;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\File;
-use Illuminate\Support\Str;
-use ZipArchive;
+use Illuminate\Validation\ValidationException;
+use Symfony\Component\HttpFoundation\BinaryFileResponse;
 
 class RegistroMasivoController extends Controller
 {
-    public function __construct(private readonly SwafiStorageService $storage)
-    {
+    public function __construct(
+        private readonly RegistroMasivoService $importService,
+        private readonly SimpleXlsxExporter $xlsxExporter
+    ) {
     }
 
     public function index(Request $request)
     {
         $query = $this->baseQuery();
-
         $this->applyFilters($query, $request);
 
         if ($request->input('export') === 'csv') {
             return $this->exportCsv($query);
         }
 
+        $perPage = (int) $request->input('per_page', 10);
+        $perPage = in_array($perPage, [10, 25, 50, 100], true)
+            ? $perPage
+            : 10;
+
         $resultados = $query
             ->orderByDesc('e.created_at')
-            ->paginate((int) $request->input('per_page', 10))
+            ->paginate($perPage)
             ->withQueryString();
+
+        $lote = null;
+        $filasPreview = null;
+
+        if ($request->filled('lote')) {
+            $lote = $this->findOwnedBatch((string) $request->input('lote'));
+
+            $previewQuery = $lote->filas()->orderBy('numero_fila');
+            $previewStatus = (string) $request->input('preview_status', '');
+
+            if (in_array($previewStatus, ['aceptada', 'observada', 'rechazada'], true)) {
+                $previewQuery->where('estatus', $previewStatus);
+            }
+
+            $filasPreview = $previewQuery
+                ->paginate(25, ['*'], 'preview_page')
+                ->withQueryString();
+        }
+
+        $lotesRecientes = ImportacionMasiva::query()
+            ->where('user_id', auth()->id())
+            ->latest('id')
+            ->limit(8)
+            ->get();
 
         return view('swafi.registro-masivo', [
             'resultados' => $resultados,
             'catalogos' => $this->catalogos(),
             'filtros' => $request->all(),
+            'lote' => $lote,
+            'filasPreview' => $filasPreview,
+            'lotesRecientes' => $lotesRecientes,
+            'previewStatus' => (string) $request->input('preview_status', ''),
         ]);
     }
 
-    public function importar(ImportRegistroMasivoRequest $request)
+    public function importar(ImportRegistroMasivoRequest $request): RedirectResponse
     {
-        $csvFile = $request->file('archivo_csv');
-        $zipFile = $request->file('archivo_zip');
+        try {
+            $batch = $this->importService->previsualizar(
+                csvFile: $request->file('archivo_csv'),
+                zipFile: $request->file('archivo_zip'),
+                userId: auth()->id()
+            );
 
-        $rows = file($csvFile->getRealPath(), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+            return redirect()
+                ->route('registro-masivo', ['lote' => $batch->uuid])
+                ->with(
+                    'success',
+                    'La previsualización fue generada. Revisa las filas antes de confirmar la carga.'
+                );
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            report($exception);
 
-        if (!$rows || count($rows) < 2) {
-            return back()->withErrors([
-                'archivo_csv' => 'El archivo no contiene registros para importar.',
-            ]);
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'archivo_csv' => 'No fue posible generar la previsualización. Verifica los archivos y vuelve a intentarlo.',
+                ]);
         }
+    }
 
-        $zipTempDirectory = null;
+    public function aplicar(Request $request, string $lote): RedirectResponse
+    {
+        $request->validate([
+            'confirmar_aplicacion' => ['accepted'],
+        ], [
+            'confirmar_aplicacion.accepted' => 'Debes confirmar que revisaste la previsualización antes de aplicar el lote.',
+        ]);
+
+        $batch = $this->findOwnedBatch($lote);
 
         try {
-            [$zipIndex, $zipTempDirectory] = $this->buildZipIndex($zipFile->getRealPath());
+            $summary = $this->importService->aplicar(
+                $batch,
+                auth()->id()
+            );
+
+            return redirect()
+                ->route('registro-masivo', ['lote' => $batch->uuid])
+                ->with('success', 'La carga masiva fue aplicada correctamente.')
+                ->with('import_summary', $summary);
+        } catch (ValidationException $exception) {
+            throw $exception;
         } catch (\Throwable $exception) {
-            return back()->withErrors([
-                'archivo_zip' => 'No fue posible leer el archivo ZIP: ' . $exception->getMessage(),
-            ]);
-        }
+            report($exception);
 
-        $delimiter = $this->detectDelimiter($rows[0]);
-        $headers = str_getcsv($rows[0], $delimiter);
-
-        $normalizedHeaders = array_map(
-            fn ($header) => $this->normalizeHeader($header),
-            $headers
-        );
-
-        $requiredHeaders = [
-            'numero_activo',
-            'descripcion',
-            'folio_factura',
-            'fecha_factura',
-            'monto_factura',
-            'moneda',
-            'proveedor_rfc',
-            'tipo_activo_clave',
-            'centro_costo_clave',
-            'planta_clave',
-        ];
-
-        $optionalHeaders = [
-            'uuid_cfdi',
-            'ubicacion_codigo',
-            'responsable_correo',
-            'serie',
-            'marca',
-            'modelo',
-            'fecha_adquisicion',
-            'estatus_operativo',
-            'documento_pdf',
-            'documento_xml',
-            'observaciones',
-        ];
-
-        $missingHeaders = array_diff($requiredHeaders, $normalizedHeaders);
-
-        if (!empty($missingHeaders)) {
-            $this->deleteDirectoryIfExists($zipTempDirectory);
-
-            return back()->withErrors([
-                'archivo_csv' => 'El archivo no contiene los encabezados requeridos: ' . implode(', ', $missingHeaders),
-            ]);
-        }
-
-        $headerIndexes = array_flip($normalizedHeaders);
-        $headersToRead = array_merge($requiredHeaders, $optionalHeaders);
-
-        $persistentFiles = [];
-
-        $summary = [
-            'procesados' => 0,
-            'insertados' => 0,
-            'actualizados' => 0,
-            'rechazados' => 0,
-            'errores' => [],
-        ];
-
-        DB::beginTransaction();
-
-        try {
-            foreach (array_slice($rows, 1) as $index => $line) {
-                $lineNumber = $index + 2;
-                $columns = str_getcsv($line, $delimiter);
-
-                $data = [];
-
-                foreach ($headersToRead as $header) {
-                    $data[$header] = isset($headerIndexes[$header])
-                        ? $this->normalizeCell($columns[$headerIndexes[$header]] ?? '')
-                        : '';
-                }
-
-                if ($this->isEmptyCsvRow($data)) {
-                    continue;
-                }
-
-                $summary['procesados']++;
-
-                $numeroActivo = $data['numero_activo'];
-                $folioFactura = $data['folio_factura'];
-
-                $proveedorId = DB::table('proveedores')
-                    ->where('rfc', $data['proveedor_rfc'])
-                    ->value('id');
-
-                if (!$proveedorId) {
-                    $this->rejectRow($summary, $lineNumber, "el RFC de proveedor {$data['proveedor_rfc']} no existe.");
-                    continue;
-                }
-
-                $tipoActivoId = DB::table('tipos_activo')
-                    ->where('clave', $data['tipo_activo_clave'])
-                    ->value('id');
-
-                if (!$tipoActivoId) {
-                    $this->rejectRow($summary, $lineNumber, "el tipo de activo {$data['tipo_activo_clave']} no existe.");
-                    continue;
-                }
-
-                $centroCostoId = DB::table('centros_costo')
-                    ->where('clave', $data['centro_costo_clave'])
-                    ->value('id');
-
-                if (!$centroCostoId) {
-                    $this->rejectRow($summary, $lineNumber, "el centro de costo {$data['centro_costo_clave']} no existe.");
-                    continue;
-                }
-
-                $plantaId = DB::table('plantas')
-                    ->where('clave', $data['planta_clave'])
-                    ->value('id');
-
-                if (!$plantaId) {
-                    $this->rejectRow($summary, $lineNumber, "la planta {$data['planta_clave']} no existe.");
-                    continue;
-                }
-
-                $ubicacionId = null;
-
-                if ($data['ubicacion_codigo'] !== '') {
-                    $ubicacionId = DB::table('ubicaciones')
-                        ->where('codigo_interno', $data['ubicacion_codigo'])
-                        ->value('id');
-
-                    if (!$ubicacionId) {
-                        $this->rejectRow($summary, $lineNumber, "la ubicación {$data['ubicacion_codigo']} no existe.");
-                        continue;
-                    }
-                }
-
-                $responsableId = null;
-
-                if ($data['responsable_correo'] !== '') {
-                    $responsableId = DB::table('responsables')
-                        ->where('correo', $data['responsable_correo'])
-                        ->value('id');
-
-                    if (!$responsableId) {
-                        $this->rejectRow($summary, $lineNumber, "el responsable {$data['responsable_correo']} no existe.");
-                        continue;
-                    }
-                }
-
-                $fechaFactura = $this->parseDate($data['fecha_factura']);
-
-                if (!$fechaFactura) {
-                    $this->rejectRow($summary, $lineNumber, 'la fecha de factura no tiene un formato válido.');
-                    continue;
-                }
-
-                $fechaAdquisicion = $this->parseDate($data['fecha_adquisicion']);
-                $montoFactura = $this->toDecimal($data['monto_factura']);
-
-                if ($montoFactura === null) {
-                    $this->rejectRow($summary, $lineNumber, 'el monto de factura debe ser numérico.');
-                    continue;
-                }
-
-                $moneda = $this->normalizeMoneda($data['moneda']);
-
-                if (!$moneda) {
-                    $this->rejectRow($summary, $lineNumber, 'la moneda debe ser MXN, USD o EUR.');
-                    continue;
-                }
-
-                $uuidCfdi = $data['uuid_cfdi'] !== '' ? $data['uuid_cfdi'] : null;
-
-                $expedienteExistente = Expediente::withTrashed()
-                    ->where('numero_activo', $numeroActivo)
-                    ->where('folio_factura', $folioFactura)
-                    ->first();
-
-                if ($uuidCfdi) {
-                    $uuidConflict = Expediente::withTrashed()
-                        ->where('uuid_cfdi', $uuidCfdi)
-                        ->when($expedienteExistente, function ($query) use ($expedienteExistente) {
-                            $query->where('id', '<>', $expedienteExistente->id);
-                        })
-                        ->exists();
-
-                    if ($uuidConflict) {
-                        $this->rejectRow($summary, $lineNumber, "el UUID CFDI {$uuidCfdi} ya está registrado en otro expediente.");
-                        continue;
-                    }
-                }
-
-                $documentosPendientes = $this->resolveDocumentsFromZip(
-                    zipIndex: $zipIndex,
-                    numeroActivo: $numeroActivo,
-                    folioFactura: $folioFactura,
-                    pdfName: $data['documento_pdf'],
-                    xmlName: $data['documento_xml']
-                );
-
-                if (!empty($documentosPendientes['errores'])) {
-                    foreach ($documentosPendientes['errores'] as $error) {
-                        $this->rejectRow($summary, $lineNumber, $error);
-                    }
-
-                    continue;
-                }
-
-                $estatusOperativo = $this->normalizeEstatusOperativo($data['estatus_operativo']);
-
-                if ($expedienteExistente?->trashed()) {
-                    $this->rejectRow(
-                        $summary,
-                        $lineNumber,
-                        'el expediente ya existe con baja lógica; debe restaurarse mediante un proceso autorizado antes de volver a importarlo.'
-                    );
-                    continue;
-                }
-
-                $activoAntes = Activo::where('numero_activo', $numeroActivo)->first();
-                $expedienteAntes = $expedienteExistente ? $expedienteExistente->toArray() : null;
-
-                $activo = Activo::updateOrCreate(
-                    ['numero_activo' => $numeroActivo],
-                    [
-                        'tipo_activo_id' => $tipoActivoId,
-                        'proveedor_id' => $proveedorId,
-                        'centro_costo_id' => $centroCostoId,
-                        'planta_id' => $plantaId,
-                        'ubicacion_id' => $ubicacionId,
-                        'responsable_id' => $responsableId,
-                        'descripcion' => $data['descripcion'],
-                        'serie' => $data['serie'] ?: null,
-                        'marca' => $data['marca'] ?: null,
-                        'modelo' => $data['modelo'] ?: null,
-                        'fecha_adquisicion' => $fechaAdquisicion,
-                        'estatus_operativo' => $estatusOperativo,
-                        'estatus_documental' => 'incompleto',
-                        'activo' => true,
-                        'creado_por' => $activoAntes ? $activoAntes->creado_por : auth()->id(),
-                        'actualizado_por' => auth()->id(),
-                    ]
-                );
-
-                $expediente = Expediente::updateOrCreate(
-                    [
-                        'numero_activo' => $numeroActivo,
-                        'folio_factura' => $folioFactura,
-                    ],
-                    [
-                        'uuid_cfdi' => $uuidCfdi,
-                        'fecha_factura' => $fechaFactura,
-                        'monto_factura' => $montoFactura,
-                        'moneda' => $moneda,
-                        'estatus' => 'incompleto',
-                        'observaciones' => $data['observaciones'] ?: null,
-                        'creado_por' => $expedienteExistente ? $expedienteExistente->creado_por : auth()->id(),
-                        'actualizado_por' => auth()->id(),
-                    ]
-                );
-
-                $documentosGuardados = $this->storeDocumentsForExpediente(
-                    expediente: $expediente,
-                    documentos: $documentosPendientes['documentos'],
-                    numeroActivo: $numeroActivo,
-                    folioFactura: $folioFactura,
-                    persistentFiles: $persistentFiles
-                );
-
-                $estatusDocumental = $this->resolveDocumentStatusFromDatabase($expediente->id);
-
-                $expediente->update([
-                    'estatus' => $estatusDocumental,
-                    'actualizado_por' => auth()->id(),
+            return redirect()
+                ->route('registro-masivo', ['lote' => $batch->uuid])
+                ->withErrors([
+                    'lote' => 'La carga no fue aplicada. No se confirmó ningún cambio del lote.',
                 ]);
-
-                $activo->update([
-                    'estatus_documental' => $estatusDocumental,
-                    'actualizado_por' => auth()->id(),
-                ]);
-
-                if ($expediente->wasRecentlyCreated) {
-                    $summary['insertados']++;
-                    $accion = 'IMPORTACION_EXPEDIENTE_ALTA';
-                } else {
-                    $summary['actualizados']++;
-                    $accion = 'IMPORTACION_EXPEDIENTE_ACTUALIZACION';
-                }
-
-                $this->registrarBitacora(
-                    numeroActivo: $numeroActivo,
-                    accion: $accion,
-                    tablaAfectada: 'expedientes',
-                    registroClave: (string) $expediente->id,
-                    antes: [
-                        'activo' => $activoAntes ? $activoAntes->toArray() : null,
-                        'expediente' => $expedienteAntes,
-                    ],
-                    despues: [
-                        'activo' => $activo->fresh()->toArray(),
-                        'expediente' => $expediente->fresh()->toArray(),
-                        'documentos_guardados' => $documentosGuardados,
-                    ]
-                );
-            }
-
-            DB::commit();
-        } catch (\Throwable $exception) {
-            DB::rollBack();
-
-            foreach ($persistentFiles as $storedFile) {
-                $this->storage->delete($storedFile['disk'], $storedFile['path']);
-            }
-
-            $this->deleteDirectoryIfExists($zipTempDirectory);
-
-            return back()->withErrors([
-                'archivo_csv' => 'Ocurrió un error durante la importación: ' . $exception->getMessage(),
-            ]);
         }
+    }
 
-        $this->deleteDirectoryIfExists($zipTempDirectory);
+    public function cancelar(string $lote): RedirectResponse
+    {
+        $batch = $this->findOwnedBatch($lote);
+
+        $this->importService->cancelar($batch, auth()->id());
 
         return redirect()
             ->route('registro-masivo')
-            ->with('success', 'La carga masiva de expedientes fue procesada correctamente.')
-            ->with('import_summary', $summary);
+            ->with('success', 'La previsualización fue cancelada sin modificar activos ni expedientes.');
+    }
+
+    public function exportarIncidencias(string $lote): BinaryFileResponse
+    {
+        $batch = $this->findOwnedBatch($lote);
+        $rows = $batch->filas()
+            ->whereIn('estatus', ['observada', 'rechazada'])
+            ->orderBy('numero_fila')
+            ->get();
+
+        $dataRows = $rows->map(function ($row): array {
+            $data = $row->datos ?? [];
+
+            return [
+                $row->numero_fila,
+                ucfirst($row->estatus),
+                $row->accion ? ucfirst($row->accion) : 'No aplicable',
+                $data['numero_activo'] ?? '',
+                $data['folio_factura'] ?? '',
+                $data['uuid_cfdi'] ?? '',
+                implode(' | ', $row->errores ?? []),
+                implode(' | ', $row->advertencias ?? []),
+            ];
+        })->all();
+
+        $path = $this->xlsxExporter->export(
+            'Incidencias importación',
+            [
+                'Fila',
+                'Estatus',
+                'Acción propuesta',
+                'Número de activo',
+                'Folio factura',
+                'UUID CFDI',
+                'Errores',
+                'Advertencias',
+            ],
+            $dataRows
+        );
+
+        return response()
+            ->download(
+                $path,
+                'incidencias_importacion_' . $batch->uuid . '.xlsx',
+                [
+                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                ]
+            )
+            ->deleteFileAfterSend(true);
+    }
+
+    private function findOwnedBatch(string $uuid): ImportacionMasiva
+    {
+        return ImportacionMasiva::query()
+            ->where('uuid', $uuid)
+            ->where('user_id', auth()->id())
+            ->firstOrFail();
     }
 
     public function plantillaCsv()
@@ -599,499 +414,4 @@ class RegistroMasivoController extends Controller
         ]);
     }
 
-    private function buildZipIndex(string $zipPath): array
-    {
-        if (!class_exists(ZipArchive::class)) {
-            throw new \RuntimeException('La extensión ZIP de PHP no está disponible en el servidor.');
-        }
-
-        $zip = new ZipArchive();
-        $openResult = $zip->open($zipPath);
-
-        if ($openResult !== true) {
-            throw new \RuntimeException('El archivo ZIP no pudo abrirse o está dañado.');
-        }
-
-        $tempDirectory = storage_path('app/tmp/swafi_import_' . (string) Str::uuid());
-
-        if (!File::exists($tempDirectory)) {
-            File::makeDirectory($tempDirectory, 0755, true);
-        }
-
-        $index = [];
-
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            $entryName = $zip->getNameIndex($i);
-
-            if (!$entryName || str_ends_with($entryName, '/')) {
-                continue;
-            }
-
-            $baseName = basename(str_replace('\\', '/', $entryName));
-
-            if ($baseName === '' || $baseName === '.' || $baseName === '..') {
-                continue;
-            }
-
-            $stream = $zip->getStream($entryName);
-
-            if (!$stream) {
-                continue;
-            }
-
-            $extension = strtolower(pathinfo($baseName, PATHINFO_EXTENSION));
-
-            if (!in_array($extension, ['pdf', 'xml'], true)) {
-                fclose($stream);
-                continue;
-            }
-
-            $safeBaseName = $this->safeFileName($baseName, $extension);
-            $tempFile = $tempDirectory . DIRECTORY_SEPARATOR . Str::random(10) . '_' . $safeBaseName;
-
-            file_put_contents($tempFile, stream_get_contents($stream));
-            fclose($stream);
-
-            $index[$this->normalizeZipKey($baseName)] = [
-                'original_name' => $baseName,
-                'temp_path' => $tempFile,
-                'extension' => $extension,
-                'size' => filesize($tempFile),
-                'hash_sha256' => hash_file('sha256', $tempFile),
-            ];
-        }
-
-        $zip->close();
-
-        return [$index, $tempDirectory];
-    }
-
-    private function resolveDocumentsFromZip(
-        array $zipIndex,
-        string $numeroActivo,
-        string $folioFactura,
-        ?string $pdfName,
-        ?string $xmlName
-    ): array {
-        $documentos = [];
-        $errores = [];
-
-        foreach ($this->splitDocumentNames($pdfName) as $pdfFileName) {
-            $pdf = $this->findFileInZip($zipIndex, $pdfFileName);
-
-            if (!$pdf) {
-                $errores[] = "el PDF {$pdfFileName} no existe dentro del ZIP.";
-                continue;
-            }
-
-            if ($pdf['extension'] !== 'pdf') {
-                $errores[] = "el archivo {$pdfFileName} no tiene extensión PDF.";
-                continue;
-            }
-
-            $documentos[] = [
-                'tipo_documento' => 'PDF',
-                'nombre_archivo' => basename($pdfFileName),
-                'source_path' => $pdf['temp_path'],
-                'mime_type' => 'application/pdf',
-                'tamano_bytes' => $pdf['size'],
-                'hash_sha256' => $pdf['hash_sha256'],
-            ];
-        }
-
-        foreach ($this->splitDocumentNames($xmlName) as $xmlFileName) {
-            $xml = $this->findFileInZip($zipIndex, $xmlFileName);
-
-            if (!$xml) {
-                $errores[] = "el XML {$xmlFileName} no existe dentro del ZIP.";
-                continue;
-            }
-
-            if ($xml['extension'] !== 'xml') {
-                $errores[] = "el archivo {$xmlFileName} no tiene extensión XML.";
-                continue;
-            }
-
-            $documentos[] = [
-                'tipo_documento' => 'XML',
-                'nombre_archivo' => basename($xmlFileName),
-                'source_path' => $xml['temp_path'],
-                'mime_type' => 'application/xml',
-                'tamano_bytes' => $xml['size'],
-                'hash_sha256' => $xml['hash_sha256'],
-            ];
-        }
-
-        return [
-            'documentos' => $documentos,
-            'errores' => $errores,
-        ];
-    }
-
-    private function storeDocumentsForExpediente(
-        Expediente $expediente,
-        array $documentos,
-        string $numeroActivo,
-        string $folioFactura,
-        array &$persistentFiles
-    ): array {
-        $guardados = [];
-
-        foreach ($documentos as $doc) {
-            $stored = $this->storeDocumentFile(
-                sourcePath: $doc['source_path'],
-                numeroActivo: $numeroActivo,
-                folioFactura: $folioFactura,
-                originalName: $doc['nombre_archivo'],
-                mimeType: $doc['mime_type']
-            );
-
-            $persistentFiles[] = $stored;
-
-            $resultado = $this->storeOrReplaceDocumentRecord(
-                expediente: $expediente,
-                tipoDocumento: $doc['tipo_documento'],
-                nombreArchivo: $doc['nombre_archivo'],
-                stored: $stored
-            );
-
-            $guardados[] = $resultado;
-        }
-
-        return $guardados;
-    }
-
-    /**
-     * @return array{disk:string,path:string,mime_type:string,tamano_bytes:int,hash_sha256:string}
-     */
-    private function storeDocumentFile(
-        string $sourcePath,
-        string $numeroActivo,
-        string $folioFactura,
-        string $originalName,
-        ?string $mimeType
-    ): array {
-        $extension = strtolower(pathinfo($originalName, PATHINFO_EXTENSION));
-        $safeName = $this->safeFileName($originalName, $extension ?: 'dat');
-
-        $basePath = 'swafi/expedientes/'
-            . Str::slug($numeroActivo)
-            . '/'
-            . Str::slug($folioFactura);
-
-        $storedName = now()->format('YmdHis')
-            . '_'
-            . Str::random(8)
-            . '_'
-            . $safeName;
-
-        return $this->storage->storeLocalFile(
-            sourcePath: $sourcePath,
-            targetPath: $basePath . '/' . $storedName,
-            mimeType: $mimeType
-        );
-    }
-
-    private function storeOrReplaceDocumentRecord(
-        Expediente $expediente,
-        string $tipoDocumento,
-        string $nombreArchivo,
-        array $stored
-    ): array {
-        $hashSha256 = $stored['hash_sha256'];
-        $normalizedName = $this->normalizeDocumentIdentity($nombreArchivo);
-
-        $existingDocument = DocumentoExpediente::where('expediente_id', $expediente->id)
-            ->where('tipo_documento', $tipoDocumento)
-            ->where(function ($query) use ($normalizedName, $hashSha256) {
-                $query->whereRaw('LOWER(nombre_archivo) = ?', [$normalizedName]);
-
-                if (!empty($hashSha256)) {
-                    $query->orWhere('hash_sha256', $hashSha256);
-                }
-            })
-            ->orderByDesc('version')
-            ->first();
-
-        if ($existingDocument) {
-            DocumentoExpediente::where('expediente_id', $expediente->id)
-                ->where('tipo_documento', $tipoDocumento)
-                ->where(function ($query) use ($normalizedName, $hashSha256) {
-                    $query->whereRaw('LOWER(nombre_archivo) = ?', [$normalizedName]);
-
-                    if (!empty($hashSha256)) {
-                        $query->orWhere('hash_sha256', $hashSha256);
-                    }
-                })
-                ->update([
-                    'vigente' => false,
-                    'updated_at' => now(),
-                ]);
-
-            $version = ((int) $existingDocument->version) + 1;
-            $accion = 'reemplazado';
-        } else {
-            $version = 1;
-            $accion = 'agregado';
-        }
-
-        $documento = DocumentoExpediente::create([
-            'expediente_id' => $expediente->id,
-            'tipo_documento' => $tipoDocumento,
-            'nombre_archivo' => $nombreArchivo,
-            'ruta_archivo' => $stored['path'],
-            'storage_disk' => $stored['disk'],
-            'mime_type' => $stored['mime_type'],
-            'tamano_bytes' => $stored['tamano_bytes'],
-            'hash_sha256' => $stored['hash_sha256'],
-            'version' => $version,
-            'vigente' => true,
-            'cargado_por' => auth()->id(),
-        ]);
-
-        return [
-            'accion' => $accion,
-            'documento_id' => $documento->id,
-            'tipo_documento' => $documento->tipo_documento,
-            'nombre_archivo' => $documento->nombre_archivo,
-            'version' => $documento->version,
-            'hash_sha256' => $documento->hash_sha256,
-            'storage_disk' => $documento->storage_disk,
-        ];
-    }
-
-    private function splitDocumentNames(?string $value): array
-    {
-        $value = $this->normalizeCell($value);
-
-        if ($value === '') {
-            return [];
-        }
-
-        $parts = preg_split('/\s*\|\s*/', $value);
-        $files = [];
-        $seen = [];
-
-        foreach ($parts as $part) {
-            $fileName = trim((string) $part);
-
-            if ($fileName === '') {
-                continue;
-            }
-
-            $key = $this->normalizeZipKey($fileName);
-
-            if (isset($seen[$key])) {
-                continue;
-            }
-
-            $seen[$key] = true;
-            $files[] = $fileName;
-        }
-
-        return $files;
-    }
-
-    private function normalizeDocumentIdentity(string $fileName): string
-    {
-        return Str::lower(trim(basename(str_replace('\\', '/', $fileName))));
-    }
-
-    private function resolveDocumentStatusFromDatabase(int $expedienteId): string
-    {
-        $tipos = DB::table('documentos_expediente')
-            ->where('expediente_id', $expedienteId)
-            ->where('vigente', true)
-            ->pluck('tipo_documento')
-            ->map(fn ($tipo) => strtoupper((string) $tipo))
-            ->unique()
-            ->values()
-            ->all();
-
-        if (in_array('PDF', $tipos, true) && in_array('XML', $tipos, true)) {
-            return 'completo';
-        }
-
-        return 'incompleto';
-    }
-
-    private function findFileInZip(array $zipIndex, string $fileName): ?array
-    {
-        $key = $this->normalizeZipKey($fileName);
-
-        return $zipIndex[$key] ?? null;
-    }
-
-    private function normalizeZipKey(string $value): string
-    {
-        $value = basename(str_replace('\\', '/', $this->normalizeCell($value)));
-
-        return Str::lower($value);
-    }
-
-    private function safeFileName(string $name, string $defaultExtension): string
-    {
-        $baseName = pathinfo($name, PATHINFO_FILENAME);
-        $extension = strtolower(pathinfo($name, PATHINFO_EXTENSION)) ?: $defaultExtension;
-
-        $safeBaseName = Str::slug($baseName) ?: 'documento';
-
-        return $safeBaseName . '.' . $extension;
-    }
-
-    private function detectDelimiter(string $line): string
-    {
-        $candidates = [
-            ',' => substr_count($line, ','),
-            ';' => substr_count($line, ';'),
-            "\t" => substr_count($line, "\t"),
-        ];
-
-        arsort($candidates);
-
-        return array_key_first($candidates) ?: ',';
-    }
-
-    private function normalizeHeader(?string $value): string
-    {
-        $value = $this->normalizeCell($value);
-        $value = Str::ascii($value);
-        $value = Str::lower($value);
-        $value = preg_replace('/[^a-z0-9]+/', '_', $value);
-        $value = trim($value, '_');
-
-        return $value;
-    }
-
-    private function normalizeCell(?string $value): string
-    {
-        $value = (string) $value;
-        $value = str_replace("\xEF\xBB\xBF", '', $value);
-        $value = trim($value);
-
-        return $value;
-    }
-
-    private function isEmptyCsvRow(array $data): bool
-    {
-        foreach ($data as $value) {
-            if (trim((string) $value) !== '') {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    private function toDecimal(?string $value): ?float
-    {
-        $value = $this->normalizeCell($value);
-
-        if ($value === '') {
-            return null;
-        }
-
-        $value = str_replace(['$', ' '], '', $value);
-
-        if (str_contains($value, ',') && str_contains($value, '.')) {
-            $value = str_replace(',', '', $value);
-        } elseif (str_contains($value, ',') && !str_contains($value, '.')) {
-            $parts = explode(',', $value);
-            $lastPart = end($parts);
-
-            if (strlen($lastPart) === 2) {
-                $value = str_replace(',', '.', $value);
-            } else {
-                $value = str_replace(',', '', $value);
-            }
-        }
-
-        return is_numeric($value) ? (float) $value : null;
-    }
-
-    private function parseDate(?string $value): ?string
-    {
-        $value = $this->normalizeCell($value);
-
-        if ($value === '') {
-            return null;
-        }
-
-        $formats = [
-            'd/m/Y',
-            'Y-m-d',
-            'd-m-Y',
-            'm/d/Y',
-        ];
-
-        foreach ($formats as $format) {
-            try {
-                return Carbon::createFromFormat($format, $value)->format('Y-m-d');
-            } catch (\Throwable $exception) {
-                // Intenta con el siguiente formato.
-            }
-        }
-
-        try {
-            return Carbon::parse($value)->format('Y-m-d');
-        } catch (\Throwable $exception) {
-            return null;
-        }
-    }
-
-    private function normalizeMoneda(?string $value): ?string
-    {
-        $value = strtoupper($this->normalizeCell($value));
-
-        return in_array($value, ['MXN', 'USD', 'EUR'], true) ? $value : null;
-    }
-
-    private function normalizeEstatusOperativo(?string $value): string
-    {
-        $value = $this->normalizeHeader($value);
-
-        return match ($value) {
-            'baja' => 'baja',
-            'traslado' => 'traslado',
-            'en_operacion', 'operacion', 'activo' => 'en_operacion',
-            default => 'en_operacion',
-        };
-    }
-
-    private function rejectRow(array &$summary, int $lineNumber, string $reason): void
-    {
-        $summary['rechazados']++;
-        $summary['errores'][] = "Fila {$lineNumber}: {$reason}";
-    }
-
-    private function deleteDirectoryIfExists(?string $directory): void
-    {
-        if ($directory && File::exists($directory)) {
-            File::deleteDirectory($directory);
-        }
-    }
-
-    private function registrarBitacora(
-        ?string $numeroActivo,
-        string $accion,
-        ?string $tablaAfectada,
-        ?string $registroClave,
-        ?array $antes,
-        ?array $despues
-    ): void {
-        DB::table('bitacora_auditoria')->insert([
-            'numero_activo' => $numeroActivo,
-            'user_id' => auth()->id(),
-            'modulo' => 'M01 Gestión de expedientes de activo fijo',
-            'accion' => $accion,
-            'tabla_afectada' => $tablaAfectada,
-            'registro_clave' => $registroClave,
-            'antes' => $antes ? json_encode($antes, JSON_UNESCAPED_UNICODE) : null,
-            'despues' => $despues ? json_encode($despues, JSON_UNESCAPED_UNICODE) : null,
-            'ip' => request()->ip(),
-            'fecha_evento' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
 }
