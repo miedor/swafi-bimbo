@@ -36,6 +36,7 @@ class CfdiValidationService
             ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
             ->leftJoin('proveedores as p', 'p.id', '=', 'a.proveedor_id')
             ->where('d.id', $document->id)
+            ->whereNull('e.deleted_at')
             ->select([
                 'd.id as documento_id',
                 'd.ruta_archivo',
@@ -102,6 +103,7 @@ class CfdiValidationService
             } else {
                 DB::table('expedientes')
                     ->where('id', $context->expediente_id)
+                    ->whereNull('deleted_at')
                     ->update([
                         'uuid_cfdi' => $extracted['uuid_cfdi'],
                         'actualizado_por' => $userId,
@@ -216,7 +218,7 @@ class CfdiValidationService
             }
         }
 
-        $expediente = DB::table('expedientes')->where('id', $expedienteId)->first();
+        $expediente = DB::table('expedientes')->where('id', $expedienteId)->whereNull('deleted_at')->first();
 
         if ($expediente) {
             $this->recalculateExpedienteStatus($expedienteId, (string) $expediente->numero_activo, $userId);
@@ -484,6 +486,7 @@ class CfdiValidationService
 
         DB::table('expedientes')
             ->where('id', $expedienteId)
+            ->whereNull('deleted_at')
             ->update([
                 'estatus' => $status,
                 'actualizado_por' => $userId,
@@ -492,6 +495,7 @@ class CfdiValidationService
 
         $assetStatuses = DB::table('expedientes')
             ->where('numero_activo', $numeroActivo)
+            ->whereNull('deleted_at')
             ->pluck('estatus')
             ->all();
 
@@ -623,7 +627,10 @@ class CfdiValidationService
             return;
         }
 
-        $value = DB::table('valores_activo')->where('numero_activo', $numeroActivo)->first();
+        $value = DB::table('valores_activo')
+            ->where('numero_activo', $numeroActivo)
+            ->whereNull('deleted_at')
+            ->first();
 
         if (!$value) {
             return;
@@ -633,6 +640,7 @@ class CfdiValidationService
 
         DB::table('valores_activo')
             ->where('id', $value->id)
+            ->whereNull('deleted_at')
             ->update([
                 'cfdi_validacion_id' => $validation->id,
                 'conciliacion_cfdi' => $result['status'],
