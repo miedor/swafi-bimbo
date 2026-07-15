@@ -361,11 +361,50 @@
 
     button.nav-item-logout {
       width: 100%;
+      min-height: 44px;
       margin-top: 0 !important;
-      border: 0;
+      padding: 10px 12px !important;
+      appearance: none;
+      -webkit-appearance: none;
+      border: 1px solid rgba(255, 255, 255, .20) !important;
+      border-radius: 12px !important;
+      background: rgba(255, 255, 255, .13) !important;
+      color: #ffffff !important;
       font: inherit;
+      font-weight: 800 !important;
+      line-height: 1.2;
       text-align: left;
+      opacity: 1 !important;
       cursor: pointer;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, .08);
+      transition:
+        background .16s ease,
+        border-color .16s ease,
+        transform .16s ease,
+        box-shadow .16s ease;
+    }
+
+    button.nav-item-logout .nav-icon,
+    button.nav-item-logout span {
+      color: #ffffff !important;
+      opacity: 1 !important;
+    }
+
+    button.nav-item-logout:hover {
+      background: rgba(255, 255, 255, .23) !important;
+      border-color: rgba(255, 255, 255, .34) !important;
+      color: #ffffff !important;
+      transform: translateY(-1px);
+      box-shadow:
+        0 8px 18px rgba(3, 22, 52, .16),
+        inset 0 1px 0 rgba(255, 255, 255, .12);
+    }
+
+    button.nav-item-logout:focus-visible {
+      outline: 3px solid rgba(255, 255, 255, .78);
+      outline-offset: 2px;
+      background: rgba(255, 255, 255, .23) !important;
+      color: #ffffff !important;
     }
 
     .swafi-profile-logout-form {
