@@ -146,6 +146,115 @@
         background: #f8fbff;
     }
 
+
+
+    .rm-preview-summary {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 12px;
+        margin: 14px 0;
+    }
+
+    .rm-preview-stat {
+        padding: 14px;
+        border: 1px solid #dbe7f5;
+        border-radius: 16px;
+        background: #f8fbff;
+    }
+
+    .rm-preview-stat strong {
+        display: block;
+        color: #12345a;
+        font-size: 22px;
+        font-weight: 900;
+    }
+
+    .rm-preview-stat span {
+        color: #64748b;
+        font-size: 12px;
+        font-weight: 800;
+    }
+
+    .rm-preview-stat.accepted { background: #eefbf2; border-color: #bfe8ca; }
+    .rm-preview-stat.observed { background: #fff8e7; border-color: #f1d38a; }
+    .rm-preview-stat.rejected { background: #fff0f0; border-color: #f1bcbc; }
+
+    .rm-preview-toolbar {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: end;
+        justify-content: space-between;
+        gap: 12px;
+        margin: 12px 0;
+        padding: 12px;
+        border: 1px solid #dbe7f5;
+        border-radius: 16px;
+        background: #f8fbff;
+    }
+
+    .rm-preview-toolbar form {
+        margin: 0;
+    }
+
+    .rm-preview-actions {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .rm-confirm-box {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #334e70;
+        font-size: 12px;
+        font-weight: 800;
+    }
+
+    .rm-confirm-box input {
+        width: 17px;
+        height: 17px;
+    }
+
+    .rm-issue-list {
+        margin: 5px 0 0;
+        padding-left: 17px;
+        color: #64748b;
+        font-size: 11px;
+        line-height: 1.35;
+    }
+
+    .rm-issue-list.error { color: #9f2424; }
+    .rm-issue-list.warning { color: #8a5a00; }
+
+    .rm-batches {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .rm-batch-item {
+        display: block;
+        padding: 12px;
+        border: 1px solid #dbe7f5;
+        border-radius: 14px;
+        background: #f8fbff;
+        color: #17375e;
+        text-decoration: none;
+    }
+
+    .rm-batch-item strong,
+    .rm-batch-item span {
+        display: block;
+    }
+
+    .rm-batch-item span {
+        margin-top: 4px;
+        color: #64748b;
+        font-size: 11px;
+    }
+
     @media (max-width: 1100px) {
         .rm-grid {
             grid-template-columns: 1fr;
@@ -155,6 +264,11 @@
     @media (max-width: 760px) {
         .query-grid-four,
         .rm-kpi-grid {
+            grid-template-columns: 1fr !important;
+        }
+
+        .rm-preview-summary,
+        .rm-batches {
             grid-template-columns: 1fr !important;
         }
     }
@@ -210,13 +324,13 @@
         </div>
 
         <div class="rm-box">
-            <h3>Importar expedientes con documentos físicos</h3>
+            <h3>Previsualizar expedientes antes de aplicar</h3>
             <p>
-                Carga un archivo CSV con los datos del activo y un archivo ZIP con los documentos PDF/XML.
-                SWAFI validará catálogos, fechas, montos, folios, UUID CFDI y existencia física de documentos.
+                Carga un CSV y su ZIP documental. SWAFI validará la estructura, los catálogos,
+                las reglas de negocio y los documentos sin modificar todavía activos o expedientes.
             </p>
 
-            <form method="POST" action="{{ url('/registro-masivo/importar') }}" enctype="multipart/form-data">
+            <form method="POST" action="{{ route('registro-masivo.importar') }}" enctype="multipart/form-data">
                 @csrf
 
                 <label>
@@ -234,10 +348,11 @@
                     Los nombres capturados ahí deben existir dentro del ZIP. Ejemplo:
                     <strong>factura_184.pdf</strong> y <strong>factura_184.xml</strong>.
                     Si ambos archivos existen, el expediente quedará como completo.
+                    La carga solo se confirmará después de revisar la tabla de previsualización.
                 </div>
 
                 <div class="action-group" style="margin-top:12px">
-                    <button class="tab" type="submit">Procesar carga</button>
+                    <button class="tab" type="submit">Previsualizar y validar</button>
                     <a class="tab" href="{{ url('/registro-masivo/plantilla-csv') }}">Descargar plantilla</a>
                 </div>
             </form>
@@ -302,9 +417,187 @@
                 <strong>Errores controlados</strong>
                 <span>Las filas con catálogos inexistentes, fechas inválidas, montos inválidos, UUID duplicado o documentos faltantes se rechazan.</span>
             </div>
+
+            <div class="list-item">
+                <strong>Aplicación confirmada</strong>
+                <span>La previsualización no modifica datos. Solo las filas aceptadas se aplican después de una confirmación expresa.</span>
+            </div>
+
+            <div class="list-item">
+                <strong>Reintento sin duplicidad</strong>
+                <span>Las filas corregidas pueden cargarse en un lote nuevo; SWAFI distingue entre inserción y actualización.</span>
+            </div>
         </div>
     </div>
 </section>
+
+@if ($lote)
+<section class="card table-card" style="margin-top:20px">
+    <div class="section-title">
+        <div>
+            <h2>Previsualización del lote</h2>
+            <small>{{ $lote->csv_nombre_original }} · {{ $lote->uuid }}</small>
+        </div>
+        @php
+            $batchPill = $lote->estado === 'aplicada' ? 'ok' : ($lote->estado === 'cancelada' ? 'danger' : 'warn');
+        @endphp
+        <span class="pill {{ $batchPill }}">{{ ucfirst($lote->estado) }}</span>
+    </div>
+
+    <div class="rm-preview-summary">
+        <div class="rm-preview-stat">
+            <strong>{{ $lote->total_filas }}</strong>
+            <span>Filas evaluadas</span>
+        </div>
+        <div class="rm-preview-stat accepted">
+            <strong>{{ $lote->filas_aceptadas }}</strong>
+            <span>Aceptadas para aplicar</span>
+        </div>
+        <div class="rm-preview-stat observed">
+            <strong>{{ $lote->filas_observadas }}</strong>
+            <span>Observadas para corregir</span>
+        </div>
+        <div class="rm-preview-stat rejected">
+            <strong>{{ $lote->filas_rechazadas }}</strong>
+            <span>Rechazadas</span>
+        </div>
+    </div>
+
+    <div class="rm-preview-toolbar">
+        <form method="GET" action="{{ route('registro-masivo') }}">
+            <input type="hidden" name="lote" value="{{ $lote->uuid }}">
+            <label>
+                <span>Filtrar previsualización</span>
+                <select name="preview_status" onchange="this.form.submit()">
+                    <option value="">Todas las filas</option>
+                    <option value="aceptada" {{ $previewStatus === 'aceptada' ? 'selected' : '' }}>Aceptadas</option>
+                    <option value="observada" {{ $previewStatus === 'observada' ? 'selected' : '' }}>Observadas</option>
+                    <option value="rechazada" {{ $previewStatus === 'rechazada' ? 'selected' : '' }}>Rechazadas</option>
+                </select>
+            </label>
+        </form>
+
+        <div class="rm-preview-actions">
+            @if (($lote->filas_observadas + $lote->filas_rechazadas) > 0)
+                <a class="tab" href="{{ route('registro-masivo.incidencias', $lote->uuid) }}">
+                    Descargar incidencias Excel
+                </a>
+            @endif
+
+            @if ($lote->estaVigente())
+                <form method="POST" action="{{ route('registro-masivo.aplicar', $lote->uuid) }}">
+                    @csrf
+                    <label class="rm-confirm-box">
+                        <input type="checkbox" name="confirmar_aplicacion" value="1" required>
+                        Revisé el lote y confirmo aplicar solo las filas aceptadas.
+                    </label>
+                    <button class="tab" type="submit" style="margin-top:8px">Aplicar carga</button>
+                </form>
+
+                <form method="POST" action="{{ route('registro-masivo.cancelar', $lote->uuid) }}" onsubmit="return confirm('¿Cancelar esta previsualización sin aplicar cambios?');">
+                    @csrf
+                    @method('DELETE')
+                    <button class="tab" type="submit">Cancelar lote</button>
+                </form>
+            @endif
+        </div>
+    </div>
+
+    <table>
+        <thead>
+            <tr>
+                <th>Fila</th>
+                <th>Activo / factura</th>
+                <th>Datos principales</th>
+                <th>Acción</th>
+                <th>Clasificación</th>
+                <th>Resultado de validación</th>
+            </tr>
+        </thead>
+        <tbody>
+            @forelse ($filasPreview as $fila)
+                @php
+                    $data = $fila->datos ?? [];
+                    $statusPill = $fila->estatus === 'aceptada' ? 'ok' : ($fila->estatus === 'observada' ? 'warn' : 'danger');
+                @endphp
+                <tr>
+                    <td><strong>{{ $fila->numero_fila }}</strong></td>
+                    <td>
+                        <strong>{{ $data['numero_activo'] ?? 'Sin activo' }}</strong><br>
+                        <small>{{ $data['folio_factura'] ?? 'Sin folio' }}</small>
+                    </td>
+                    <td>
+                        {{ $data['descripcion'] ?? '' }}<br>
+                        <small>{{ $data['planta_clave'] ?? '' }} · {{ $data['proveedor_rfc'] ?? '' }} · {{ $data['moneda'] ?? '' }} {{ $data['monto_factura'] ?? '' }}</small>
+                    </td>
+                    <td>{{ $fila->accion ? ucfirst($fila->accion) : 'No aplicable' }}</td>
+                    <td><span class="pill {{ $statusPill }}">{{ ucfirst($fila->estatus) }}</span></td>
+                    <td>
+                        @if (!empty($fila->errores))
+                            <ul class="rm-issue-list error">
+                                @foreach ($fila->errores as $error)
+                                    <li>{{ $error }}</li>
+                                @endforeach
+                            </ul>
+                        @endif
+                        @if (!empty($fila->advertencias))
+                            <ul class="rm-issue-list warning">
+                                @foreach ($fila->advertencias as $warning)
+                                    <li>{{ $warning }}</li>
+                                @endforeach
+                            </ul>
+                        @endif
+                        @if (empty($fila->errores) && empty($fila->advertencias))
+                            <span class="pill ok">Sin incidencias</span>
+                        @endif
+                    </td>
+                </tr>
+            @empty
+                <tr><td colspan="6">No hay filas para el filtro seleccionado.</td></tr>
+            @endforelse
+        </tbody>
+    </table>
+
+    <div class="table-footer">
+        <div class="table-summary">
+            Mostrando {{ $filasPreview->firstItem() ?? 0 }}–{{ $filasPreview->lastItem() ?? 0 }}
+            de {{ $filasPreview->total() }} filas
+        </div>
+        <div class="table-pagination">
+            @if ($filasPreview->onFirstPage())
+                <span class="page-link disabled">Anterior</span>
+            @else
+                <a class="page-link" href="{{ $filasPreview->previousPageUrl() }}">Anterior</a>
+            @endif
+            <span class="page-link active">{{ $filasPreview->currentPage() }}</span>
+            @if ($filasPreview->hasMorePages())
+                <a class="page-link" href="{{ $filasPreview->nextPageUrl() }}">Siguiente</a>
+            @else
+                <span class="page-link disabled">Siguiente</span>
+            @endif
+        </div>
+        <div class="table-page-size"><span>HU-019 a HU-026</span></div>
+    </div>
+</section>
+@endif
+
+@if ($lotesRecientes->isNotEmpty())
+<section class="card" style="margin-top:20px">
+    <div class="section-title">
+        <h2>Historial reciente de importaciones</h2>
+        <span class="pill ok">Trazabilidad por lote</span>
+    </div>
+    <div class="rm-batches">
+        @foreach ($lotesRecientes as $batch)
+            <a class="rm-batch-item" href="{{ route('registro-masivo', ['lote' => $batch->uuid]) }}">
+                <strong>{{ \Illuminate\Support\Str::limit($batch->csv_nombre_original, 28) }}</strong>
+                <span>{{ $batch->created_at?->format('d/m/Y H:i') }} · {{ ucfirst($batch->estado) }}</span>
+                <span>{{ $batch->filas_aceptadas }} aceptadas · {{ $batch->filas_rechazadas }} rechazadas</span>
+            </a>
+        @endforeach
+    </div>
+</section>
+@endif
 
 <section class="card" style="margin-top:20px">
     <div class="section-title">
@@ -382,7 +675,7 @@
             <label>
                 <span>Registros por página</span>
                 <select name="per_page">
-                    @foreach ([10, 25, 50] as $size)
+                    @foreach ([10, 25, 50, 100] as $size)
                         @php
                             $perPageSeleccionado = (string) ($filtros['per_page'] ?? 10);
                         @endphp
