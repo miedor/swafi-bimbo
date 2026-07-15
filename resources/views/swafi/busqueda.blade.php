@@ -257,7 +257,7 @@
 
   <div class="search-top-grid">
     <section class="card form-card search-form-card">
-      <form method="GET" action="{{ route('busqueda') }}">
+      <form id="swafiSearchFiltersForm" method="GET" action="{{ route('busqueda') }}">
         <div class="section-title">
           <h2>Criterios de búsqueda</h2>
           <span class="pill ok">Filtros completos y ordenamiento</span>
@@ -439,19 +439,20 @@
         <span class="pill ok">Personalizadas</span>
       </div>
 
-      <form method="POST" action="{{ route('busquedas-guardadas.store') }}" class="saved-create">
+      <form id="swafiSaveSearchForm" method="POST" action="{{ route('busquedas-guardadas.store') }}" class="saved-create">
         @csrf
 
         <label>
           <span>Nombre de la búsqueda actual</span>
-          <input name="nombre" maxlength="100" placeholder="Ej. Expedientes observados Santa María" required>
+          <input name="nombre" value="{{ old('nombre') }}" maxlength="100" placeholder="Ej. Expedientes observados Santa María" required>
         </label>
 
         @foreach($camposGuardables as $campoGuardable)
           <input
             type="hidden"
             name="filtros[{{ $campoGuardable }}]"
-            value="{{ $filtros[$campoGuardable] ?? '' }}"
+            value="{{ old('filtros.' . $campoGuardable, $filtros[$campoGuardable] ?? '') }}"
+            data-swafi-saved-filter="{{ $campoGuardable }}"
           >
         @endforeach
 
@@ -631,4 +632,36 @@
   </section>
 </div>
 
+@endsection
+
+@section('page_scripts')
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    const filtersForm = document.getElementById('swafiSearchFiltersForm');
+    const savedSearchForm = document.getElementById('swafiSaveSearchForm');
+
+    if (!filtersForm || !savedSearchForm) {
+      return;
+    }
+
+    const synchronizeSavedSearchFilters = function () {
+      const currentFilters = new FormData(filtersForm);
+
+      savedSearchForm
+        .querySelectorAll('[data-swafi-saved-filter]')
+        .forEach(function (hiddenInput) {
+          const fieldName = hiddenInput.dataset.swafiSavedFilter;
+          const currentValue = currentFilters.get(fieldName);
+
+          hiddenInput.value = currentValue === null ? '' : String(currentValue);
+        });
+    };
+
+    filtersForm.addEventListener('input', synchronizeSavedSearchFilters);
+    filtersForm.addEventListener('change', synchronizeSavedSearchFilters);
+    savedSearchForm.addEventListener('submit', synchronizeSavedSearchFilters);
+
+    synchronizeSavedSearchFilters();
+  });
+</script>
 @endsection
