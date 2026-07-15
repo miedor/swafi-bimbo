@@ -32,9 +32,26 @@ return [
     |
     */
 
-    'lifetime' => (int) env('SESSION_LIFETIME', 120),
+    'lifetime' => (int) env('SESSION_LIFETIME', 10),
 
-    'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', false),
+    'expire_on_close' => env('SESSION_EXPIRE_ON_CLOSE', true),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Límites adicionales de seguridad para SWAFI
+    |--------------------------------------------------------------------------
+    | La inactividad se controla en servidor y navegador. La duración absoluta
+    | evita que una sesión permanezca abierta indefinidamente mediante actividad
+    | continua. Ambos valores pueden ajustarse por variables de entorno.
+    */
+
+    'swafi_inactivity_seconds' => (int) env('SWAFI_SESSION_INACTIVITY_SECONDS', 600),
+
+    'swafi_absolute_seconds' => (int) env('SWAFI_SESSION_ABSOLUTE_SECONDS', 28800),
+
+    'swafi_warning_seconds' => (int) env('SWAFI_SESSION_WARNING_SECONDS', 60),
+
+    'swafi_heartbeat_seconds' => (int) env('SWAFI_SESSION_HEARTBEAT_SECONDS', 60),
 
     /*
     |--------------------------------------------------------------------------
@@ -47,7 +64,7 @@ return [
     |
     */
 
-    'encrypt' => env('SESSION_ENCRYPT', false),
+    'encrypt' => env('SESSION_ENCRYPT', true),
 
     /*
     |--------------------------------------------------------------------------
@@ -169,7 +186,7 @@ return [
     |
     */
 
-    'secure' => env('SESSION_SECURE_COOKIE'),
+    'secure' => env('SESSION_SECURE_COOKIE', env('APP_ENV', 'production') === 'production'),
 
     /*
     |--------------------------------------------------------------------------
@@ -199,7 +216,7 @@ return [
     |
     */
 
-    'same_site' => env('SESSION_SAME_SITE', 'lax'),
+    'same_site' => env('SESSION_SAME_SITE', 'strict'),
 
     /*
     |--------------------------------------------------------------------------
