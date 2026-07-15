@@ -91,7 +91,12 @@
     body {
       width: 100%;
       max-width: 100%;
-      overflow-x: hidden;
+      /*
+       * `clip` evita el desplazamiento horizontal sin crear un contenedor
+       * de scroll. Esto es indispensable para que el encabezado sticky se
+       * mantenga anclado al viewport durante el desplazamiento vertical.
+       */
+      overflow-x: clip;
     }
 
     .app-shell {
@@ -99,7 +104,8 @@
       max-width: 100%;
       min-height: 100vh;
       grid-template-columns: 230px minmax(0, 1fr) !important;
-      overflow-x: hidden;
+      overflow: visible;
+      overflow-x: clip;
     }
 
     .main {
@@ -108,8 +114,8 @@
       max-width: 100%;
       min-width: 0;
       min-height: 100vh;
-      overflow-x: hidden !important;
-      overflow-y: visible !important;
+      overflow: visible !important;
+      overflow-x: clip !important;
     }
 
     .main > * {
@@ -118,9 +124,13 @@
     }
 
     .swafi-page-header {
+      position: -webkit-sticky !important;
       position: sticky !important;
       top: 0 !important;
       z-index: 999 !important;
+      width: 100%;
+      align-self: start;
+      isolation: isolate;
       background: rgba(243, 246, 251, 0.97) !important;
       backdrop-filter: blur(12px);
       -webkit-backdrop-filter: blur(12px);
