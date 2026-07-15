@@ -1,0 +1,11 @@
+@extends('errors.layout')
+
+@section('code', '422')
+@section('title', 'Solicitud no procesable')
+@section('heading', 'No fue posible procesar la solicitud')
+@section('message', 'La información recibida no cumple las condiciones necesarias para completar esta operación.')
+@section('detail', 'Revisa los campos, formatos y relaciones seleccionadas. Las validaciones normales de formularios seguirán mostrando el detalle junto a cada campo.')
+@section('primary_label', 'Ir al dashboard')
+@section('primary_url', url('/dashboard'))
+@section('secondary_label', 'Ir al inicio de sesión')
+@section('secondary_url', url('/login'))

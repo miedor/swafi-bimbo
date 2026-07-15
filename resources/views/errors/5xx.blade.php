@@ -1,0 +1,11 @@
+@extends('errors.layout')
+
+@section('code', '5XX')
+@section('title', 'Servicio no disponible')
+@section('heading', 'SWAFI no pudo completar la operación')
+@section('message', 'Se presentó una condición técnica inesperada y la solicitud fue detenida de forma segura.')
+@section('detail', 'Conserva la referencia de soporte y vuelve a intentarlo más tarde.')
+@section('primary_label', 'Ir al dashboard')
+@section('primary_url', url('/dashboard'))
+@section('secondary_label', 'Ir al inicio de sesión')
+@section('secondary_url', url('/login'))

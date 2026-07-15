@@ -1,0 +1,11 @@
+@extends('errors.layout')
+
+@section('code', '503')
+@section('title', 'Servicio temporalmente no disponible')
+@section('heading', 'SWAFI está temporalmente en mantenimiento')
+@section('message', 'El sistema se encuentra aplicando una actualización o una tarea técnica controlada.')
+@section('detail', 'Espera unos minutos y vuelve a ingresar. La información almacenada permanece protegida.')
+@section('primary_label', 'Volver a intentar')
+@section('primary_url', url('/'))
+@section('secondary_label', 'Ir al inicio de sesión')
+@section('secondary_url', url('/login'))

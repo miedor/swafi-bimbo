@@ -1,0 +1,11 @@
+@extends('errors.layout')
+
+@section('code', '500')
+@section('title', 'Error interno')
+@section('heading', 'Ocurrió un error inesperado')
+@section('message', 'SWAFI no pudo completar la operación. El incidente fue enviado al registro técnico sin mostrar información sensible del sistema.')
+@section('detail', 'Conserva la referencia de soporte y vuelve a intentarlo. Si el problema continúa, compártela con el administrador.')
+@section('primary_label', 'Ir al dashboard')
+@section('primary_url', url('/dashboard'))
+@section('secondary_label', 'Volver a iniciar sesión')
+@section('secondary_url', url('/login'))

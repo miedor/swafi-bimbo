@@ -1,0 +1,11 @@
+@extends('errors.layout')
+
+@section('code', '404')
+@section('title', 'Página no encontrada')
+@section('heading', 'No encontramos la página solicitada')
+@section('message', 'La dirección puede estar incompleta, el registro pudo cambiar de ubicación o el recurso ya no se encuentra disponible.')
+@section('detail', 'Utiliza la navegación principal de SWAFI para continuar sin perder el control de tu sesión.')
+@section('primary_label', 'Ir al dashboard')
+@section('primary_url', url('/dashboard'))
+@section('secondary_label', 'Ir al inicio de sesión')
+@section('secondary_url', url('/login'))

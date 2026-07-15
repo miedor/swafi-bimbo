@@ -1,0 +1,11 @@
+@extends('errors.layout')
+
+@section('code', '403')
+@section('title', 'Acceso restringido')
+@section('heading', 'No tienes permiso para esta operación')
+@section('message', 'La sesión es válida, pero el perfil actual no cuenta con autorización para consultar o modificar este recurso de SWAFI.')
+@section('detail', 'Solicita al administrador la asignación del permiso correspondiente si esta función forma parte de tus responsabilidades.')
+@section('primary_label', 'Ir al dashboard')
+@section('primary_url', url('/dashboard'))
+@section('secondary_label', 'Iniciar sesión nuevamente')
+@section('secondary_url', url('/login'))

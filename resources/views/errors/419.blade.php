@@ -1,0 +1,11 @@
+@extends('errors.layout')
+
+@section('code', '419')
+@section('title', 'Sesión expirada')
+@section('heading', 'La sesión o el formulario expiró')
+@section('message', 'Por seguridad, SWAFI rechazó la solicitud porque el token de protección ya no es válido o la sesión terminó por inactividad.')
+@section('detail', 'Vuelve a iniciar sesión y repite la operación. Los datos sensibles no fueron procesados.')
+@section('primary_label', 'Volver a iniciar sesión')
+@section('primary_url', url('/login?motivo=sesion_expirada'))
+@section('secondary_label', 'Ir al inicio')
+@section('secondary_url', url('/'))
