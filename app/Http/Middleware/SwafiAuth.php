@@ -12,8 +12,6 @@ use Symfony\Component\HttpFoundation\Response;
 
 class SwafiAuth
 {
-    private int $inactiveSeconds = 600;
-
     public function __construct(
         private readonly SwafiAuthorizationService $authorization
     ) {
@@ -21,70 +19,97 @@ class SwafiAuth
 
     public function handle(Request $request, Closure $next): Response
     {
-        if (!$request->session()->get('swafi_autenticado')) {
-            if (Auth::check()) {
-                $user = Auth::user();
+        /*
+        |--------------------------------------------------------------------------
+        | Autenticación estricta
+        |--------------------------------------------------------------------------
+        | No se reconstruye una sesión SWAFI solamente porque exista una cookie de
+        | autenticación de Laravel. Deben existir Auth y el contexto SWAFI. Esto
+        | evita reingresos por cookies persistentes o páginas restauradas en caché.
+        */
+        if (
+            !Auth::check() ||
+            $request->session()->get('swafi_autenticado') !== true
+        ) {
+            $this->invalidateSession($request);
 
-                if (!$user || !$this->isUserActive((int) $user->id)) {
-                    $this->invalidateSession($request);
-
-                    return redirect()
-                        ->route('login')
-                        ->withErrors([
-                            'usuario' => 'La sesión ya no es válida, el usuario fue desactivado o se encuentra bloqueado.',
-                        ]);
-                }
-
-                $this->hydrateSwafiSession($request, (int) $user->id);
-            } else {
-                return redirect()
-                    ->route('login')
-                    ->withErrors([
-                        'usuario' => 'Debes iniciar sesión para acceder al sistema SWAFI.',
-                    ]);
-            }
+            return $this->authenticationFailure(
+                $request,
+                'Debes iniciar sesión para acceder al sistema SWAFI.'
+            );
         }
 
         $userId = (int) $request->session()->get('swafi_user_id');
+        $authenticatedUserId = (int) (Auth::id() ?? 0);
 
-        if ($userId > 0 && !$this->isUserActive($userId)) {
+        if ($userId <= 0 || $userId !== $authenticatedUserId) {
+            $this->registerSecurityClosure($request, 'CIERRE_SESION_IDENTIDAD_INVALIDA', [
+                'swafi_user_id' => $userId,
+                'auth_user_id' => $authenticatedUserId,
+            ]);
             $this->invalidateSession($request);
 
-            return redirect()
-                ->route('login')
-                ->withErrors([
-                    'usuario' => 'La sesión ya no es válida, el usuario fue desactivado o se encuentra bloqueado.',
-                ]);
+            return $this->authenticationFailure(
+                $request,
+                'La identidad de la sesión dejó de ser válida. Inicia sesión nuevamente.'
+            );
+        }
+
+        if (!$this->isUserActive($userId)) {
+            $this->registerSecurityClosure($request, 'CIERRE_SESION_USUARIO_INACTIVO');
+            $this->invalidateSession($request);
+
+            return $this->authenticationFailure(
+                $request,
+                'La sesión ya no es válida porque el usuario fue desactivado o bloqueado.'
+            );
+        }
+
+        $invalidReason = $this->invalidSessionReason($request);
+
+        if ($invalidReason !== null) {
+            $action = match ($invalidReason) {
+                'inactividad' => 'CIERRE_SESION_INACTIVIDAD',
+                'duracion_absoluta' => 'CIERRE_SESION_DURACION_ABSOLUTA',
+                'huella_invalida' => 'CIERRE_SESION_HUELLA_INVALIDA',
+                default => 'CIERRE_SESION_INVALIDA',
+            };
+
+            $this->registerSecurityClosure($request, $action, [
+                'motivo' => $invalidReason,
+                'url' => $request->fullUrl(),
+            ]);
+            $this->invalidateSession($request);
+
+            $message = match ($invalidReason) {
+                'inactividad' => 'La sesión se cerró automáticamente por 10 minutos de inactividad.',
+                'duracion_absoluta' => 'La sesión alcanzó su duración máxima de seguridad. Inicia sesión nuevamente.',
+                'huella_invalida' => 'La sesión cambió de navegador o dispositivo y fue cerrada por seguridad.',
+                default => 'La sesión dejó de ser válida. Inicia sesión nuevamente.',
+            };
+
+            return $this->authenticationFailure($request, $message);
         }
 
         /*
         |--------------------------------------------------------------------------
         | Permisos siempre vigentes
         |--------------------------------------------------------------------------
-        | Se actualizan en cada solicitud protegida. Así, una modificación hecha
-        | en Seguridad y acceso surte efecto inmediatamente y no queda una sesión
-        | con permisos anteriores.
+        | Una modificación de rol o permiso se refleja en la siguiente solicitud.
         */
-        if ($userId > 0) {
-            $this->authorization->refreshSession($request, $userId);
-        }
-
-        if ($this->sessionExpiredByInactivity($request)) {
-            $this->registrarSesionExpirada($request);
-            $this->invalidateSession($request);
-
-            return redirect()
-                ->route('login')
-                ->withErrors([
-                    'usuario' => 'La sesión se cerró automáticamente por 10 minutos de inactividad.',
-                ]);
-        }
+        $this->authorization->refreshSession($request, $userId);
 
         $routeName = $request->route()?->getName();
         $requiredPermission = $this->requiredPermissionFor($request, $routeName);
 
         if ($requiredPermission && !$this->can($request, $requiredPermission)) {
             $this->registrarAccesoDenegado($request, $requiredPermission, $routeName);
+
+            if ($request->expectsJson()) {
+                return response()->json([
+                    'message' => 'Tu usuario no tiene permiso para acceder a esa funcionalidad.',
+                ], 403);
+            }
 
             return redirect()
                 ->route('dashboard')
@@ -95,13 +120,7 @@ class SwafiAuth
 
         $request->session()->put('swafi_last_activity_at', now()->timestamp);
 
-        $response = $next($request);
-
-        $response->headers->set('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0');
-        $response->headers->set('Pragma', 'no-cache');
-        $response->headers->set('Expires', 'Sat, 01 Jan 2000 00:00:00 GMT');
-
-        return $response;
+        return $next($request);
     }
 
     private function requiredPermissionFor(Request $request, ?string $routeName): ?string
@@ -110,7 +129,13 @@ class SwafiAuth
             return null;
         }
 
-        if (in_array($routeName, ['logout', 'perfil', 'perfil.update', 'perfil.avatar', 'perfil.avatar.destroy'], true)) {
+        if (in_array($routeName, [
+            'session.heartbeat',
+            'perfil',
+            'perfil.update',
+            'perfil.avatar',
+            'perfil.avatar.destroy',
+        ], true)) {
             return null;
         }
 
@@ -200,37 +225,41 @@ class SwafiAuth
         return $this->authorization->canFromSession($request, $permission);
     }
 
-    private function sessionExpiredByInactivity(Request $request): bool
+    private function invalidSessionReason(Request $request): ?string
     {
-        $lastActivity = (int) $request->session()->get('swafi_last_activity_at', now()->timestamp);
+        $expectedFingerprint = (string) $request->session()->get('swafi_session_fingerprint', '');
+        $currentFingerprint = $this->sessionFingerprint($request);
 
-        return (now()->timestamp - $lastActivity) > $this->inactiveSeconds;
-    }
-
-    private function hydrateSwafiSession(Request $request, int $userId): void
-    {
-        $user = DB::table('users')
-            ->where('id', $userId)
-            ->first();
-
-        if (!$user) {
-            return;
+        if (
+            $expectedFingerprint === '' ||
+            !hash_equals($expectedFingerprint, $currentFingerprint)
+        ) {
+            return 'huella_invalida';
         }
 
-        $context = $this->authorization->contextForUser($userId);
-        $roles = $context['roles'];
-        $permissions = $context['permissions'];
+        $now = now()->timestamp;
+        $startedAt = (int) $request->session()->get('swafi_session_started_at', 0);
+        $lastActivityAt = (int) $request->session()->get('swafi_last_activity_at', 0);
+        $absoluteSeconds = max((int) config('session.swafi_absolute_seconds', 28800), 60);
+        $inactiveSeconds = max((int) config('session.swafi_inactivity_seconds', 600), 60);
 
-        $request->session()->put('swafi_user_id', $user->id);
-        $request->session()->put('swafi_usuario', $user->usuario ?: $user->email);
-        $request->session()->put('swafi_nombre', $user->name);
-        $request->session()->put('swafi_avatar_path', $user->avatar_path ?? null);
-        $request->session()->put('swafi_avatar_disk', $user->avatar_disk ?? null);
-        $request->session()->put('swafi_avatar_version', now()->timestamp);
-        $request->session()->put('swafi_roles', $roles);
-        $request->session()->put('swafi_permissions', $permissions);
-        $request->session()->put('swafi_last_activity_at', now()->timestamp);
-        $request->session()->put('swafi_autenticado', true);
+        if ($startedAt <= 0 || ($now - $startedAt) > $absoluteSeconds) {
+            return 'duracion_absoluta';
+        }
+
+        if ($lastActivityAt <= 0 || ($now - $lastActivityAt) > $inactiveSeconds) {
+            return 'inactividad';
+        }
+
+        return null;
+    }
+
+    private function sessionFingerprint(Request $request): string
+    {
+        $userAgent = trim((string) $request->userAgent());
+        $applicationKey = (string) config('app.key', 'swafi-session-key');
+
+        return hash_hmac('sha256', $userAgent, $applicationKey);
     }
 
     private function isUserActive(int $userId): bool
@@ -263,7 +292,10 @@ class SwafiAuth
             'swafi_avatar_version',
             'swafi_roles',
             'swafi_permissions',
+            'swafi_session_started_at',
             'swafi_last_activity_at',
+            'swafi_session_fingerprint',
+            'swafi_session_id',
             'swafi_autenticado',
         ]);
 
@@ -271,7 +303,23 @@ class SwafiAuth
         $request->session()->regenerateToken();
     }
 
-    private function registrarSesionExpirada(Request $request): void
+    private function authenticationFailure(Request $request, string $message): Response
+    {
+        if ($request->expectsJson()) {
+            return response()->json([
+                'message' => $message,
+                'redirect' => route('login', ['motivo' => 'sesion_invalida']),
+            ], 401);
+        }
+
+        return redirect()
+            ->route('login', ['motivo' => 'sesion_invalida'])
+            ->withErrors([
+                'usuario' => $message,
+            ]);
+    }
+
+    private function registerSecurityClosure(Request $request, string $action, array $detail = []): void
     {
         try {
             if (!Schema::hasTable('bitacora_auditoria')) {
@@ -282,21 +330,21 @@ class SwafiAuth
                 'numero_activo' => null,
                 'user_id' => $request->session()->get('swafi_user_id'),
                 'modulo' => 'M04 Administración y seguridad del sistema',
-                'accion' => 'CIERRE_SESION_INACTIVIDAD',
+                'accion' => $action,
                 'tabla_afectada' => 'sessions',
                 'registro_clave' => $request->session()->getId(),
                 'antes' => null,
-                'despues' => json_encode([
-                    'minutos_inactividad' => 10,
+                'despues' => json_encode(array_merge([
                     'url' => $request->fullUrl(),
-                ], JSON_UNESCAPED_UNICODE),
+                    'user_agent' => $request->userAgent(),
+                ], $detail), JSON_UNESCAPED_UNICODE),
                 'ip' => $request->ip(),
                 'fecha_evento' => now(),
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // Un error de bitácora no debe bloquear el cierre por inactividad.
+            // La bitácora no debe impedir el cierre de una sesión inválida.
         }
     }
 
@@ -325,7 +373,7 @@ class SwafiAuth
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // Un error de bitácora no debe bloquear la navegación.
+            // La bitácora no debe bloquear la navegación.
         }
     }
 }
