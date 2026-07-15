@@ -154,6 +154,9 @@ class SwafiAuth
             'registro-individual.store',
             'registro-masivo',
             'registro-masivo.importar',
+            'registro-masivo.aplicar',
+            'registro-masivo.cancelar',
+            'registro-masivo.incidencias',
             'registro-masivo.plantilla' => 'expedientes.crear',
 
             'busqueda',
