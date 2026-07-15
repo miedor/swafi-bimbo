@@ -685,10 +685,11 @@
                         <div class="rp-saved-actions">
                             <a class="rp-link-button" href="{{ route('reportes-guardados.apply', $savedReport->id) }}">Aplicar</a>
 
-                            <form method="POST" action="{{ route('reportes-guardados.destroy', $savedReport->id) }}" onsubmit="return confirm('¿Deseas eliminar este reporte guardado?');">
+                            <form method="POST" action="{{ route('reportes-guardados.destroy', $savedReport->id) }}" onsubmit="return confirm('¿Deseas dar de baja lógicamente este reporte guardado? La configuración se conservará para trazabilidad.');">
                                 @csrf
                                 @method('DELETE')
-                                <button class="rp-link-button danger" type="submit">Eliminar</button>
+                                <input type="hidden" name="motivo_baja" value="Baja lógica solicitada por la persona propietaria del reporte.">
+                                <button class="rp-link-button danger" type="submit">Dar de baja</button>
                             </form>
                         </div>
                     </div>

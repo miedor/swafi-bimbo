@@ -473,11 +473,12 @@
               <form
                 method="POST"
                 action="{{ route('busquedas-guardadas.destroy', $busquedaGuardada->id) }}"
-                onsubmit="return confirm('¿Deseas eliminar esta búsqueda guardada?');"
+                onsubmit="return confirm('¿Deseas dar de baja lógicamente esta búsqueda guardada? La configuración se conservará para trazabilidad.');"
               >
                 @csrf
                 @method('DELETE')
-                <button class="tab" type="submit">Eliminar</button>
+                <input type="hidden" name="motivo_baja" value="Baja lógica solicitada por la persona propietaria de la búsqueda.">
+                <button class="tab" type="submit">Dar de baja</button>
               </form>
             </div>
           </div>
@@ -575,16 +576,17 @@
                       method="POST"
                       action="{{ route('expedientes.eliminar', $row->expediente_id) }}"
                       style="display:inline"
-                      onsubmit="return confirm('¿Deseas eliminar este expediente? El activo permanecerá registrado y la acción se guardará en bitácora.');"
+                      onsubmit="return confirm('¿Deseas dar de baja lógicamente este expediente? El activo, los documentos y la trazabilidad permanecerán almacenados.');"
                     >
                       @csrf
                       @method('DELETE')
+                      <input type="hidden" name="motivo_baja" value="Baja lógica solicitada desde la búsqueda avanzada.">
 
                       <button
                         type="submit"
                         style="border:0;background:none;color:#b42318;font-weight:800;cursor:pointer;padding:0"
                       >
-                        Eliminar
+                        Dar de baja
                       </button>
                     </form>
                   @endif

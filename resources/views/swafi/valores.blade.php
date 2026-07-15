@@ -815,11 +815,12 @@
                     <form
                       method="POST"
                       action="{{ route('valores.destroy', $row->valor_id) }}"
-                      onsubmit="return confirm('¿Eliminar los valores del activo? El Dashboard lo marcará como pendiente.');"
+                      onsubmit="return confirm('¿Dar de baja lógicamente los valores del activo? El registro se conservará para auditoría y el Dashboard lo marcará como pendiente.');"
                     >
                       @csrf
                       @method('DELETE')
-                      <button class="danger" type="submit">Eliminar</button>
+                      <input type="hidden" name="motivo_baja" value="Baja lógica solicitada desde el módulo de valores.">
+                      <button class="danger" type="submit">Dar de baja</button>
                     </form>
                   @endif
                 </div>

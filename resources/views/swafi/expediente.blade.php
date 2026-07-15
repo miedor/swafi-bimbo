@@ -965,7 +965,7 @@
                           <form method="POST" action="{{ route('inventario-evidencias.eliminar', $evidencia->id) }}" onsubmit="return confirm('¿Deseas dar de baja esta evidencia? El archivo físico se conservará para trazabilidad.');">
                             @csrf
                             @method('DELETE')
-                            <button type="submit" style="border:0;background:none;color:#b42318;font-weight:900;cursor:pointer;padding:0;">Eliminar</button>
+                            <button type="submit" style="border:0;background:none;color:#b42318;font-weight:900;cursor:pointer;padding:0;">Dar de baja</button>
                           </form>
                         @endif
                       </div>
@@ -1142,10 +1142,10 @@
                         <a href="{{ route('documentos.ver', $documento->id) }}" target="_blank" rel="noopener">Ver</a>
                         <a href="{{ route('documentos.descargar', $documento->id) }}">Descargar</a>
                         @if($canManageDocuments)
-                          <form method="POST" action="{{ route('documentos.eliminar', $documento->id) }}" style="display:inline" onsubmit="return confirm('¿Deseas eliminar este documento? Se conservará la trazabilidad.');">
+                          <form method="POST" action="{{ route('documentos.eliminar', $documento->id) }}" style="display:inline" onsubmit="return confirm('¿Deseas dar de baja lógicamente este documento? El archivo físico y la trazabilidad se conservarán.');">
                             @csrf
                             @method('DELETE')
-                            <button type="submit" style="border:0;background:none;color:#b42318;font-weight:900;cursor:pointer;padding:0;">Eliminar</button>
+                            <button type="submit" style="border:0;background:none;color:#b42318;font-weight:900;cursor:pointer;padding:0;">Dar de baja</button>
                           </form>
                         @endif
                       </div>
