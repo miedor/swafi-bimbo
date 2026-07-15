@@ -31,6 +31,14 @@
     <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi.css') }}?v={{ filemtime(public_path('assets/swafi/css/swafi.css')) }}">
     <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-icons.css') }}?v={{ file_exists(public_path('assets/swafi/css/swafi-icons.css')) ? filemtime(public_path('assets/swafi/css/swafi-icons.css')) : time() }}">
 
+    <script>
+        window.addEventListener('pageshow', function (event) {
+            if (event.persisted) {
+                window.location.reload();
+            }
+        });
+    </script>
+
     @if(config('services.recaptcha.site_key'))
         <script src="https://www.google.com/recaptcha/api.js?render={{ config('services.recaptcha.site_key') }}"></script>
     @endif
@@ -168,7 +176,13 @@
                 </div>
 
                 <div>
-                   @if (session('status'))
+                   @if (!empty($sessionNotice))
+    <div class="login-alert-v1" style="background:#fff8e8;border-color:#f5c36a;color:#6f4300;">
+        <p>{{ $sessionNotice }}</p>
+    </div>
+@endif
+
+@if (session('status'))
     <div class="login-alert-v1" style="background:#e8f7ea;border-color:#b9e5bf;color:#1f6b2a;">
         <p>{{ session('status') }}</p>
     </div>
@@ -239,15 +253,9 @@
                         </div>
 
                         <div class="login-options-v1">
-                            <label class="check-v1">
-                                <input
-                                 type="checkbox"
-                                 name="remember"
-                                value="1"
-                                {{ old('remember') ? 'checked' : '' }}
-                                >
-                                <span>Recordar sesión</span>
-                        </label>
+                            <span style="color:#64748b;font-size:12px;font-weight:750;">
+                                Sesión no persistente por seguridad
+                            </span>
                             <a href="{{ route('password.request') }}">¿Olvidaste tu contraseña?</a>
                         </div>
 
