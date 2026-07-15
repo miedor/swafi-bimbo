@@ -24,6 +24,7 @@ class RevalidarCfdiCommand extends Command
         $query = DocumentoExpediente::query()
             ->whereRaw('UPPER(tipo_documento) = ?', ['XML'])
             ->where('vigente', true)
+            ->whereHas('expediente')
             ->orderBy('id');
 
         if ($this->option('solo-pendientes')) {
