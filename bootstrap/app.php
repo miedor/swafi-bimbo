@@ -1,5 +1,6 @@
 <?php
 
+use App\Http\Middleware\NoCacheResponse;
 use App\Http\Middleware\SwafiAuth;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
@@ -18,6 +19,10 @@ return Application::configure(basePath: dirname(__DIR__))
         |--------------------------------------------------------------------------
         | Se registra un alias para proteger las rutas internas del sistema.
         */
+
+        $middleware->web(append: [
+            NoCacheResponse::class,
+        ]);
 
         $middleware->alias([
             'swafi.auth' => SwafiAuth::class,
