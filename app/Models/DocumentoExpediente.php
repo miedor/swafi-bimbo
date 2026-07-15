@@ -64,7 +64,7 @@ class DocumentoExpediente extends Model
         DB::afterCommit(function () use ($documentId, $expedienteId, $tipo, $userId): void {
             try {
                 $fresh = DocumentoExpediente::find($documentId);
-                $expediente = DB::table('expedientes')->where('id', $expedienteId)->first();
+                $expediente = DB::table('expedientes')->where('id', $expedienteId)->whereNull('deleted_at')->first();
 
                 if (!$expediente) {
                     return;

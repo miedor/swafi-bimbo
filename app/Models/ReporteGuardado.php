@@ -4,10 +4,11 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ReporteGuardado extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'reportes_guardados';
 
@@ -18,6 +19,8 @@ class ReporteGuardado extends Model
         'filtros',
         'columnas',
         'orientacion',
+        'deleted_by',
+        'delete_reason',
     ];
 
     protected $casts = [

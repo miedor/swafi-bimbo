@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class Expediente extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'expedientes';
 
     protected $fillable = [
@@ -19,6 +22,8 @@ class Expediente extends Model
         'observaciones',
         'creado_por',
         'actualizado_por',
+        'deleted_by',
+        'delete_reason',
     ];
 
     public function activo()

@@ -5,10 +5,11 @@ namespace App\Models;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class BusquedaGuardada extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $table = 'busquedas_guardadas';
 
@@ -17,6 +18,8 @@ class BusquedaGuardada extends Model
         'nombre',
         'modulo',
         'filtros',
+        'deleted_by',
+        'delete_reason',
     ];
 
     protected $casts = [

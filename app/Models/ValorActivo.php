@@ -3,9 +3,12 @@
 namespace App\Models;
 
 use Illuminate\Database\Eloquent\Model;
+use Illuminate\Database\Eloquent\SoftDeletes;
 
 class ValorActivo extends Model
 {
+    use SoftDeletes;
+
     protected $table = 'valores_activo';
 
     protected $fillable = [
@@ -26,6 +29,8 @@ class ValorActivo extends Model
         'conciliacion_detalle',
         'fecha_corte',
         'registrado_por',
+        'deleted_by',
+        'delete_reason',
     ];
 
     protected $casts = [
