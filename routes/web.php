@@ -26,6 +26,7 @@ Route::redirect('/', '/login');
 
 Route::get('/login', [AuthController::class, 'showLogin'])->name('login');
 Route::post('/login', [AuthController::class, 'login'])->name('login.post');
+Route::post('/logout', [AuthController::class, 'logout'])->name('logout');
 
 Route::get('/olvide-contrasena', [PasswordResetController::class, 'showForgotForm'])->name('password.request');
 Route::post('/olvide-contrasena', [PasswordResetController::class, 'sendResetLink'])->name('password.email');
@@ -34,7 +35,7 @@ Route::post('/restablecer-contrasena', [PasswordResetController::class, 'resetPa
 
 Route::middleware('swafi.auth')->group(function () {
 
-    Route::get('/logout', [AuthController::class, 'logout'])->name('logout');
+    Route::post('/sesion/actividad', [AuthController::class, 'heartbeat'])->name('session.heartbeat');
 
     Route::get('/perfil', [ProfileController::class, 'show'])->name('perfil');
     Route::post('/perfil', [ProfileController::class, 'update'])->name('perfil.update');
