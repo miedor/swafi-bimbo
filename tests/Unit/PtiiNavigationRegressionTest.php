@@ -84,4 +84,25 @@ class PtiiNavigationRegressionTest extends TestCase
             'El menú lateral debe permanecer visible en resoluciones de escritorio.'
         );
     }
+    public function test_logout_button_remains_visible_without_hover(): void
+    {
+        self::assertMatchesRegularExpression(
+            '/button\.nav-item-logout\s*\{[^}]*appearance:\s*none;[^}]*background:\s*rgba\(255,\s*255,\s*255,\s*\.13\)\s*!important;[^}]*color:\s*#ffffff\s*!important;[^}]*opacity:\s*1\s*!important;/s',
+            $this->layout,
+            'Cerrar sesión debe ser visible permanentemente y no depender del estado hover.'
+        );
+
+        self::assertMatchesRegularExpression(
+            '/button\.nav-item-logout\s+\.nav-icon,\s*button\.nav-item-logout\s+span\s*\{[^}]*color:\s*#ffffff\s*!important;[^}]*opacity:\s*1\s*!important;/s',
+            $this->layout
+        );
+    }
+
+    public function test_logout_button_has_visible_hover_and_keyboard_focus_states(): void
+    {
+        self::assertStringContainsString('button.nav-item-logout:hover {', $this->layout);
+        self::assertStringContainsString('button.nav-item-logout:focus-visible {', $this->layout);
+        self::assertStringContainsString('outline: 3px solid rgba(255, 255, 255, .78);', $this->layout);
+    }
+
 }
