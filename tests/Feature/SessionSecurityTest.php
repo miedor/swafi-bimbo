@@ -12,10 +12,39 @@ class SessionSecurityTest extends TestCase
 
         $response
             ->assertOk()
-            ->assertHeader('Cache-Control', 'no-store, no-cache, must-revalidate, max-age=0, private')
+            ->assertHeader('Cache-Control')
             ->assertHeader('Pragma', 'no-cache')
             ->assertHeader('X-Content-Type-Options', 'nosniff')
             ->assertHeader('X-Frame-Options', 'SAMEORIGIN');
+
+        $cacheControl = $response->headers->get('Cache-Control');
+
+        $this->assertIsString($cacheControl);
+
+        $actualDirectives = array_values(array_filter(
+            array_map(
+                static fn (string $directive): string => strtolower(trim($directive)),
+                explode(',', $cacheControl)
+            ),
+            static fn (string $directive): bool => $directive !== ''
+        ));
+
+        $expectedDirectives = [
+            'max-age=0',
+            'must-revalidate',
+            'no-cache',
+            'no-store',
+            'private',
+        ];
+
+        sort($actualDirectives);
+        sort($expectedDirectives);
+
+        $this->assertSame(
+            $expectedDirectives,
+            $actualDirectives,
+            'Cache-Control debe contener exactamente las directivas de no almacenamiento, sin depender de su orden.'
+        );
     }
 
     public function test_logout_only_accepts_post_requests(): void
