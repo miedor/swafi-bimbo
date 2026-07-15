@@ -1,0 +1,11 @@
+@extends('errors.layout')
+
+@section('code', '4XX')
+@section('title', 'Solicitud no disponible')
+@section('heading', 'No fue posible atender esta solicitud')
+@section('message', 'La operación no pudo completarse por una restricción de acceso, formato, estado o disponibilidad del recurso solicitado.')
+@section('detail', 'Regresa a la navegación principal y verifica los datos antes de intentarlo nuevamente.')
+@section('primary_label', 'Ir al dashboard')
+@section('primary_url', url('/dashboard'))
+@section('secondary_label', 'Ir al inicio de sesión')
+@section('secondary_url', url('/login'))
