@@ -182,6 +182,8 @@ class ReporteGuardadoController extends Controller
             'tipo_reporte' => $savedReport->tipo_reporte,
         ]);
 
+        $parameters['swafi_focus'] = 'reportes';
+
         return redirect()->route('reportes', $parameters);
     }
 

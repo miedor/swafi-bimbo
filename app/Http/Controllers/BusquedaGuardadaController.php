@@ -108,6 +108,8 @@ class BusquedaGuardadaController extends Controller
             ]
         );
 
+        $filtros['swafi_focus'] = 'busqueda';
+
         return redirect()->route('busqueda', $filtros);
     }
 
