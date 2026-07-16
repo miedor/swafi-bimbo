@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Validation\Rule;
 
 class StoreMovimientoUbicacionRequest extends FormRequest
 {
@@ -18,30 +19,32 @@ class StoreMovimientoUbicacionRequest extends FormRequest
                 'required',
                 'string',
                 'max:30',
-                'exists:activos,numero_activo',
+                Rule::exists('activos', 'numero_activo')->where(fn ($query) => $query->where('activo', true)),
             ],
 
             'ubicacion_destino_id' => [
                 'required',
                 'integer',
-                'exists:ubicaciones,id',
+                Rule::exists('ubicaciones', 'id')->where(fn ($query) => $query->where('estatus', 'activo')),
             ],
 
             'responsable_id' => [
                 'nullable',
                 'integer',
-                'exists:responsables,id',
+                Rule::exists('responsables', 'id')->where(fn ($query) => $query->where('estatus', 'activo')),
             ],
 
             'fecha_movimiento' => [
                 'required',
                 'date',
+                'before_or_equal:now',
             ],
 
             'motivo' => [
-                'nullable',
+                'required',
                 'string',
-                'max:120',
+                'min:10',
+                'max:500',
             ],
 
             'evidencia' => [
@@ -56,17 +59,20 @@ class StoreMovimientoUbicacionRequest extends FormRequest
     {
         return [
             'numero_activo.required' => 'Debes seleccionar un activo.',
-            'numero_activo.exists' => 'El activo seleccionado no existe en SWAFI.',
+            'numero_activo.exists' => 'El activo seleccionado no existe o se encuentra inactivo en SWAFI.',
 
             'ubicacion_destino_id.required' => 'Debes seleccionar la nueva ubicación física.',
-            'ubicacion_destino_id.exists' => 'La ubicación seleccionada no existe.',
+            'ubicacion_destino_id.exists' => 'La ubicación seleccionada no existe o se encuentra inactiva.',
 
-            'responsable_id.exists' => 'El responsable seleccionado no existe.',
+            'responsable_id.exists' => 'El responsable seleccionado no existe o se encuentra inactivo.',
 
             'fecha_movimiento.required' => 'La fecha del movimiento es obligatoria.',
             'fecha_movimiento.date' => 'La fecha del movimiento no tiene un formato válido.',
+            'fecha_movimiento.before_or_equal' => 'La fecha del movimiento no puede ser posterior al momento actual.',
 
-            'motivo.max' => 'El motivo no debe superar los 120 caracteres.',
+            'motivo.required' => 'El motivo del movimiento o traslado es obligatorio.',
+            'motivo.min' => 'El motivo debe contener al menos 10 caracteres para conservar trazabilidad.',
+            'motivo.max' => 'El motivo no debe superar los 500 caracteres.',
             'evidencia.max' => 'La evidencia u observación no debe superar los 2000 caracteres.',
         ];
     }

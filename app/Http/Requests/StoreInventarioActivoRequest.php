@@ -20,7 +20,7 @@ class StoreInventarioActivoRequest extends FormRequest
                 'required',
                 'string',
                 'max:30',
-                'exists:activos,numero_activo',
+                Rule::exists('activos', 'numero_activo')->where(fn ($query) => $query->where('activo', true)),
             ],
 
             'fecha_inventario' => [
@@ -43,7 +43,7 @@ class StoreInventarioActivoRequest extends FormRequest
             'ubicacion_verificada_id' => [
                 'nullable',
                 'integer',
-                'exists:ubicaciones,id',
+                Rule::exists('ubicaciones', 'id')->where(fn ($query) => $query->where('estatus', 'activo')),
             ],
 
             'actualizar_ubicacion' => [
