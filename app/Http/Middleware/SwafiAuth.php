@@ -157,6 +157,7 @@ class SwafiAuth
             'registro-masivo.aplicar',
             'registro-masivo.cancelar',
             'registro-masivo.incidencias',
+            'registro-masivo.incidencias-csv',
             'registro-masivo.plantilla' => 'expedientes.crear',
 
             'busqueda',
