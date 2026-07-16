@@ -197,10 +197,18 @@ class SwafiAuth
 
             'cfdi.revalidar' => 'cfdi.validar',
 
-            'ubicacion',
+            'ubicacion' => 'ubicaciones.ver',
+
             'ubicacion.movimiento',
             'ubicacion.inventario',
             'inventario-evidencias.eliminar' => 'ubicaciones.administrar',
+
+            'ubicacion.traslados.aprobar',
+            'ubicacion.traslados.rechazar' => 'ubicaciones.aprobar_traslados',
+
+            'ubicacion.periodos.store',
+            'ubicacion.periodos.bloquear',
+            'ubicacion.periodos.desbloquear' => 'ubicaciones.cerrar_inventario',
 
             'reportes' => 'reportes.exportar',
 
@@ -226,7 +234,25 @@ class SwafiAuth
 
     private function can(Request $request, string $permission): bool
     {
-        return $this->authorization->canFromSession($request, $permission);
+        if ($this->authorization->canFromSession($request, $permission)) {
+            return true;
+        }
+
+        $impliedPermissions = [
+            'ubicaciones.ver' => [
+                'ubicaciones.administrar',
+                'ubicaciones.aprobar_traslados',
+                'ubicaciones.cerrar_inventario',
+            ],
+        ];
+
+        foreach ($impliedPermissions[$permission] ?? [] as $impliedPermission) {
+            if ($this->authorization->canFromSession($request, $impliedPermission)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private function invalidSessionReason(Request $request): ?string
