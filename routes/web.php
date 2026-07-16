@@ -11,6 +11,7 @@ use App\Http\Controllers\EtiquetaActivoController;
 use App\Http\Controllers\ExpedienteGestionController;
 use App\Http\Controllers\ExpedienteObservacionController;
 use App\Http\Controllers\InventarioEvidenciaController;
+use App\Http\Controllers\InventoryPeriodController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
 use App\Http\Controllers\RegistroIndividualController;
@@ -18,6 +19,7 @@ use App\Http\Controllers\RegistroMasivoController;
 use App\Http\Controllers\ReportesController;
 use App\Http\Controllers\ReporteGuardadoController;
 use App\Http\Controllers\SeguridadController;
+use App\Http\Controllers\TransferApprovalController;
 use App\Http\Controllers\UbicacionInventarioController;
 use App\Http\Controllers\ValoresActivoController;
 use Illuminate\Support\Facades\Route;
@@ -86,6 +88,25 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/ubicacion-inventario', [UbicacionInventarioController::class, 'index'])->name('ubicacion');
     Route::post('/ubicacion-inventario/movimiento', [UbicacionInventarioController::class, 'storeMovimiento'])->name('ubicacion.movimiento');
     Route::post('/ubicacion-inventario/inventario', [UbicacionInventarioController::class, 'storeInventario'])->name('ubicacion.inventario');
+
+    Route::patch('/ubicacion-inventario/traslados/{solicitud}/aprobar', [TransferApprovalController::class, 'approve'])
+        ->whereNumber('solicitud')
+        ->name('ubicacion.traslados.aprobar');
+
+    Route::patch('/ubicacion-inventario/traslados/{solicitud}/rechazar', [TransferApprovalController::class, 'reject'])
+        ->whereNumber('solicitud')
+        ->name('ubicacion.traslados.rechazar');
+
+    Route::post('/ubicacion-inventario/periodos', [InventoryPeriodController::class, 'store'])
+        ->name('ubicacion.periodos.store');
+
+    Route::patch('/ubicacion-inventario/periodos/{periodo}/bloquear', [InventoryPeriodController::class, 'block'])
+        ->whereNumber('periodo')
+        ->name('ubicacion.periodos.bloquear');
+
+    Route::patch('/ubicacion-inventario/periodos/{periodo}/desbloquear', [InventoryPeriodController::class, 'unblock'])
+        ->whereNumber('periodo')
+        ->name('ubicacion.periodos.desbloquear');
 
     Route::get('/inventario-evidencias/{evidencia}/ver', [InventarioEvidenciaController::class, 'show'])
         ->whereNumber('evidencia')
