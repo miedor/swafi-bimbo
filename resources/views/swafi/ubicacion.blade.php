@@ -6,6 +6,7 @@
 @section('breadcrumb', 'Ubicación física e inventario')
 
 @section('page_styles')
+<link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-inventory-workflow.css') }}">
 <style>
   .ui-grid {
     display: grid;
@@ -210,11 +211,12 @@
   $estatusInventario = old('estatus_localizacion', 'localizado');
 @endphp
 
+@if($canManageLocations)
 <section class="ui-grid">
   <div class="card">
     <div class="section-title">
       <h2>Cambio de ubicación física</h2>
-      <span class="pill ok">Movimiento trazable</span>
+      <span class="pill ok">Reubicación o traslado controlado</span>
     </div>
 
     <form method="POST" action="{{ route('ubicacion.movimiento') }}">
@@ -270,7 +272,7 @@
 
         <label class="ui-field-wide">
           <span>Motivo</span>
-          <input name="motivo" value="{{ old('motivo') }}" placeholder="Ej. Reubicación por inventario, traslado operativo o ajuste de planta">
+          <input name="motivo" value="{{ old('motivo') }}" minlength="10" maxlength="500" required placeholder="Ej. Reubicación por inventario, traslado operativo o ajuste de planta">
         </label>
 
         <label class="ui-field-wide">
@@ -279,8 +281,12 @@
         </label>
       </div>
 
+      <div class="ui-file-note" style="margin-top:12px;">
+        Los movimientos dentro de la misma planta se aplican inmediatamente. Si la ubicación destino pertenece a otra planta, SWAFI creará una solicitud pendiente y conservará la ubicación actual hasta que Contabilidad apruebe el traslado.
+      </div>
+
       <div class="action-group" style="margin-top:12px;">
-        <button class="tab" type="submit">Guardar movimiento</button>
+        <button class="tab" type="submit">Registrar movimiento o solicitar traslado</button>
         <a class="tab" href="{{ route('ubicacion') }}">Limpiar</a>
       </div>
     </form>
@@ -383,6 +389,20 @@
       </div>
     </form>
   </div>
+</section>
+@else
+<section class="card">
+  <div class="section-title">
+    <h2>Consulta y aprobación de ubicación</h2>
+    <span class="pill ok">Modo lectura</span>
+  </div>
+  <p class="workflow-subtitle">Tu perfil puede consultar ubicaciones y, cuando corresponda, resolver solicitudes de traslado. Las capturas de movimientos e inventarios están reservadas al personal autorizado de Planta/Inventarios.</p>
+</section>
+@endif
+
+<section class="inventory-workflow-grid" aria-label="Control de traslados y cierres de inventario">
+  @include('swafi.partials.transfer-approvals')
+  @include('swafi.partials.inventory-periods')
 </section>
 
 <div data-swafi-query-workspace data-swafi-query-key="ubicacion">
@@ -547,7 +567,19 @@
               <small>Sin notificación</small>
             @endif
           </td>
-          <td>{{ $row->fecha_movimiento ?? 'Sin movimiento' }}<br><small>{{ $row->movimiento_motivo ?? '' }}</small></td>
+          <td>
+            {{ $row->fecha_movimiento ?? 'Sin movimiento' }}<br>
+            <small>{{ $row->movimiento_motivo ?? '' }}</small>
+            @if($row->solicitud_traslado_id)
+              <div style="margin-top:6px;">
+                <span class="pill warn">Traslado pendiente</span><br>
+                <small>
+                  {{ $row->solicitud_destino_planta ?? 'Planta destino' }}
+                  {{ $row->solicitud_destino_codigo ? '· '.$row->solicitud_destino_codigo : '' }}
+                </small>
+              </div>
+            @endif
+          </td>
           <td>
             <div class="table-actions">
               <a href="{{ route('busqueda', ['numero_activo' => $row->numero_activo]) }}">Buscar</a>
