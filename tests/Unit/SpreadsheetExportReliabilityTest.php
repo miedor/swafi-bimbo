@@ -19,7 +19,7 @@ class SpreadsheetExportReliabilityTest extends TestCase
 
         $exporter = app(SimpleXlsxExporter::class);
         $contents = $exporter->exportBytes(
-            'Incidencias importación',
+            'Incidencias/Importación?*[]:',
             ['Fila', 'Estatus', 'Errores'],
             [[2, 'Rechazada', 'El RFC de proveedor no existe o está inactivo.']]
         );
@@ -44,6 +44,10 @@ class SpreadsheetExportReliabilityTest extends TestCase
             ] as $entry) {
                 $this->assertNotFalse($zip->locateName($entry), $entry);
             }
+
+            $workbook = $zip->getFromName('xl/workbook.xml');
+            $this->assertIsString($workbook);
+            $this->assertStringContainsString('name="Incidencias Importación"', $workbook);
 
             $sheet = $zip->getFromName('xl/worksheets/sheet1.xml');
             $this->assertIsString($sheet);
@@ -134,7 +138,7 @@ class SpreadsheetExportReliabilityTest extends TestCase
         $this->assertIsString($middleware);
 
         $this->assertStringContainsString('exportarIncidenciasCsv', $controller);
-        $this->assertStringContainsString("report($exception);", $controller);
+        $this->assertStringContainsString('report($exception);', $controller);
         $this->assertStringContainsString("'registro-masivo.incidencias-csv'", $routes);
         $this->assertStringContainsString("'registro-masivo.incidencias-csv'", $middleware);
         $this->assertStringContainsString('Descargar respaldo CSV', $view);
