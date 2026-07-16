@@ -364,10 +364,31 @@ class SimpleXlsxExporter
 
     private function safeSheetName(string $name): string
     {
-        $name = preg_replace('/[\\\/?*\[\]:]/u', ' ', trim($name)) ?: 'Reporte';
-        $name = preg_replace('/\s+/u', ' ', $name) ?: 'Reporte';
+        /*
+        |--------------------------------------------------------------------------
+        | Nombre seguro de la hoja
+        |--------------------------------------------------------------------------
+        | Excel no permite los caracteres \ / ? * [ ] : en el nombre de una hoja.
+        | Se usa str_replace en lugar de una expresión regular para evitar que el
+        | carácter "/" pueda interpretarse accidentalmente como delimitador.
+        */
+        $name = str_replace(
+            ['\\', '/', '?', '*', '[', ']', ':'],
+            ' ',
+            trim($name)
+        );
 
-        return $this->stringSubstr($name, 0, 31);
+        $name = preg_replace('/\s+/u', ' ', $name) ?? $name;
+        $name = trim($name, " \t\n\r\0\x0B'");
+
+        if ($name === '') {
+            $name = 'Reporte';
+        }
+
+        $name = $this->stringSubstr($name, 0, 31);
+        $name = rtrim($name, " '");
+
+        return $name !== '' ? $name : 'Reporte';
     }
 
     private function sanitizeText(string $value): string
