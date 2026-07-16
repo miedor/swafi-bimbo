@@ -126,32 +126,52 @@ return new class extends Migration
         }
 
         if (Schema::hasTable('bitacora_auditoria')) {
-            DB::table('bitacora_auditoria')->insert([
-                'numero_activo' => null,
-                'user_id' => null,
-                'modulo' => 'M02 Control fiscal, financiero y ubicación física',
-                'accion' => 'HABILITACION_APROBACION_TRASLADOS_Y_CIERRES_INVENTARIO',
-                'tabla_afectada' => 'solicitudes_traslado,periodos_inventario',
-                'registro_clave' => null,
-                'antes' => null,
-                'despues' => json_encode([
-                    'historias_usuario' => ['HU-053', 'HU-056'],
-                    'permisos' => [
-                        'ubicaciones.ver',
-                        'ubicaciones.aprobar_traslados',
-                        'ubicaciones.cerrar_inventario',
-                    ],
-                ], JSON_UNESCAPED_UNICODE),
-                'ip' => null,
-                'fecha_evento' => now(),
-                'created_at' => now(),
-                'updated_at' => now(),
-            ]);
+            /*
+             * bitacora_auditoria.accion admite un máximo de 40 caracteres.
+             * Se utiliza una clave compacta y estable para mantener compatibilidad
+             * con el esquema existente y permitir reintentos seguros del despliegue.
+             */
+            $auditAction = 'HABILITA_FLUJO_TRASLADOS_CIERRES';
+            $affectedTables = 'solicitudes_traslado,periodos_inventario';
+            $now = now();
+
+            DB::table('bitacora_auditoria')->updateOrInsert(
+                [
+                    'accion' => $auditAction,
+                    'tabla_afectada' => $affectedTables,
+                ],
+                [
+                    'numero_activo' => null,
+                    'user_id' => null,
+                    'modulo' => 'M02 Control fiscal, financiero y ubicación física',
+                    'registro_clave' => null,
+                    'antes' => null,
+                    'despues' => json_encode([
+                        'historias_usuario' => ['HU-053', 'HU-056'],
+                        'permisos' => [
+                            'ubicaciones.ver',
+                            'ubicaciones.aprobar_traslados',
+                            'ubicaciones.cerrar_inventario',
+                        ],
+                    ], JSON_UNESCAPED_UNICODE | JSON_THROW_ON_ERROR),
+                    'ip' => null,
+                    'fecha_evento' => $now,
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
         }
     }
 
     public function down(): void
     {
+        if (Schema::hasTable('bitacora_auditoria')) {
+            DB::table('bitacora_auditoria')
+                ->where('accion', 'HABILITA_FLUJO_TRASLADOS_CIERRES')
+                ->where('tabla_afectada', 'solicitudes_traslado,periodos_inventario')
+                ->delete();
+        }
+
         if (
             Schema::hasTable('permissions')
             && Schema::hasTable('permission_role')
