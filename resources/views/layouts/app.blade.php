@@ -85,6 +85,7 @@
 
   <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi.css') }}?v={{ filemtime(public_path('assets/swafi/css/swafi.css')) }}">
   <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-icons.css') }}?v={{ file_exists(public_path('assets/swafi/css/swafi-icons.css')) ? filemtime(public_path('assets/swafi/css/swafi-icons.css')) : time() }}">
+  <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-query-results.css') }}?v={{ file_exists(public_path('assets/swafi/css/swafi-query-results.css')) ? filemtime(public_path('assets/swafi/css/swafi-query-results.css')) : time() }}">
 
   <style>
     html,
@@ -879,6 +880,7 @@
 
 <script src="{{ asset('assets/swafi/js/swafi.js') }}?v={{ filemtime(public_path('assets/swafi/js/swafi.js')) }}"></script>
 <script src="{{ asset('assets/swafi/js/swafi-session.js') }}?v={{ filemtime(public_path('assets/swafi/js/swafi-session.js')) }}"></script>
+<script src="{{ asset('assets/swafi/js/swafi-query-results.js') }}?v={{ file_exists(public_path('assets/swafi/js/swafi-query-results.js')) ? filemtime(public_path('assets/swafi/js/swafi-query-results.js')) : time() }}"></script>
 
 <script>
   document.addEventListener('DOMContentLoaded', function () {
