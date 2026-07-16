@@ -482,6 +482,9 @@
                 <a class="tab" href="{{ route('registro-masivo.incidencias', $lote->uuid) }}">
                     Descargar incidencias Excel
                 </a>
+                <a class="tab" href="{{ route('registro-masivo.incidencias-csv', $lote->uuid) }}">
+                    Descargar respaldo CSV
+                </a>
             @endif
 
             @if ($lote->estaVigente())
