@@ -26,8 +26,76 @@ class InventoryTransferAndClosureConfigurationTest extends TestCase
         self::assertStringContainsString("'ubicaciones.cerrar_inventario'", $migration);
         self::assertStringContainsString("'Usuario Captura' => [", $migration);
         self::assertStringContainsString("'Usuario Consulta / Auditoría' => ['ubicaciones.ver']", $migration);
-        self::assertStringContainsString('HABILITACION_APROBACION_TRASLADOS_Y_CIERRES_INVENTARIO', $migration);
+        self::assertStringContainsString('HABILITA_FLUJO_TRASLADOS_CIERRES', $migration);
+        self::assertStringContainsString("DB::table('bitacora_auditoria')->updateOrInsert", $migration);
         self::assertStringContainsString("string('motivo', 500)->nullable()->change()", $migration);
+    }
+
+
+    public function test_audit_action_literals_respect_the_database_column_limit(): void
+    {
+        $schemaMigration = $this->read('database/migrations/2026_04_19_000270_create_bitacora_auditoria_table.php');
+
+        self::assertSame(
+            1,
+            preg_match("/string\('accion',\s*(\d+)\)/", $schemaMigration, $matches),
+            'No fue posible determinar la longitud de bitacora_auditoria.accion.'
+        );
+
+        $maximumLength = (int) $matches[1];
+        self::assertSame(40, $maximumLength);
+
+        $patterns = [
+            "/['\"]accion['\"]\s*=>\s*['\"]([A-Z][A-Z0-9_]*)['\"]/",
+            "/\baction\s*:\s*['\"]([A-Z][A-Z0-9_]*)['\"]/",
+            "/\baccion\s*:\s*['\"]([A-Z][A-Z0-9_]*)['\"]/",
+            "/\bauditAction\s*:\s*['\"]([A-Z][A-Z0-9_]*)['\"]/",
+        ];
+
+        $directories = ['app', 'database', 'routes'];
+        $violations = [];
+
+        foreach ($directories as $directory) {
+            $iterator = new \RecursiveIteratorIterator(
+                new \RecursiveDirectoryIterator(
+                    $this->root.'/'.$directory,
+                    \FilesystemIterator::SKIP_DOTS
+                )
+            );
+
+            foreach ($iterator as $file) {
+                if (!$file->isFile() || $file->getExtension() !== 'php') {
+                    continue;
+                }
+
+                $contents = file_get_contents($file->getPathname());
+
+                if (!is_string($contents)) {
+                    continue;
+                }
+
+                foreach ($patterns as $pattern) {
+                    preg_match_all($pattern, $contents, $foundActions);
+
+                    foreach ($foundActions[1] ?? [] as $action) {
+                        if (strlen($action) > $maximumLength) {
+                            $violations[] = sprintf(
+                                '%s (%d caracteres) en %s',
+                                $action,
+                                strlen($action),
+                                str_replace($this->root.'/', '', $file->getPathname())
+                            );
+                        }
+                    }
+                }
+            }
+        }
+
+        self::assertSame(
+            [],
+            array_values(array_unique($violations)),
+            'Se detectaron acciones de bitácora que exceden el límite de la columna accion.'
+        );
     }
 
     public function test_cross_plant_transfer_is_not_applied_before_approval(): void
