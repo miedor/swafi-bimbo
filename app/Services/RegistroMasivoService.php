@@ -58,29 +58,8 @@ class RegistroMasivoService
         UploadedFile $zipFile,
         ?int $userId
     ): ImportacionMasiva {
-        $rows = file(
-            $csvFile->getRealPath(),
-            FILE_IGNORE_NEW_LINES
-        );
-
-        if (!$rows || count($rows) < 2) {
-            throw ValidationException::withMessages([
-                'archivo_csv' => 'El archivo no contiene registros para previsualizar.',
-            ]);
-        }
-
-        if ((count($rows) - 1) > self::MAX_ROWS) {
-            throw ValidationException::withMessages([
-                'archivo_csv' => 'El layout supera el máximo de ' . self::MAX_ROWS . ' filas por lote.',
-            ]);
-        }
-
-        $delimiter = $this->detectDelimiter((string) $rows[0]);
-        $headers = str_getcsv((string) $rows[0], $delimiter);
-        $normalizedHeaders = array_map(
-            fn ($header): string => $this->normalizeHeader($header),
-            $headers
-        );
+        $csv = $this->readCsvRecords($csvFile);
+        $normalizedHeaders = $csv['headers'];
 
         $this->validateHeaders($normalizedHeaders);
 
@@ -124,9 +103,9 @@ class RegistroMasivoService
                 'rechazadas' => 0,
             ];
 
-            foreach (array_slice($rows, 1) as $index => $line) {
-                $lineNumber = $index + 2;
-                $columns = str_getcsv((string) $line, $delimiter);
+            foreach ($csv['records'] as $record) {
+                $lineNumber = $record['numero_fila'];
+                $columns = $record['columns'];
                 $data = [];
 
                 foreach ($headersToRead as $header) {
@@ -139,6 +118,16 @@ class RegistroMasivoService
 
                 if ($this->isEmptyCsvRow($data)) {
                     continue;
+                }
+
+                if ($record['columnas_recibidas'] !== $record['columnas_esperadas']) {
+                    $data['_estructura_errores'] = [
+                        'La fila contiene '
+                        . $record['columnas_recibidas']
+                        . ' columnas y el encabezado define '
+                        . $record['columnas_esperadas']
+                        . '. Revisa comas, separadores y campos entrecomillados.',
+                    ];
                 }
 
                 $summary['total']++;
@@ -463,6 +452,33 @@ class RegistroMasivoService
         $this->storage->delete($batch->zip_storage_disk, $batch->zip_ruta);
     }
 
+    public function registrarExportacionIncidencias(
+        ImportacionMasiva $batch,
+        ?int $userId,
+        string $format,
+        int $rowCount
+    ): void {
+        $format = Str::lower(trim($format));
+
+        if (!in_array($format, ['xlsx', 'csv'], true)) {
+            throw new RuntimeException('El formato de exportación de incidencias no es válido.');
+        }
+
+        $this->registrarBitacora(
+            userId: $userId,
+            accion: $format === 'xlsx'
+                ? 'IMPORTACION_INCIDENCIAS_XLSX'
+                : 'IMPORTACION_INCIDENCIAS_CSV',
+            registroClave: $batch->uuid,
+            antes: null,
+            despues: [
+                'formato' => Str::upper($format),
+                'filas_exportadas' => max(0, $rowCount),
+                'estado_lote' => $batch->estado,
+            ]
+        );
+    }
+
     /**
      * @return array{
      *     estatus:string,
@@ -479,8 +495,13 @@ class RegistroMasivoService
         array &$seenKeys,
         array &$seenUuids
     ): array {
+        $structureErrors = is_array($data['_estructura_errores'] ?? null)
+            ? array_values($data['_estructura_errores'])
+            : [];
+        unset($data['_estructura_errores']);
+
         $data = $this->normalizeRowData($data);
-        $errors = [];
+        $errors = $structureErrors;
         $warnings = [];
         $action = null;
 
@@ -1344,6 +1365,115 @@ class RegistroMasivoService
         }
 
         return $files;
+    }
+
+    /**
+     * Lee el CSV conforme a RFC 4180, incluyendo campos entrecomillados con
+     * comas o saltos de línea, y conserva una numeración estable por registro.
+     *
+     * @return array{
+     *     headers:array<int,string>,
+     *     records:array<int,array{
+     *         numero_fila:int,
+     *         columns:array<int,mixed>,
+     *         columnas_esperadas:int,
+     *         columnas_recibidas:int
+     *     }>
+     * }
+     */
+    private function readCsvRecords(UploadedFile $csvFile): array
+    {
+        $path = $csvFile->getRealPath();
+
+        if (!is_string($path) || $path === '' || !is_readable($path)) {
+            throw ValidationException::withMessages([
+                'archivo_csv' => 'El archivo CSV no está disponible para lectura.',
+            ]);
+        }
+
+        $handle = fopen($path, 'rb');
+
+        if (!is_resource($handle)) {
+            throw ValidationException::withMessages([
+                'archivo_csv' => 'No fue posible abrir el archivo CSV.',
+            ]);
+        }
+
+        try {
+            $firstLine = fgets($handle);
+
+            if (!is_string($firstLine) || trim($firstLine) === '') {
+                throw ValidationException::withMessages([
+                    'archivo_csv' => 'El archivo CSV no contiene encabezados.',
+                ]);
+            }
+
+            $delimiter = $this->detectDelimiter($firstLine);
+            rewind($handle);
+
+            $headers = fgetcsv($handle, 0, $delimiter, '"', '');
+
+            if (!is_array($headers) || $headers === []) {
+                throw ValidationException::withMessages([
+                    'archivo_csv' => 'No fue posible interpretar los encabezados del CSV.',
+                ]);
+            }
+
+            $normalizedHeaders = array_map(
+                fn (mixed $header): string => $this->normalizeHeader((string) $header),
+                $headers
+            );
+
+            $records = [];
+            $recordNumber = 1;
+
+            while (($columns = fgetcsv($handle, 0, $delimiter, '"', '')) !== false) {
+                $recordNumber++;
+
+                if (!is_array($columns)) {
+                    continue;
+                }
+
+                $hasValue = false;
+
+                foreach ($columns as $value) {
+                    if ($this->normalizeCell($value) !== '') {
+                        $hasValue = true;
+                        break;
+                    }
+                }
+
+                if (!$hasValue) {
+                    continue;
+                }
+
+                if (count($records) >= self::MAX_ROWS) {
+                    throw ValidationException::withMessages([
+                        'archivo_csv' => 'El layout supera el máximo de ' . self::MAX_ROWS . ' filas por lote.',
+                    ]);
+                }
+
+                $records[] = [
+                    'numero_fila' => $recordNumber,
+                    'columns' => array_values($columns),
+                    'columnas_esperadas' => count($normalizedHeaders),
+                    'columnas_recibidas' => count($columns),
+                ];
+            }
+
+            if ($records === []) {
+                throw ValidationException::withMessages([
+                    'archivo_csv' => 'El archivo no contiene registros para previsualizar.',
+                ]);
+            }
+
+            return [
+                'headers' => $normalizedHeaders,
+                'records' => $records,
+            ];
+        } finally {
+            fclose($handle);
+        }
     }
 
     private function detectDelimiter(string $line): string

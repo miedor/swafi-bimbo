@@ -7,6 +7,17 @@ use ZipArchive;
 
 class SimpleXlsxExporter
 {
+    private const REQUIRED_ARCHIVE_ENTRIES = [
+        '[Content_Types].xml',
+        '_rels/.rels',
+        'docProps/app.xml',
+        'docProps/core.xml',
+        'xl/workbook.xml',
+        'xl/_rels/workbook.xml.rels',
+        'xl/styles.xml',
+        'xl/worksheets/sheet1.xml',
+    ];
+
     /**
      * Genera un archivo XLSX básico sin dependencias externas.
      *
@@ -19,33 +30,128 @@ class SimpleXlsxExporter
             throw new RuntimeException('La extensión ZIP de PHP no está disponible para generar el archivo Excel.');
         }
 
-        $directory = storage_path('app/swafi_exports');
+        if ($headers === []) {
+            throw new RuntimeException('El archivo Excel requiere al menos una columna.');
+        }
 
-        if (!is_dir($directory) && !mkdir($directory, 0775, true) && !is_dir($directory)) {
+        $directory = $this->temporaryDirectory();
+        $path = $directory . DIRECTORY_SEPARATOR . 'swafi_' . bin2hex(random_bytes(16)) . '.xlsx';
+        $zip = new ZipArchive();
+        $opened = false;
+
+        try {
+            $openResult = $zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE);
+
+            if ($openResult !== true) {
+                throw new RuntimeException('No fue posible crear el archivo Excel temporal. Código ZIP: ' . (string) $openResult . '.');
+            }
+
+            $opened = true;
+            $safeSheetName = $this->safeSheetName($sheetName);
+            $sheetXml = $this->worksheetXml($headers, $rows);
+
+            $this->addZipEntry($zip, '[Content_Types].xml', $this->contentTypesXml());
+            $this->addZipEntry($zip, '_rels/.rels', $this->rootRelationshipsXml());
+            $this->addZipEntry($zip, 'docProps/app.xml', $this->appPropertiesXml($safeSheetName));
+            $this->addZipEntry($zip, 'docProps/core.xml', $this->corePropertiesXml());
+            $this->addZipEntry($zip, 'xl/workbook.xml', $this->workbookXml($safeSheetName));
+            $this->addZipEntry($zip, 'xl/_rels/workbook.xml.rels', $this->workbookRelationshipsXml());
+            $this->addZipEntry($zip, 'xl/styles.xml', $this->stylesXml());
+            $this->addZipEntry($zip, 'xl/worksheets/sheet1.xml', $sheetXml);
+
+            if (!$zip->close()) {
+                $opened = false;
+                throw new RuntimeException('No fue posible finalizar el archivo Excel temporal.');
+            }
+
+            $opened = false;
+
+            if (!is_file($path) || !is_readable($path) || (int) filesize($path) < 100) {
+                throw new RuntimeException('El archivo Excel temporal no fue generado correctamente.');
+            }
+
+            $this->validateArchive($path);
+
+            return $path;
+        } catch (\Throwable $exception) {
+            if ($opened) {
+                $zip->close();
+            }
+
+            if (is_file($path)) {
+                @unlink($path);
+            }
+
+            throw $exception;
+        }
+    }
+
+    /**
+     * Genera el XLSX en memoria y elimina siempre el archivo temporal.
+     *
+     * @param array<int, string> $headers
+     * @param array<int, array<int, mixed>> $rows
+     */
+    public function exportBytes(string $sheetName, array $headers, array $rows): string
+    {
+        $path = $this->export($sheetName, $headers, $rows);
+
+        try {
+            $contents = file_get_contents($path);
+
+            if (!is_string($contents) || $contents === '') {
+                throw new RuntimeException('No fue posible leer el archivo Excel generado.');
+            }
+
+            return $contents;
+        } finally {
+            if (is_file($path)) {
+                @unlink($path);
+            }
+        }
+    }
+
+    private function temporaryDirectory(): string
+    {
+        $base = rtrim(sys_get_temp_dir(), DIRECTORY_SEPARATOR);
+        $directory = $base . DIRECTORY_SEPARATOR . 'swafi_exports';
+
+        if (!is_dir($directory) && !mkdir($directory, 0700, true) && !is_dir($directory)) {
             throw new RuntimeException('No fue posible crear el directorio temporal de exportaciones.');
         }
 
-        $path = $directory . DIRECTORY_SEPARATOR . 'swafi_' . bin2hex(random_bytes(8)) . '.xlsx';
-        $zip = new ZipArchive();
-
-        if ($zip->open($path, ZipArchive::CREATE | ZipArchive::OVERWRITE) !== true) {
-            throw new RuntimeException('No fue posible crear el archivo Excel.');
+        if (!is_writable($directory)) {
+            throw new RuntimeException('El directorio temporal de exportaciones no tiene permisos de escritura.');
         }
 
-        $safeSheetName = $this->safeSheetName($sheetName);
-        $sheetXml = $this->worksheetXml($headers, $rows);
+        return $directory;
+    }
 
-        $zip->addFromString('[Content_Types].xml', $this->contentTypesXml());
-        $zip->addFromString('_rels/.rels', $this->rootRelationshipsXml());
-        $zip->addFromString('docProps/app.xml', $this->appPropertiesXml($safeSheetName));
-        $zip->addFromString('docProps/core.xml', $this->corePropertiesXml());
-        $zip->addFromString('xl/workbook.xml', $this->workbookXml($safeSheetName));
-        $zip->addFromString('xl/_rels/workbook.xml.rels', $this->workbookRelationshipsXml());
-        $zip->addFromString('xl/styles.xml', $this->stylesXml());
-        $zip->addFromString('xl/worksheets/sheet1.xml', $sheetXml);
-        $zip->close();
+    private function addZipEntry(ZipArchive $zip, string $entryName, string $contents): void
+    {
+        if (!$zip->addFromString($entryName, $contents)) {
+            throw new RuntimeException("No fue posible agregar {$entryName} al archivo Excel.");
+        }
+    }
 
-        return $path;
+    private function validateArchive(string $path): void
+    {
+        $validationZip = new ZipArchive();
+        $openResult = $validationZip->open($path, ZipArchive::RDONLY);
+
+        if ($openResult !== true) {
+            throw new RuntimeException('El archivo Excel generado no pudo abrirse para su validación.');
+        }
+
+        try {
+            foreach (self::REQUIRED_ARCHIVE_ENTRIES as $entryName) {
+                if ($validationZip->locateName($entryName) === false) {
+                    throw new RuntimeException("El archivo Excel generado está incompleto: falta {$entryName}.");
+                }
+            }
+        } finally {
+            $validationZip->close();
+        }
     }
 
     private function contentTypesXml(): string
@@ -295,6 +401,6 @@ class SimpleXlsxExporter
 
     private function xml(string $value): string
     {
-        return htmlspecialchars($value, ENT_QUOTES | ENT_XML1, 'UTF-8');
+        return htmlspecialchars($value, ENT_QUOTES | ENT_XML1 | ENT_SUBSTITUTE, 'UTF-8');
     }
 }
