@@ -50,7 +50,7 @@
   };
 
   $showM01 = $swafiCan('expedientes.ver') || $swafiCan('expedientes.crear');
-  $showM02 = $swafiCan('valores.ver') || $swafiCan('valores.administrar') || $swafiCan('ubicaciones.administrar');
+  $showM02 = $swafiCan('valores.ver') || $swafiCan('valores.administrar') || $swafiCan('ubicaciones.ver') || $swafiCan('ubicaciones.administrar') || $swafiCan('ubicaciones.aprobar_traslados') || $swafiCan('ubicaciones.cerrar_inventario');
   $showM03 = $swafiCan('expedientes.ver') || $swafiCan('reportes.exportar');
   $showM04 = $swafiCan('catalogos.administrar') || $swafiCan('seguridad.administrar') || $swafiCan('bitacora.ver');
 
@@ -702,7 +702,7 @@
             </a>
           @endif
 
-          @if ($swafiCan('ubicaciones.administrar'))
+          @if ($swafiCan('ubicaciones.ver') || $swafiCan('ubicaciones.administrar') || $swafiCan('ubicaciones.aprobar_traslados') || $swafiCan('ubicaciones.cerrar_inventario'))
             <a class="nav-item {{ request()->routeIs('ubicacion') ? 'active' : '' }}" href="{{ route('ubicacion') }}">
               {!! $swafiIcon('map-pin', 'nav-icon') !!}
               <span>Ubicación e inventario</span>
