@@ -9,7 +9,10 @@ use App\Models\Activo;
 use App\Models\InventarioActivo;
 use App\Models\InventarioEvidencia;
 use App\Models\MovimientoUbicacion;
+use App\Services\InventoryPeriodService;
+use App\Services\SwafiAuthorizationService;
 use App\Services\SwafiStorageService;
+use App\Services\TransferWorkflowService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -19,8 +22,12 @@ use Illuminate\Validation\ValidationException;
 
 class UbicacionInventarioController extends Controller
 {
-    public function __construct(private readonly SwafiStorageService $storage)
-    {
+    public function __construct(
+        private readonly SwafiStorageService $storage,
+        private readonly TransferWorkflowService $transferWorkflow,
+        private readonly InventoryPeriodService $inventoryPeriods,
+        private readonly SwafiAuthorizationService $authorization
+    ) {
     }
 
     private const DISCREPANCY_STATUSES = [
@@ -51,10 +58,21 @@ class UbicacionInventarioController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
+        $canManageLocations = $this->authorization->canCurrentUser('ubicaciones.administrar');
+        $canApproveTransfers = $this->authorization->canCurrentUser('ubicaciones.aprobar_traslados');
+        $canManageInventoryPeriods = $this->authorization->canCurrentUser('ubicaciones.cerrar_inventario');
+
         return view('swafi.ubicacion', [
             'resultados' => $resultados,
             'catalogos' => $this->catalogos(),
             'filtros' => $request->all(),
+            'solicitudesTraslado' => $this->transferRequests($canApproveTransfers),
+            'periodosInventario' => $this->inventoryPeriodsList(),
+            'pendingTransfersCount' => $this->pendingTransferCount($canApproveTransfers),
+            'blockedPeriodsCount' => $this->blockedPeriodCount(),
+            'canManageLocations' => $canManageLocations,
+            'canApproveTransfers' => $canApproveTransfers,
+            'canManageInventoryPeriods' => $canManageInventoryPeriods,
         ]);
     }
 
@@ -62,52 +80,25 @@ class UbicacionInventarioController extends Controller
     {
         $data = $request->validated();
 
-        DB::transaction(function () use ($data) {
-            $activo = Activo::where('numero_activo', $data['numero_activo'])
-                ->lockForUpdate()
-                ->firstOrFail();
+        $result = $this->transferWorkflow->registerMovementOrTransfer(
+            data: $data,
+            userId: $this->userId()
+        );
 
-            $antes = $activo->toArray();
+        $redirectParameters = [
+            'numero_activo' => $data['numero_activo'],
+        ];
 
-            $movimiento = MovimientoUbicacion::create([
-                'numero_activo' => $activo->numero_activo,
-                'ubicacion_origen_id' => $activo->ubicacion_id,
-                'ubicacion_destino_id' => $data['ubicacion_destino_id'],
-                'motivo' => $data['motivo'] ?? null,
-                'evidencia' => $data['evidencia'] ?? null,
-                'fecha_movimiento' => Carbon::parse($data['fecha_movimiento']),
-                'responsable_id' => $data['responsable_id'] ?? null,
-                'registrado_por' => $this->userId(),
-            ]);
-
-            $activo->update([
-                'ubicacion_id' => $data['ubicacion_destino_id'],
-                'responsable_id' => $data['responsable_id'] ?? $activo->responsable_id,
-                'actualizado_por' => $this->userId(),
-            ]);
-
-            $despues = $activo->fresh()->toArray();
-
-            $this->registrarBitacora(
-                numeroActivo: $activo->numero_activo,
-                accion: 'CAMBIO_UBICACION',
-                tablaAfectada: 'movimientos_ubicacion',
-                registroClave: (string) $movimiento->id,
-                antes: [
-                    'activo' => $antes,
-                ],
-                despues: [
-                    'activo' => $despues,
-                    'movimiento' => $movimiento->toArray(),
-                ]
-            );
-        });
+        if ($result['type'] === 'transfer_request') {
+            $redirectParameters['panel'] = 'traslados';
+        }
 
         return redirect()
-            ->route('ubicacion', [
-                'numero_activo' => $data['numero_activo'],
-            ])
-            ->with('success', 'La ubicación física del activo se actualizó correctamente.');
+            ->route('ubicacion', $redirectParameters)
+            ->with(
+                $result['type'] === 'transfer_request' ? 'warning' : 'success',
+                $result['message']
+            );
     }
 
     public function storeInventario(StoreInventarioActivoRequest $request)
@@ -131,6 +122,15 @@ class UbicacionInventarioController extends Controller
                 ->firstOrFail();
 
             $antes = $activo->toArray();
+
+            $this->inventoryPeriods->assertInventoryAllowed(
+                asset: $activo,
+                verifiedLocationId: !empty($data['ubicacion_verificada_id'])
+                    ? (int) $data['ubicacion_verificada_id']
+                    : null,
+                date: $data['fecha_inventario'],
+                updateLocation: $request->boolean('actualizar_ubicacion')
+            );
 
             $inventario = InventarioActivo::create([
                 'numero_activo' => $activo->numero_activo,
@@ -265,6 +265,11 @@ class UbicacionInventarioController extends Controller
             ->select('numero_activo', DB::raw('MAX(id) as expediente_id'))
             ->groupBy('numero_activo');
 
+        $pendingTransfers = DB::table('solicitudes_traslado')
+            ->where('estatus', 'pendiente')
+            ->select('numero_activo', DB::raw('MIN(id) as solicitud_id'))
+            ->groupBy('numero_activo');
+
         return DB::table('activos as a')
             ->leftJoin('ubicaciones as u', 'u.id', '=', 'a.ubicacion_id')
             ->leftJoin('plantas as pl', 'pl.id', '=', 'a.planta_id')
@@ -287,6 +292,12 @@ class UbicacionInventarioController extends Controller
             })
             ->leftJoin('movimientos_ubicacion as mu', 'mu.id', '=', 'lm.movimiento_id')
             ->leftJoin('ubicaciones as ud', 'ud.id', '=', 'mu.ubicacion_destino_id')
+            ->leftJoinSub($pendingTransfers, 'pt', function ($join) {
+                $join->on('pt.numero_activo', '=', 'a.numero_activo');
+            })
+            ->leftJoin('solicitudes_traslado as st', 'st.id', '=', 'pt.solicitud_id')
+            ->leftJoin('ubicaciones as std', 'std.id', '=', 'st.ubicacion_destino_id')
+            ->leftJoin('plantas as stp', 'stp.id', '=', 'std.planta_id')
             ->select([
                 'a.numero_activo',
                 'a.descripcion as activo_descripcion',
@@ -329,6 +340,14 @@ class UbicacionInventarioController extends Controller
                 'mu.motivo as movimiento_motivo',
                 'ud.codigo_interno as ubicacion_destino_codigo',
                 'ud.descripcion as ubicacion_destino_descripcion',
+
+                'st.id as solicitud_traslado_id',
+                'st.uuid as solicitud_traslado_uuid',
+                'st.fecha_movimiento as solicitud_traslado_fecha',
+                'st.motivo as solicitud_traslado_motivo',
+                'std.codigo_interno as solicitud_destino_codigo',
+                'std.descripcion as solicitud_destino_descripcion',
+                'stp.nombre as solicitud_destino_planta',
             ]);
     }
 
@@ -379,6 +398,7 @@ class UbicacionInventarioController extends Controller
     {
         return [
             'activos' => DB::table('activos')
+                ->where('activo', true)
                 ->select('numero_activo', 'descripcion')
                 ->orderBy('numero_activo')
                 ->get(),
@@ -397,11 +417,13 @@ class UbicacionInventarioController extends Controller
                 ->leftJoin('plantas as pl', 'pl.id', '=', 'u.planta_id')
                 ->leftJoin('areas as ar', 'ar.id', '=', 'u.area_id')
                 ->where('u.estatus', 'activo')
+                ->where('pl.estatus', 'activo')
                 ->orderBy('pl.nombre')
                 ->orderBy('ar.nombre')
                 ->orderBy('u.codigo_interno')
                 ->select([
                     'u.id',
+                    'u.planta_id',
                     'u.codigo_interno',
                     'u.descripcion',
                     'u.edificio',
@@ -419,6 +441,103 @@ class UbicacionInventarioController extends Controller
 
             'usuariosContabilidad' => $this->auditRecipients(),
         ];
+    }
+
+    private function transferRequests(bool $canApproveTransfers)
+    {
+        $query = DB::table('solicitudes_traslado as st')
+            ->join('activos as a', 'a.numero_activo', '=', 'st.numero_activo')
+            ->leftJoin('plantas as pa', 'pa.id', '=', 'a.planta_id')
+            ->leftJoin('ubicaciones as uo', 'uo.id', '=', 'st.ubicacion_origen_id')
+            ->leftJoin('plantas as po', 'po.id', '=', 'uo.planta_id')
+            ->join('ubicaciones as ud', 'ud.id', '=', 'st.ubicacion_destino_id')
+            ->join('plantas as pd', 'pd.id', '=', 'ud.planta_id')
+            ->leftJoin('responsables as rd', 'rd.id', '=', 'st.responsable_destino_id')
+            ->leftJoin('users as us', 'us.id', '=', 'st.solicitado_por')
+            ->leftJoin('users as ur', 'ur.id', '=', 'st.resuelto_por')
+            ->select([
+                'st.id',
+                'st.uuid',
+                'st.numero_activo',
+                'a.descripcion as activo_descripcion',
+                'st.fecha_movimiento',
+                'st.motivo',
+                'st.evidencia',
+                'st.estatus',
+                'st.solicitado_at',
+                'st.resuelto_at',
+                'st.comentario_resolucion',
+                'st.movimiento_id',
+                'uo.codigo_interno as origen_codigo',
+                'uo.descripcion as origen_descripcion',
+                DB::raw('COALESCE(po.nombre, pa.nombre) as origen_planta'),
+                'ud.codigo_interno as destino_codigo',
+                'ud.descripcion as destino_descripcion',
+                'pd.nombre as destino_planta',
+                'rd.nombre as responsable_destino',
+                'us.name as solicitado_por_nombre',
+                'us.email as solicitado_por_email',
+                'ur.name as resuelto_por_nombre',
+            ]);
+
+        if (!$canApproveTransfers) {
+            $query->where('st.solicitado_por', $this->userId());
+        }
+
+        return $query
+            ->orderByRaw("CASE WHEN st.estatus = 'pendiente' THEN 0 ELSE 1 END")
+            ->orderByDesc('st.solicitado_at')
+            ->paginate(5, ['*'], 'traslados_page')
+            ->withQueryString();
+    }
+
+    private function inventoryPeriodsList()
+    {
+        return DB::table('periodos_inventario as pi')
+            ->join('plantas as p', 'p.id', '=', 'pi.planta_id')
+            ->leftJoin('users as uc', 'uc.id', '=', 'pi.creado_por')
+            ->leftJoin('users as ub', 'ub.id', '=', 'pi.bloqueado_por')
+            ->leftJoin('users as ud', 'ud.id', '=', 'pi.desbloqueado_por')
+            ->select([
+                'pi.id',
+                'pi.uuid',
+                'pi.planta_id',
+                'p.nombre as planta_nombre',
+                'pi.nombre',
+                'pi.fecha_inicio',
+                'pi.fecha_fin',
+                'pi.estatus',
+                'pi.observaciones',
+                'pi.motivo_bloqueo',
+                'pi.bloqueado_at',
+                'pi.desbloqueado_at',
+                'uc.name as creado_por_nombre',
+                'ub.name as bloqueado_por_nombre',
+                'ud.name as desbloqueado_por_nombre',
+            ])
+            ->orderByRaw("CASE WHEN pi.estatus = 'bloqueado' THEN 0 ELSE 1 END")
+            ->orderByDesc('pi.fecha_inicio')
+            ->paginate(5, ['*'], 'periodos_page')
+            ->withQueryString();
+    }
+
+    private function pendingTransferCount(bool $canApproveTransfers): int
+    {
+        $query = DB::table('solicitudes_traslado')
+            ->where('estatus', 'pendiente');
+
+        if (!$canApproveTransfers) {
+            $query->where('solicitado_por', $this->userId());
+        }
+
+        return $query->count();
+    }
+
+    private function blockedPeriodCount(): int
+    {
+        return DB::table('periodos_inventario')
+            ->where('estatus', 'bloqueado')
+            ->count();
     }
 
     private function auditRecipients()
@@ -637,6 +756,9 @@ class UbicacionInventarioController extends Controller
                 'Fecha notificacion',
                 'Ultimo movimiento',
                 'Motivo movimiento',
+                'Traslado pendiente',
+                'Planta destino solicitada',
+                'Fecha traslado solicitada',
             ]);
 
             foreach ($rows as $row) {
@@ -655,6 +777,9 @@ class UbicacionInventarioController extends Controller
                     $row->notificado_at,
                     $row->fecha_movimiento,
                     $row->movimiento_motivo,
+                    $row->solicitud_traslado_uuid,
+                    $row->solicitud_destino_planta,
+                    $row->solicitud_traslado_fecha,
                 ]);
             }
 
