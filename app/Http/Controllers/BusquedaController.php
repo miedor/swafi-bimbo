@@ -818,18 +818,32 @@ class BusquedaController extends Controller
 
         if ($format === 'xlsx') {
             try {
-                $path = $xlsxExporter->export('Búsqueda avanzada', array_values($columns), $dataRows);
+                $contents = $xlsxExporter->exportBytes(
+                    'Búsqueda avanzada',
+                    array_values($columns),
+                    $dataRows
+                );
             } catch (\Throwable $exception) {
+                report($exception);
+
                 return redirect()
                     ->route('busqueda', $request->except(['export']))
-                    ->withErrors(['exportacion' => $exception->getMessage()]);
+                    ->withErrors([
+                        'exportacion' => 'No fue posible generar el archivo Excel. Intenta la exportación CSV o vuelve a intentarlo.',
+                    ]);
             }
 
-            return response()
-                ->download($path, $filenameBase . '.xlsx', [
+            return response()->streamDownload(
+                static function () use ($contents): void {
+                    echo $contents;
+                },
+                $filenameBase . '.xlsx',
+                [
                     'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                ])
-                ->deleteFileAfterSend(true);
+                    'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                    'X-Content-Type-Options' => 'nosniff',
+                ]
+            );
         }
 
         $pdf = $pdfExporter->export(

@@ -8,9 +8,10 @@ use App\Services\RegistroMasivoService;
 use App\Services\SimpleXlsxExporter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\ValidationException;
-use Symfony\Component\HttpFoundation\BinaryFileResponse;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RegistroMasivoController extends Controller
 {
@@ -146,54 +147,185 @@ class RegistroMasivoController extends Controller
             ->with('success', 'La previsualización fue cancelada sin modificar activos ni expedientes.');
     }
 
-    public function exportarIncidencias(string $lote): BinaryFileResponse
+    public function exportarIncidencias(string $lote): RedirectResponse|StreamedResponse
     {
         $batch = $this->findOwnedBatch($lote);
-        $rows = $batch->filas()
+        $rows = $this->incidentRows($batch);
+
+        if ($rows->isEmpty()) {
+            return redirect()
+                ->route('registro-masivo', ['lote' => $batch->uuid])
+                ->withErrors([
+                    'incidencias' => 'El lote no contiene filas observadas o rechazadas para exportar.',
+                ]);
+        }
+
+        $dataRows = $this->incidentDataRows($rows);
+
+        try {
+            $contents = $this->xlsxExporter->exportBytes(
+                'Incidencias importación',
+                $this->incidentHeaders(),
+                $dataRows
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return redirect()
+                ->route('registro-masivo', ['lote' => $batch->uuid])
+                ->withErrors([
+                    'incidencias' => 'No fue posible generar el Excel de incidencias. Usa la descarga CSV disponible y comparte la referencia técnica si el problema continúa.',
+                ]);
+        }
+
+        try {
+            $this->importService->registrarExportacionIncidencias(
+                batch: $batch,
+                userId: auth()->id(),
+                format: 'xlsx',
+                rowCount: $rows->count()
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+
+        $filename = 'incidencias_importacion_' . $batch->uuid . '.xlsx';
+
+        return response()->streamDownload(
+            static function () use ($contents): void {
+                echo $contents;
+            },
+            $filename,
+            [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                'X-Content-Type-Options' => 'nosniff',
+            ]
+        );
+    }
+
+    public function exportarIncidenciasCsv(string $lote): RedirectResponse|StreamedResponse
+    {
+        $batch = $this->findOwnedBatch($lote);
+        $rows = $this->incidentRows($batch);
+
+        if ($rows->isEmpty()) {
+            return redirect()
+                ->route('registro-masivo', ['lote' => $batch->uuid])
+                ->withErrors([
+                    'incidencias' => 'El lote no contiene filas observadas o rechazadas para exportar.',
+                ]);
+        }
+
+        $headers = $this->incidentHeaders();
+        $dataRows = $this->incidentDataRows($rows);
+
+        try {
+            $this->importService->registrarExportacionIncidencias(
+                batch: $batch,
+                userId: auth()->id(),
+                format: 'csv',
+                rowCount: $rows->count()
+            );
+        } catch (\Throwable $exception) {
+            report($exception);
+        }
+
+        return response()->streamDownload(
+            static function () use ($headers, $dataRows): void {
+                $output = fopen('php://output', 'wb');
+
+                if (!is_resource($output)) {
+                    throw new \RuntimeException('No fue posible iniciar la descarga CSV.');
+                }
+
+                fwrite($output, "\xEF\xBB\xBF");
+                fputcsv($output, $headers);
+
+                foreach ($dataRows as $row) {
+                    fputcsv($output, $row);
+                }
+
+                fclose($output);
+            },
+            'incidencias_importacion_' . $batch->uuid . '.csv',
+            [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                'X-Content-Type-Options' => 'nosniff',
+            ]
+        );
+    }
+
+    private function incidentRows(ImportacionMasiva $batch): Collection
+    {
+        return $batch->filas()
             ->whereIn('estatus', ['observada', 'rechazada'])
             ->orderBy('numero_fila')
             ->get();
+    }
 
-        $dataRows = $rows->map(function ($row): array {
-            $data = $row->datos ?? [];
+    /**
+     * @return array<int, string>
+     */
+    private function incidentHeaders(): array
+    {
+        return [
+            'Fila',
+            'Estatus',
+            'Acción propuesta',
+            'Número de activo',
+            'Folio factura',
+            'UUID CFDI',
+            'Errores',
+            'Advertencias',
+        ];
+    }
+
+    /**
+     * @return array<int, array<int, mixed>>
+     */
+    private function incidentDataRows(Collection $rows): array
+    {
+        return $rows->map(function ($row): array {
+            $data = is_array($row->datos) ? $row->datos : [];
 
             return [
-                $row->numero_fila,
-                ucfirst($row->estatus),
-                $row->accion ? ucfirst($row->accion) : 'No aplicable',
-                $data['numero_activo'] ?? '',
-                $data['folio_factura'] ?? '',
-                $data['uuid_cfdi'] ?? '',
-                implode(' | ', $row->errores ?? []),
-                implode(' | ', $row->advertencias ?? []),
+                (int) $row->numero_fila,
+                ucfirst((string) $row->estatus),
+                $row->accion ? ucfirst((string) $row->accion) : 'No aplicable',
+                (string) ($data['numero_activo'] ?? ''),
+                (string) ($data['folio_factura'] ?? ''),
+                (string) ($data['uuid_cfdi'] ?? ''),
+                implode(' | ', $this->normalizeIncidentMessages($row->errores)),
+                implode(' | ', $this->normalizeIncidentMessages($row->advertencias)),
             ];
         })->all();
+    }
 
-        $path = $this->xlsxExporter->export(
-            'Incidencias importación',
-            [
-                'Fila',
-                'Estatus',
-                'Acción propuesta',
-                'Número de activo',
-                'Folio factura',
-                'UUID CFDI',
-                'Errores',
-                'Advertencias',
-            ],
-            $dataRows
-        );
+    /**
+     * @return array<int, string>
+     */
+    private function normalizeIncidentMessages(mixed $messages): array
+    {
+        if (is_array($messages)) {
+            return array_values(array_filter(
+                array_map(static fn (mixed $message): string => trim((string) $message), $messages),
+                static fn (string $message): bool => $message !== ''
+            ));
+        }
 
-        return response()
-            ->download(
-                $path,
-                'incidencias_importacion_' . $batch->uuid . '.xlsx',
-                [
-                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                    'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
-                ]
-            )
-            ->deleteFileAfterSend(true);
+        if (is_string($messages) && trim($messages) !== '') {
+            $decoded = json_decode($messages, true);
+
+            if (is_array($decoded)) {
+                return $this->normalizeIncidentMessages($decoded);
+            }
+
+            return [trim($messages)];
+        }
+
+        return [];
     }
 
     private function findOwnedBatch(string $uuid): ImportacionMasiva
