@@ -316,7 +316,8 @@
         }
     @endphp
 
-    <section class="sec-grid">
+    <div data-swafi-query-workspace data-swafi-query-key="seguridad-usuarios">
+    <section class="sec-grid" data-swafi-query-panel>
         <div class="card">
             <div class="section-title">
                 <h2>{{ $editandoUsuario ? 'Editar usuario' : 'Alta de usuario' }}</h2>
@@ -410,7 +411,7 @@
                 <span class="pill ok">Exportación CSV</span>
             </div>
 
-            <form method="GET" action="{{ route('seguridad') }}" class="sec-filter">
+            <form method="GET" action="{{ route('seguridad') }}" class="sec-filter" data-swafi-query-form>
                 <input type="hidden" name="tab" value="usuarios">
 
                 <div class="sec-filter-grid">
@@ -474,7 +475,7 @@
         </div>
     </section>
 
-    <section class="card table-card" style="margin-top:20px">
+    <section class="card table-card" style="margin-top:20px" data-swafi-query-results id="swafi-seguridad-usuarios-resultados">
         <div class="section-title">
             <h2>Usuarios registrados</h2>
             <span class="pill ok">Paginación real</span>
@@ -581,6 +582,7 @@
             </div>
         </div>
     </section>
+    </div>
 @endif
 
 @if ($tabActivo === 'roles')
@@ -812,13 +814,14 @@
 @endif
 
 @if ($tabActivo === 'bitacora')
-    <section class="card">
+    <div data-swafi-query-workspace data-swafi-query-key="seguridad-bitacora">
+    <section class="card" data-swafi-query-panel>
         <div class="section-title">
             <h2>Filtros de bitácora</h2>
             <span class="pill ok">Auditoría</span>
         </div>
 
-        <form method="GET" action="{{ route('seguridad') }}" class="sec-filter">
+        <form method="GET" action="{{ route('seguridad') }}" class="sec-filter" data-swafi-query-form>
             <input type="hidden" name="tab" value="bitacora">
 
             <div class="sec-filter-grid">
@@ -876,7 +879,7 @@
         </form>
     </section>
 
-    <section class="card table-card" style="margin-top:20px">
+    <section class="card table-card" style="margin-top:20px" data-swafi-query-results id="swafi-seguridad-bitacora-resultados">
         <div class="section-title">
             <h2>Bitácora de auditoría</h2>
             <span class="pill ok">Trazabilidad</span>
@@ -948,6 +951,7 @@
             </div>
         </div>
     </section>
+    </div>
 @endif
 
 @endsection

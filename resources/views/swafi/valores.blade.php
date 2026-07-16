@@ -619,8 +619,11 @@
   <section
     class="vf-card vf-panel {{ $panelActivo === 'consulta' ? 'is-active' : '' }}"
     data-vf-panel="consulta"
+    data-swafi-query-workspace
+    data-swafi-query-key="valores"
     role="tabpanel"
   >
+    <div data-swafi-query-panel>
     <div class="vf-title">
       <div>
         <h2>Filtros de consulta</h2>
@@ -629,7 +632,7 @@
       <span class="pill ok">{{ $resultados->total() }} resultado(s)</span>
     </div>
 
-    <form method="GET" action="{{ route('valores') }}">
+    <form method="GET" action="{{ route('valores') }}" data-swafi-query-form>
       <input type="hidden" name="panel" value="consulta">
 
       <div class="vf-filters">
@@ -743,8 +746,9 @@
         <a class="vf-button soft" href="{{ route('valores', ['panel' => 'consulta']) }}">Limpiar filtros</a>
       </div>
     </form>
+    </div>
 
-    <div class="vf-table-head">
+    <div class="vf-table-head" data-swafi-query-results id="swafi-valores-resultados">
       <strong>Valores registrados</strong>
       <span class="vf-scroll-hint">La tabla se desplaza dentro de este panel sin mover la página completa.</span>
     </div>

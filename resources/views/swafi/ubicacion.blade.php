@@ -385,13 +385,14 @@
   </div>
 </section>
 
-<section class="card ui-filter">
+<div data-swafi-query-workspace data-swafi-query-key="ubicacion">
+<section class="card ui-filter" data-swafi-query-panel>
   <div class="section-title">
     <h2>Filtros de ubicación e inventario</h2>
     <span class="pill ok">Consulta paginada</span>
   </div>
 
-  <form method="GET" action="{{ route('ubicacion') }}">
+  <form method="GET" action="{{ route('ubicacion') }}" data-swafi-query-form>
     <div class="query-grid query-grid-four">
       <label>
         <span>Número de activo</span>
@@ -493,7 +494,7 @@
   </form>
 </section>
 
-<section class="card table-card" style="margin-top:16px;">
+<section class="card table-card" style="margin-top:16px;" data-swafi-query-results id="swafi-ubicacion-resultados">
   <div class="section-title">
     <h2>Consulta de ubicación e inventario</h2>
     <span class="pill ok">Conectado a MySQL</span>
@@ -582,6 +583,7 @@
     <div class="table-page-size"><span>M02 inventario con evidencia y notificación</span></div>
   </div>
 </section>
+</div>
 
 @endsection
 

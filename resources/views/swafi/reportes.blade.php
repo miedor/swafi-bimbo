@@ -343,7 +343,7 @@
     $selectedColumnKeys = array_keys($columnasSeleccionadas);
 @endphp
 
-<div class="rp-shell">
+<div class="rp-shell" data-swafi-query-workspace data-swafi-query-key="reportes">
     @if (session('success'))
         <div class="rp-message success">{{ session('success') }}</div>
     @endif
@@ -356,14 +356,14 @@
         </div>
     @endif
 
-    <div class="rp-top">
+    <div class="rp-top" data-swafi-query-panel>
         <section class="rp-card">
             <div class="rp-title-row">
                 <h2>Generador ad hoc</h2>
                 <span class="pill ok">Permisos por reporte</span>
             </div>
 
-            <form method="GET" action="{{ route('reportes') }}" id="reportForm">
+            <form method="GET" action="{{ route('reportes') }}" id="reportForm" data-swafi-query-form>
                 <div class="rp-form-grid">
                     <label class="rp-field">
                         <span>Tipo de reporte</span>
@@ -700,7 +700,7 @@
         </aside>
     </div>
 
-    <section class="rp-card">
+    <section class="rp-card" data-swafi-query-results id="swafi-reportes-resultados">
         <div class="rp-title-row">
             <h2>{{ $kpis['tipo'] }}</h2>
             <span class="pill ok">Paginación y auditoría</span>

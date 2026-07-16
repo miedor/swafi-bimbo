@@ -240,7 +240,7 @@
   };
 @endphp
 
-<div class="search-shell">
+<div class="search-shell" data-swafi-query-workspace data-swafi-query-key="busqueda">
   @if (session('success'))
     <div class="search-message search-message-success">
       {{ session('success') }}
@@ -255,9 +255,9 @@
     </div>
   @endif
 
-  <div class="search-top-grid">
+  <div class="search-top-grid" data-swafi-query-panel>
     <section class="card form-card search-form-card">
-      <form id="swafiSearchFiltersForm" method="GET" action="{{ route('busqueda') }}">
+      <form id="swafiSearchFiltersForm" method="GET" action="{{ route('busqueda') }}" data-swafi-query-form>
         <div class="section-title">
           <h2>Criterios de búsqueda</h2>
           <span class="pill ok">Filtros completos y ordenamiento</span>
@@ -493,7 +493,7 @@
     </aside>
   </div>
 
-  <section class="card table-card">
+  <section class="card table-card" data-swafi-query-results id="swafi-busqueda-resultados">
     <div class="section-title">
       <h2>Resultados de consulta</h2>
       <span class="pill ok">{{ $resultados->total() }} resultado(s)</span>

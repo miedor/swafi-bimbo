@@ -516,13 +516,14 @@
     </div>
 </section>
 
-<section class="card" style="margin-top:20px">
+<div data-swafi-query-workspace data-swafi-query-key="catalogos">
+<section class="card" style="margin-top:20px" data-swafi-query-panel>
     <div class="section-title">
         <h2>Filtros de consulta</h2>
         <span class="pill ok">Paginación real</span>
     </div>
 
-    <form method="GET" action="{{ route('catalogos') }}" class="cat-filter">
+    <form method="GET" action="{{ route('catalogos') }}" class="cat-filter" data-swafi-query-form>
         <input type="hidden" name="catalogo" value="{{ $catalogoActivo }}">
 
         <div class="query-grid query-grid-four">
@@ -607,7 +608,7 @@
     </form>
 </section>
 
-<section class="card table-card" style="margin-top:20px">
+<section class="card table-card" style="margin-top:20px" data-swafi-query-results id="swafi-catalogos-resultados">
     <div class="section-title">
         <h2>Consulta de {{ $catalogosDisponibles[$catalogoActivo] ?? 'catálogo' }}</h2>
         <span class="pill ok">CRUD + carga masiva</span>
@@ -709,5 +710,6 @@
         </div>
     </div>
 </section>
+</div>
 
 @endsection

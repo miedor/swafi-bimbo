@@ -602,13 +602,14 @@
 </section>
 @endif
 
-<section class="card" style="margin-top:20px">
+<div data-swafi-query-workspace data-swafi-query-key="registro-masivo">
+<section class="card" style="margin-top:20px" data-swafi-query-panel>
     <div class="section-title">
         <h2>Filtros de consulta</h2>
         <span class="pill ok">Paginación real</span>
     </div>
 
-    <form method="GET" action="{{ route('registro-masivo') }}" class="rm-filter">
+    <form method="GET" action="{{ route('registro-masivo') }}" class="rm-filter" data-swafi-query-form>
         <div class="query-grid query-grid-four">
             <label>
                 <span>Número de activo</span>
@@ -719,7 +720,7 @@
     </form>
 </section>
 
-<section class="card table-card" style="margin-top:20px">
+<section class="card table-card" style="margin-top:20px" data-swafi-query-results id="swafi-registro-masivo-resultados">
     <div class="section-title">
         <h2>Expedientes registrados por carga o captura</h2>
         <span class="pill ok">Conectado a MySQL</span>
@@ -830,5 +831,6 @@
         </div>
     </div>
 </section>
+</div>
 
 @endsection

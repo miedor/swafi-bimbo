@@ -675,16 +675,16 @@
 @endphp
 
 @if ($errors->any())
-    <div style="margin-bottom:14px;padding:12px 14px;border-radius:14px;background:#fff4d6;border:1px solid #facc15;color:#7a4b00;font-weight:800;">
+    <div data-swafi-query-validation-errors style="margin-bottom:14px;padding:12px 14px;border-radius:14px;background:#fff4d6;border:1px solid #facc15;color:#7a4b00;font-weight:800;">
         @foreach ($errors->all() as $error)
             <div>{{ $error }}</div>
         @endforeach
     </div>
 @endif
 
-<div class="dash-exec-shell">
+<div class="dash-exec-shell" data-swafi-query-workspace data-swafi-query-key="dashboard">
 
-  <div class="dash-top-row">
+  <div class="dash-top-row" data-swafi-query-panel>
     <section class="dash-health-mini">
       <div class="dash-health-title">
         <span>Salud documental</span>
@@ -716,7 +716,7 @@
         </span>
       </div>
 
-      <form method="GET" action="{{ route('dashboard') }}" class="dash-filter-form">
+      <form method="GET" action="{{ route('dashboard') }}" class="dash-filter-form" data-swafi-query-form>
         <label class="dash-field">
           <span>Planta</span>
           <select name="planta_id">
@@ -753,7 +753,7 @@
     </section>
   </div>
 
-  <div class="dash-kpi-row">
+  <div class="dash-kpi-row" data-swafi-query-results id="swafi-dashboard-resultados">
     <div class="dash-kpi">
       <span>Activos registrados</span>
       <strong>{{ number_format((int) $kpis['total_activos']) }}</strong>
