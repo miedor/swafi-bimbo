@@ -1,0 +1,122 @@
+/*
+ * SWAFI - Enfoque inmediato de resultados
+ *
+ * Este componente contrae los paneles de filtros después de una consulta GET
+ * y coloca el bloque de resultados justo debajo del encabezado fijo. No altera
+ * consultas, exportaciones, paginación ni formularios POST.
+ */
+
+[data-swafi-query-workspace] {
+  position: relative;
+}
+
+.swafi-query-collapsed-bar {
+  display: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 13px 16px;
+  border: 1px solid #cfe0f5;
+  border-left: 5px solid #1f5ca8;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #ffffff 0%, #f3f8ff 100%);
+  box-shadow: 0 10px 24px rgba(28, 73, 122, .08);
+}
+
+.swafi-query-collapsed-bar.is-visible {
+  display: flex;
+}
+
+.swafi-query-collapsed-copy {
+  min-width: 0;
+}
+
+.swafi-query-collapsed-copy strong {
+  display: block;
+  color: #123760;
+  font-size: 14px;
+  font-weight: 950;
+  line-height: 1.25;
+}
+
+.swafi-query-collapsed-copy span {
+  display: block;
+  margin-top: 3px;
+  color: #60738c;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.swafi-query-edit-button {
+  flex: 0 0 auto;
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid #1f5ca8;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #174f91;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 900;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease, transform .18s ease;
+}
+
+.swafi-query-edit-button:hover {
+  background: #1f5ca8;
+  color: #ffffff;
+  transform: translateY(-1px);
+}
+
+.swafi-query-edit-button:focus-visible {
+  outline: 3px solid rgba(31, 92, 168, .25);
+  outline-offset: 2px;
+}
+
+[data-swafi-query-panel][hidden] {
+  display: none !important;
+}
+
+[data-swafi-query-results] {
+  scroll-margin-top: 128px;
+}
+
+[data-swafi-query-results].swafi-query-results-highlight {
+  animation: swafi-query-result-focus 1.15s ease-out;
+}
+
+@keyframes swafi-query-result-focus {
+  0% {
+    box-shadow: 0 0 0 4px rgba(31, 92, 168, .20), 0 16px 34px rgba(28, 73, 122, .12);
+  }
+  100% {
+    box-shadow: inherit;
+  }
+}
+
+@media (max-width: 700px) {
+  .swafi-query-collapsed-bar {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .swafi-query-edit-button {
+    width: 100%;
+  }
+
+  [data-swafi-query-results] {
+    scroll-margin-top: 112px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swafi-query-edit-button {
+    transition: none;
+  }
+
+  [data-swafi-query-results].swafi-query-results-highlight {
+    animation: none;
+  }
+}
