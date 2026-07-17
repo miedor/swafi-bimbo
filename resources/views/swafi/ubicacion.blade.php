@@ -135,6 +135,23 @@
     display: block;
   }
 
+  .ui-transfer-approver-box {
+    display: none;
+    grid-column: 1 / -1;
+    padding: 12px;
+    border: 1px solid #b8cbe4;
+    border-radius: 14px;
+    background: #f3f8ff;
+  }
+
+  .ui-transfer-approver-box.is-visible {
+    display: block;
+  }
+
+  .ui-transfer-approver-box .ui-notification-state {
+    margin-top: 7px;
+  }
+
   .ui-file-note {
     padding: 9px 11px;
     border: 1px dashed #b8cbe4;
@@ -178,7 +195,8 @@
     }
 
     .ui-field-wide,
-    .ui-discrepancy-box {
+    .ui-discrepancy-box,
+    .ui-transfer-approver-box {
       grid-column: auto;
     }
   }
@@ -219,16 +237,16 @@
       <span class="pill ok">Reubicación o traslado controlado</span>
     </div>
 
-    <form method="POST" action="{{ route('ubicacion.movimiento') }}">
+    <form method="POST" action="{{ route('ubicacion.movimiento') }}" id="movement-form">
       @csrf
 
       <div class="ui-form-grid">
         <label class="ui-field-wide">
           <span>Activo fijo</span>
-          <select name="numero_activo" required>
-            <option value="">Seleccione...</option>
+          <select name="numero_activo" id="movement-asset" required>
+            <option value="" data-planta-id="">Seleccione...</option>
             @foreach($catalogos['activos'] as $activo)
-              <option value="{{ $activo->numero_activo }}" {{ $activoSeleccionado === $activo->numero_activo ? 'selected' : '' }}>
+              <option value="{{ $activo->numero_activo }}" data-planta-id="{{ $activo->planta_id }}" {{ $activoSeleccionado === $activo->numero_activo ? 'selected' : '' }}>
                 {{ $activo->numero_activo }} - {{ $activo->descripcion }}
               </option>
             @endforeach
@@ -237,8 +255,8 @@
 
         <label class="ui-field-wide">
           <span>Nueva ubicación física</span>
-          <select name="ubicacion_destino_id" required>
-            <option value="">Seleccione...</option>
+          <select name="ubicacion_destino_id" id="movement-destination" required>
+            <option value="" data-planta-id="">Seleccione...</option>
             @foreach($catalogos['ubicaciones'] as $ubicacion)
               @php
                 $ubicacionLabel = trim(
@@ -248,7 +266,7 @@
                     ($ubicacion->descripcion ? ' / ' . $ubicacion->descripcion : '')
                 );
               @endphp
-              <option value="{{ $ubicacion->id }}" {{ (string) old('ubicacion_destino_id') === (string) $ubicacion->id ? 'selected' : '' }}>
+              <option value="{{ $ubicacion->id }}" data-planta-id="{{ $ubicacion->planta_id }}" {{ (string) old('ubicacion_destino_id') === (string) $ubicacion->id ? 'selected' : '' }}>
                 {{ $ubicacionLabel ?: 'Ubicación ' . $ubicacion->id }}
               </option>
             @endforeach
@@ -270,6 +288,28 @@
           <input type="datetime-local" name="fecha_movimiento" value="{{ old('fecha_movimiento', now()->format('Y-m-d\TH:i')) }}" required>
         </label>
 
+        <div class="ui-transfer-approver-box {{ old('aprobador_asignado_id') ? 'is-visible' : '' }}" id="transfer-approver-box">
+          <label>
+            <span>Usuario Captura responsable de aprobar</span>
+            <select name="aprobador_asignado_id" id="transfer-approver-user">
+              <option value="">Seleccione al aprobador...</option>
+              @foreach($catalogos['usuariosAprobadoresTraslado'] as $aprobadorTraslado)
+                <option value="{{ $aprobadorTraslado->id }}" {{ (string) old('aprobador_asignado_id') === (string) $aprobadorTraslado->id ? 'selected' : '' }}>
+                  {{ $aprobadorTraslado->name }} · {{ $aprobadorTraslado->email }}
+                </option>
+              @endforeach
+            </select>
+            <div class="ui-help">
+              Este campo es obligatorio cuando la ubicación destino pertenece a otra planta. Solo la persona seleccionada —o el Administrador SWAFI como contingencia— podrá aprobar o rechazar la solicitud.
+            </div>
+            @if($catalogos['usuariosAprobadoresTraslado']->isEmpty())
+              <span class="ui-notification-state warn">No existen Usuarios Captura activos con correo y permiso de aprobación.</span>
+            @else
+              <span class="ui-notification-state ok">SWAFI enviará un correo y registrará el resultado de la notificación en bitácora.</span>
+            @endif
+          </label>
+        </div>
+
         <label class="ui-field-wide">
           <span>Motivo</span>
           <input name="motivo" value="{{ old('motivo') }}" minlength="10" maxlength="500" required placeholder="Ej. Reubicación por inventario, traslado operativo o ajuste de planta">
@@ -282,7 +322,7 @@
       </div>
 
       <div class="ui-file-note" style="margin-top:12px;">
-        Los movimientos dentro de la misma planta se aplican inmediatamente. Si la ubicación destino pertenece a otra planta, SWAFI creará una solicitud pendiente y conservará la ubicación actual hasta que Contabilidad apruebe el traslado.
+        Los movimientos dentro de la misma planta se aplican inmediatamente. Si la ubicación destino pertenece a otra planta, SWAFI solicitará elegir un Usuario Captura, conservará la ubicación actual y le enviará un correo para que apruebe o rechace el traslado.
       </div>
 
       <div class="action-group" style="margin-top:12px;">
@@ -622,13 +662,48 @@
 @section('page_scripts')
 <script>
   document.addEventListener('DOMContentLoaded', function () {
+    const movementAsset = document.getElementById('movement-asset');
+    const movementDestination = document.getElementById('movement-destination');
+    const approverBox = document.getElementById('transfer-approver-box');
+    const approverUser = document.getElementById('transfer-approver-user');
+
+    function selectedPlantId(select) {
+      if (!select || select.selectedIndex < 0) return '';
+
+      return String(select.options[select.selectedIndex].dataset.plantaId || '');
+    }
+
+    function syncTransferApprover() {
+      if (!movementAsset || !movementDestination || !approverBox || !approverUser) return;
+
+      const originPlantId = selectedPlantId(movementAsset);
+      const destinationPlantId = selectedPlantId(movementDestination);
+      const isCrossPlant = originPlantId !== ''
+        && destinationPlantId !== ''
+        && originPlantId !== destinationPlantId;
+
+      approverBox.classList.toggle('is-visible', isCrossPlant);
+      approverUser.required = isCrossPlant;
+      approverUser.disabled = !isCrossPlant;
+
+      if (!isCrossPlant) {
+        approverUser.value = '';
+      }
+    }
+
+    if (movementAsset && movementDestination && approverBox && approverUser) {
+      movementAsset.addEventListener('change', syncTransferApprover);
+      movementDestination.addEventListener('change', syncTransferApprover);
+      syncTransferApprover();
+    }
+
     const status = document.getElementById('inventory-status');
     const box = document.getElementById('discrepancy-box');
     const recipient = document.getElementById('inventory-notify-user');
 
-    if (!status || !box || !recipient) return;
-
     function syncDiscrepancyFields() {
+      if (!status || !box || !recipient) return;
+
       const discrepancy = ['no_encontrado', 'diferencia', 'pendiente'].includes(status.value);
       box.classList.toggle('is-visible', discrepancy);
       recipient.required = discrepancy;
@@ -636,8 +711,10 @@
       if (!discrepancy) recipient.value = '';
     }
 
-    status.addEventListener('change', syncDiscrepancyFields);
-    syncDiscrepancyFields();
+    if (status && box && recipient) {
+      status.addEventListener('change', syncDiscrepancyFields);
+      syncDiscrepancyFields();
+    }
   });
 </script>
 @endsection
