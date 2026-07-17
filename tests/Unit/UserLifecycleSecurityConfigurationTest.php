@@ -120,6 +120,32 @@ class UserLifecycleSecurityConfigurationTest extends TestCase
         }
     }
 
+    public function test_cloud_test_runner_validates_requested_test_files_before_installing_dependencies(): void
+    {
+        $script = $this->read('scripts/run-cloud-tests.sh');
+
+        foreach ([
+            'validate_requested_test_files()',
+            'verify_requested_tests_in_copy()',
+            'No existe el archivo de prueba solicitado:',
+            'Pruebas disponibles en este despliegue:',
+            'El archivo debe estar agregado al repositorio y presente en el despliegue activo de Laravel Cloud.',
+        ] as $expected) {
+            self::assertStringContainsString($expected, $script);
+        }
+
+        $validationPosition = strpos($script, 'validate_requested_test_files "$PROJECT_ROOT" "$@"');
+        $composerPosition = strpos($script, 'composer install');
+
+        self::assertIsInt($validationPosition);
+        self::assertIsInt($composerPosition);
+        self::assertLessThan(
+            $composerPosition,
+            $validationPosition,
+            'La existencia de la prueba debe validarse antes de ejecutar Composer.'
+        );
+    }
+
     public function test_existing_captcha_session_and_password_recovery_controls_remain_present(): void
     {
         $auth = $this->read('app/Http/Controllers/AuthController.php');
