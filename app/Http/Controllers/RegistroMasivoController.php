@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ImportRegistroMasivoRequest;
+use App\Http\Requests\RevertImportacionMasivaRequest;
 use App\Models\ImportacionMasiva;
+use App\Services\BulkImportRollbackService;
 use App\Services\RegistroMasivoService;
 use App\Services\SimpleXlsxExporter;
+use App\Services\SwafiAuthorizationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -17,12 +20,16 @@ class RegistroMasivoController extends Controller
 {
     public function __construct(
         private readonly RegistroMasivoService $importService,
-        private readonly SimpleXlsxExporter $xlsxExporter
+        private readonly BulkImportRollbackService $rollbackService,
+        private readonly SimpleXlsxExporter $xlsxExporter,
+        private readonly SwafiAuthorizationService $authorization
     ) {
     }
 
     public function index(Request $request)
     {
+        $canRollbackImports = $this->authorization
+            ->canCurrentUser('expedientes.revertir_importacion');
         $query = $this->baseQuery();
         $this->applyFilters($query, $request);
 
@@ -44,7 +51,7 @@ class RegistroMasivoController extends Controller
         $filasPreview = null;
 
         if ($request->filled('lote')) {
-            $lote = $this->findOwnedBatch((string) $request->input('lote'));
+            $lote = $this->findViewableBatch((string) $request->input('lote'), $canRollbackImports);
 
             $previewQuery = $lote->filas()->orderBy('numero_fila');
             $previewStatus = (string) $request->input('preview_status', '');
@@ -59,9 +66,13 @@ class RegistroMasivoController extends Controller
         }
 
         $lotesRecientes = ImportacionMasiva::query()
-            ->where('user_id', auth()->id())
+            ->with(['usuario:id,name,email'])
+            ->when(
+                !$canRollbackImports,
+                fn ($query) => $query->where('user_id', auth()->id())
+            )
             ->latest('id')
-            ->limit(8)
+            ->limit($canRollbackImports ? 12 : 8)
             ->get();
 
         return view('swafi.registro-masivo', [
@@ -72,6 +83,7 @@ class RegistroMasivoController extends Controller
             'filasPreview' => $filasPreview,
             'lotesRecientes' => $lotesRecientes,
             'previewStatus' => (string) $request->input('preview_status', ''),
+            'canRollbackImports' => $canRollbackImports,
         ]);
     }
 
@@ -147,9 +159,46 @@ class RegistroMasivoController extends Controller
             ->with('success', 'La previsualización fue cancelada sin modificar activos ni expedientes.');
     }
 
+    public function revertir(
+        RevertImportacionMasivaRequest $request,
+        string $lote
+    ): RedirectResponse {
+        $batch = $this->findViewableBatch($lote, true);
+
+        try {
+            $summary = $this->rollbackService->revertir(
+                batch: $batch,
+                userId: (int) auth()->id(),
+                reason: (string) $request->validated('motivo_reversion')
+            );
+
+            return redirect()
+                ->route('registro-masivo', ['lote' => $batch->uuid])
+                ->with(
+                    'success',
+                    'La importación fue revertida de forma controlada. Los documentos permanecen resguardados para auditoría.'
+                )
+                ->with('rollback_summary', $summary);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            return redirect()
+                ->route('registro-masivo', ['lote' => $batch->uuid])
+                ->withInput()
+                ->withErrors([
+                    'lote' => 'No fue posible revertir el lote. No se confirmó ningún cambio parcial.',
+                ]);
+        }
+    }
+
     public function exportarIncidencias(string $lote): RedirectResponse|StreamedResponse
     {
-        $batch = $this->findOwnedBatch($lote);
+        $batch = $this->findViewableBatch(
+            $lote,
+            $this->authorization->canCurrentUser('expedientes.revertir_importacion')
+        );
         $rows = $this->incidentRows($batch);
 
         if ($rows->isEmpty()) {
@@ -206,7 +255,10 @@ class RegistroMasivoController extends Controller
 
     public function exportarIncidenciasCsv(string $lote): RedirectResponse|StreamedResponse
     {
-        $batch = $this->findOwnedBatch($lote);
+        $batch = $this->findViewableBatch(
+            $lote,
+            $this->authorization->canCurrentUser('expedientes.revertir_importacion')
+        );
         $rows = $this->incidentRows($batch);
 
         if ($rows->isEmpty()) {
@@ -333,6 +385,20 @@ class RegistroMasivoController extends Controller
         return ImportacionMasiva::query()
             ->where('uuid', $uuid)
             ->where('user_id', auth()->id())
+            ->firstOrFail();
+    }
+
+    private function findViewableBatch(
+        string $uuid,
+        bool $canViewAll
+    ): ImportacionMasiva {
+        return ImportacionMasiva::query()
+            ->with(['usuario:id,name,email'])
+            ->where('uuid', $uuid)
+            ->when(
+                !$canViewAll,
+                fn ($query) => $query->where('user_id', auth()->id())
+            )
             ->firstOrFail();
     }
 
