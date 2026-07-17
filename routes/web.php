@@ -60,6 +60,10 @@ Route::middleware('swafi.auth')->group(function () {
         ->whereUuid('lote')
         ->name('registro-masivo.cancelar');
 
+    Route::patch('/registro-masivo/lotes/{lote}/revertir', [RegistroMasivoController::class, 'revertir'])
+        ->whereUuid('lote')
+        ->name('registro-masivo.revertir');
+
     Route::get('/registro-masivo/lotes/{lote}/incidencias.xlsx', [RegistroMasivoController::class, 'exportarIncidencias'])
         ->whereUuid('lote')
         ->name('registro-masivo.incidencias');
