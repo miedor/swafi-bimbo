@@ -368,9 +368,10 @@
 
                     <div class="sec-field-wide">
                         <span>Roles asignados</span>
+                        <small>Selecciona al menos un rol activo. Los roles inactivos no pueden asignarse.</small>
 
                         <div class="sec-check-grid">
-                            @foreach ($roles as $rol)
+                            @foreach ($rolesAsignables as $rol)
                                 @php
                                     $rolId = (string) $rol->id;
                                     $rolMarcado = in_array($rolId, array_map('strval', $rolesSeleccionados), true);
@@ -400,8 +401,8 @@
             </form>
 
             <div class="sec-help">
-                El inicio de sesión ahora se valida contra la tabla <strong>users</strong>. El usuario administrador base es
-                <strong>admin.swafi</strong>. La contraseña debe cumplir la política definida. Después de probar, conviene cambiar la contraseña desde esta pantalla.
+                Cada cuenta debe conservar al menos un rol activo. Los cambios de contraseña, estatus o roles revocan las sesiones anteriores del usuario afectado.
+                Para cambiar la contraseña de tu propia cuenta utiliza <strong>Perfil</strong>. SWAFI impide desactivar al usuario de la sesión actual y evita que el sistema quede sin un Administrador activo.
             </div>
         </div>
 
@@ -535,14 +536,29 @@
                                         Editar
                                     </a>
 
-                                    <form method="POST" action="{{ route('seguridad.usuarios.destroy', $usuario->id) }}" style="display:inline" onsubmit="return confirm('¿Deseas desactivar este usuario?');">
-                                        @csrf
-                                        @method('DELETE')
+                                    @if ($usuario->estatus === 'activo')
+                                        <form method="POST" action="{{ route('seguridad.usuarios.destroy', $usuario->id) }}" style="display:inline" onsubmit="return confirm('¿Deseas desactivar este usuario? Sus sesiones activas serán revocadas.');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <input type="hidden" name="estatus" value="inactivo">
 
-                                        <button type="submit" style="border:0;background:none;color:#b42318;font-weight:800;cursor:pointer;padding:0">
-                                            Desactivar
-                                        </button>
-                                    </form>
+                                            <button type="submit" style="border:0;background:none;color:#b42318;font-weight:800;cursor:pointer;padding:0">
+                                                Desactivar
+                                            </button>
+                                        </form>
+                                    @elseif ($usuario->estatus === 'inactivo')
+                                        <form method="POST" action="{{ route('seguridad.usuarios.activate', $usuario->id) }}" style="display:inline" onsubmit="return confirm('¿Deseas activar este usuario?');">
+                                            @csrf
+                                            @method('PATCH')
+                                            <input type="hidden" name="estatus" value="activo">
+
+                                            <button type="submit" style="border:0;background:none;color:#067647;font-weight:800;cursor:pointer;padding:0">
+                                                Activar
+                                            </button>
+                                        </form>
+                                    @else
+                                        <span style="color:#667085;font-weight:700">Editar para desbloquear</span>
+                                    @endif
                                 </div>
                             </td>
                         </tr>
