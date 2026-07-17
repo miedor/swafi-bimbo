@@ -201,6 +201,7 @@ class SwafiAuth
 
             'ubicacion.movimiento',
             'ubicacion.inventario',
+            'ubicacion.traslados.notificar',
             'inventario-evidencias.eliminar' => 'ubicaciones.administrar',
 
             'ubicacion.traslados.aprobar',
