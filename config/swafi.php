@@ -16,4 +16,15 @@ return [
             )
         ),
     ],
+
+    'administrador_inicial' => [
+        /*
+         * Identidad no secreta utilizada únicamente por el comando
+         * swafi:administrator:bootstrap. La contraseña nunca se incorpora a
+         * config para evitar que quede persistida en la caché de configuración.
+         */
+        'nombre' => env('SWAFI_BOOTSTRAP_ADMIN_NAME', ''),
+        'email' => env('SWAFI_BOOTSTRAP_ADMIN_EMAIL', ''),
+        'usuario' => env('SWAFI_BOOTSTRAP_ADMIN_USER', ''),
+    ],
 ];
