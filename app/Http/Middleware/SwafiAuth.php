@@ -160,6 +160,8 @@ class SwafiAuth
             'registro-masivo.incidencias-csv',
             'registro-masivo.plantilla' => 'expedientes.crear',
 
+            'registro-masivo.revertir' => 'expedientes.revertir_importacion',
+
             'busqueda',
             'busquedas-guardadas.store',
             'busquedas-guardadas.apply',
