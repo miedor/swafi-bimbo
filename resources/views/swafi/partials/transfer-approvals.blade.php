@@ -2,7 +2,11 @@
   <summary class="workflow-panel-summary">
     <span>
       <strong>{{ $canApproveTransfers ? 'Bandeja de aprobación de traslados' : 'Mis solicitudes de traslado' }}</strong>
-      <small>Los cambios entre plantas no modifican el activo hasta que una persona autorizada los aprueba.</small>
+      <small>
+        {{ $canApproveTransfers
+            ? 'Solo se muestran las solicitudes asignadas a tu usuario. El Administrador SWAFI puede consultar todas.'
+            : 'Los cambios entre plantas no modifican el activo hasta que el Usuario Captura asignado los aprueba.' }}
+      </small>
     </span>
     <span class="pill {{ $pendingTransfersCount > 0 ? 'warn' : 'ok' }}">
       {{ $pendingTransfersCount }} pendiente(s)
@@ -17,6 +21,7 @@
           <th>Activo</th>
           <th>Origen → destino</th>
           <th>Fecha / solicitante</th>
+          <th>Aprobador / notificación</th>
           <th>Motivo</th>
           <th>Estatus</th>
           @if($canApproveTransfers)
@@ -37,8 +42,13 @@
                 'rechazado' => 'Rechazado',
                 default => 'Pendiente',
             };
+            $canResolveThisRequest = $canApproveTransfers
+                && ($isAdministrator || (int) $solicitud->aprobador_asignado_id === (int) $currentUserId);
+            $canResendNotification = $solicitud->estatus === 'pendiente'
+                && !empty($solicitud->aprobador_asignado_id)
+                && ($isAdministrator || (int) $solicitud->solicitado_por === (int) $currentUserId);
           @endphp
-          <tr>
+          <tr id="traslado-{{ $solicitud->uuid }}">
             <td>
               <strong>{{ $solicitud->numero_activo }}</strong><br>
               <small>{{ $solicitud->activo_descripcion }}</small><br>
@@ -55,6 +65,33 @@
               {{ \Carbon\Carbon::parse($solicitud->fecha_movimiento)->format('d/m/Y H:i') }}<br>
               <small>{{ $solicitud->solicitado_por_nombre ?? 'Usuario no disponible' }}</small><br>
               <small>{{ \Carbon\Carbon::parse($solicitud->solicitado_at)->format('d/m/Y H:i') }}</small>
+            </td>
+            <td>
+              @if($solicitud->aprobador_asignado_id)
+                <strong>{{ $solicitud->aprobador_asignado_nombre ?? 'Usuario Captura no disponible' }}</strong><br>
+                <small>{{ $solicitud->aprobador_asignado_email ?? 'Sin correo disponible' }}</small><br>
+
+                @if($solicitud->notificacion_aprobador_at)
+                  <span class="ui-notification-state ok">Correo enviado</span><br>
+                  <small>{{ \Carbon\Carbon::parse($solicitud->notificacion_aprobador_at)->format('d/m/Y H:i') }}</small>
+                @elseif($solicitud->notificacion_aprobador_error)
+                  <span class="ui-notification-state warn">Correo pendiente de reenvío</span><br>
+                  <small>Intentos: {{ (int) $solicitud->notificacion_aprobador_intentos }}</small>
+                @else
+                  <span class="ui-notification-state warn">Correo pendiente</span><br>
+                  <small>Intentos: {{ (int) $solicitud->notificacion_aprobador_intentos }}</small>
+                @endif
+
+                @if($canResendNotification)
+                  <form method="POST" action="{{ route('ubicacion.traslados.notificar', $solicitud->id) }}" style="margin-top:8px;">
+                    @csrf
+                    <button class="tab" type="submit">Reenviar correo</button>
+                  </form>
+                @endif
+              @else
+                <span class="ui-notification-state warn">Solicitud histórica sin aprobador</span><br>
+                <small>Puede resolverla únicamente el Administrador SWAFI.</small>
+              @endif
             </td>
             <td>
               {{ $solicitud->motivo }}
@@ -76,7 +113,7 @@
             </td>
             @if($canApproveTransfers)
               <td>
-                @if($solicitud->estatus === 'pendiente')
+                @if($solicitud->estatus === 'pendiente' && $canResolveThisRequest)
                   <div class="workflow-resolution-stack">
                     <form method="POST" action="{{ route('ubicacion.traslados.aprobar', $solicitud->id) }}" class="workflow-inline-form">
                       @csrf
@@ -104,6 +141,8 @@
                       <button class="tab workflow-btn-reject" type="submit">Rechazar</button>
                     </form>
                   </div>
+                @elseif($solicitud->estatus === 'pendiente')
+                  <small>La solicitud está asignada a {{ $solicitud->aprobador_asignado_nombre ?? 'otro Usuario Captura' }}.</small>
                 @else
                   <small>Resuelto por {{ $solicitud->resuelto_por_nombre ?? 'usuario no disponible' }}</small>
                 @endif
@@ -112,7 +151,7 @@
           </tr>
         @empty
           <tr>
-            <td colspan="{{ $canApproveTransfers ? 6 : 5 }}">
+            <td colspan="{{ $canApproveTransfers ? 7 : 6 }}">
               No existen solicitudes de traslado para mostrar.
             </td>
           </tr>
