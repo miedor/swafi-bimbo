@@ -255,6 +255,54 @@
         font-size: 11px;
     }
 
+    .rm-rollback-panel {
+        margin: 14px 0;
+        padding: 16px;
+        border: 1px solid #f0c36a;
+        border-radius: 16px;
+        background: #fff9e9;
+    }
+
+    .rm-rollback-panel.is-complete {
+        border-color: #b8dfc1;
+        background: #eef9f1;
+    }
+
+    .rm-rollback-panel h3 {
+        margin: 0 0 6px;
+        color: #17375e;
+        font-size: 16px;
+        font-weight: 900;
+    }
+
+    .rm-rollback-panel p {
+        margin: 0 0 10px;
+        color: #536b88;
+        font-size: 12px;
+        line-height: 1.45;
+    }
+
+    .rm-rollback-panel textarea {
+        width: 100%;
+        min-height: 92px;
+        padding: 10px 12px;
+        border: 1px solid #d5e1ef;
+        border-radius: 12px;
+        background: #ffffff;
+        color: #17375e;
+        font: inherit;
+        resize: vertical;
+    }
+
+    .rm-rollback-warning {
+        padding: 10px 12px;
+        border-radius: 12px;
+        background: #fff1ce;
+        color: #7c4c00;
+        font-size: 12px;
+        font-weight: 800;
+    }
+
     @media (max-width: 1100px) {
         .rm-grid {
             grid-template-columns: 1fr;
@@ -302,6 +350,21 @@
                 @endforeach
             </ul>
         @endif
+    </div>
+@endif
+
+@if (session('rollback_summary'))
+    @php
+        $rollbackSummary = session('rollback_summary');
+    @endphp
+
+    <div class="rm-message rm-message-success">
+        <strong>Resumen de reversión controlada:</strong><br>
+        Filas revertidas: {{ $rollbackSummary['filas_revertidas'] ?? 0 }} |
+        Expedientes dados de baja lógica: {{ $rollbackSummary['expedientes_dados_baja'] ?? 0 }} |
+        Valores dados de baja lógica: {{ $rollbackSummary['valores_dados_baja'] ?? 0 }} |
+        Activos desactivados: {{ $rollbackSummary['activos_desactivados'] ?? 0 }} |
+        Documentos conservados como no vigentes: {{ $rollbackSummary['documentos_inhabilitados'] ?? 0 }}
     </div>
 @endif
 
@@ -437,9 +500,16 @@
         <div>
             <h2>Previsualización del lote</h2>
             <small>{{ $lote->csv_nombre_original }} · {{ $lote->uuid }}</small>
+            @if ($canRollbackImports && $lote->usuario)
+                <small>Responsable del lote: {{ $lote->usuario->name }} · {{ $lote->usuario->email }}</small>
+            @endif
         </div>
         @php
-            $batchPill = $lote->estado === 'aplicada' ? 'ok' : ($lote->estado === 'cancelada' ? 'danger' : 'warn');
+            $batchPill = match ($lote->estado) {
+                'aplicada' => 'ok',
+                'cancelada', 'revertida' => 'danger',
+                default => 'warn',
+            };
         @endphp
         <span class="pill {{ $batchPill }}">{{ ucfirst($lote->estado) }}</span>
     </div>
@@ -487,7 +557,7 @@
                 </a>
             @endif
 
-            @if ($lote->estaVigente())
+            @if ($lote->estaVigente() && (int) $lote->user_id === (int) auth()->id())
                 <form method="POST" action="{{ route('registro-masivo.aplicar', $lote->uuid) }}">
                     @csrf
                     <label class="rm-confirm-box">
@@ -505,6 +575,66 @@
             @endif
         </div>
     </div>
+
+    @if ($canRollbackImports && $lote->estado === 'aplicada')
+        <div class="rm-rollback-panel">
+            <h3>HU-029 · Reversión administrativa controlada</h3>
+            <p>
+                Esta operación restaura los datos anteriores del activo, expediente y valores conciliados,
+                conserva los documentos importados como versiones no vigentes y registra la decisión en bitácora.
+                La reversión se cancela completa si SWAFI detecta cambios o dependencias posteriores.
+            </p>
+
+            @if ($lote->esRevertible())
+                <p>
+                    Disponible hasta:
+                    <strong>{{ $lote->reversion_disponible_hasta?->format('d/m/Y H:i') }}</strong>.
+                    Solo el Administrador SWAFI puede ejecutar esta acción.
+                </p>
+
+                <form
+                    method="POST"
+                    action="{{ route('registro-masivo.revertir', $lote->uuid) }}"
+                    onsubmit="return confirm('¿Confirmas la reversión completa de este lote? SWAFI volverá a validar dependencias antes de modificar información.');"
+                >
+                    @csrf
+                    @method('PATCH')
+
+                    <label>
+                        <span>Motivo administrativo de la reversión</span>
+                        <textarea
+                            name="motivo_reversion"
+                            minlength="20"
+                            maxlength="500"
+                            required
+                            placeholder="Describe la causa, autorización y alcance esperado de la reversión."
+                        >{{ old('motivo_reversion') }}</textarea>
+                    </label>
+
+                    <label class="rm-confirm-box" style="margin-top:10px">
+                        <input type="checkbox" name="confirmar_reversion" value="1" required>
+                        Confirmo que revisé el lote y que la reversión debe ejecutarse de forma integral.
+                    </label>
+
+                    <button class="tab" type="submit" style="margin-top:10px">
+                        Revertir lote aplicado
+                    </button>
+                </form>
+            @else
+                <div class="rm-rollback-warning">
+                    {{ $lote->motivoNoRevertible() ?? 'El lote no puede revertirse en su estado actual.' }}
+                </div>
+            @endif
+        </div>
+    @elseif ($lote->estado === 'revertida')
+        <div class="rm-rollback-panel is-complete">
+            <h3>Lote revertido con trazabilidad</h3>
+            <p>
+                Fecha: <strong>{{ $lote->revertida_at?->format('d/m/Y H:i') }}</strong><br>
+                Motivo: {{ $lote->motivo_reversion ?: 'Sin motivo disponible.' }}
+            </p>
+        </div>
+    @endif
 
     <table>
         <thead>
@@ -595,7 +725,13 @@
             <a class="rm-batch-item" href="{{ route('registro-masivo', ['lote' => $batch->uuid]) }}">
                 <strong>{{ \Illuminate\Support\Str::limit($batch->csv_nombre_original, 28) }}</strong>
                 <span>{{ $batch->created_at?->format('d/m/Y H:i') }} · {{ ucfirst($batch->estado) }}</span>
+                @if ($canRollbackImports && $batch->usuario)
+                    <span>{{ $batch->usuario->name }} · {{ $batch->usuario->email }}</span>
+                @endif
                 <span>{{ $batch->filas_aceptadas }} aceptadas · {{ $batch->filas_rechazadas }} rechazadas</span>
+                @if ($batch->estado === 'aplicada' && $batch->reversion_disponible_hasta)
+                    <span>Reversión hasta {{ $batch->reversion_disponible_hasta->format('d/m/Y H:i') }}</span>
+                @endif
             </a>
         @endforeach
     </div>
