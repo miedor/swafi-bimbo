@@ -387,7 +387,13 @@ class RegistroMasivoService
                     'aplicada_at' => now(),
                     'resumen' => array_merge(
                         $batch->resumen ?? [],
-                        ['aplicacion' => $summary]
+                        [
+                            'aplicacion' => $summary,
+                            'reversion' => [
+                                'disponible' => false,
+                                'estado' => 'consolidando',
+                            ],
+                        ]
                     ),
                 ]);
 
@@ -406,7 +412,9 @@ class RegistroMasivoService
 
                 DB::commit();
             } catch (\Throwable $exception) {
-                DB::rollBack();
+                if (DB::transactionLevel() > 0) {
+                    DB::rollBack();
+                }
 
                 foreach ($persistentFiles as $storedFile) {
                     $this->storage->delete(
@@ -416,6 +424,17 @@ class RegistroMasivoService
                 }
 
                 throw $exception;
+            }
+
+            $freshBatch = $batch->fresh();
+
+            if ($freshBatch) {
+                $this->finalizeRollbackSnapshots(
+                    batch: $freshBatch,
+                    rows: collect($validatedRows)
+                        ->map(fn (array $item) => $item['model']->fresh())
+                        ->filter()
+                );
             }
 
             return $summary;
@@ -659,7 +678,12 @@ class RegistroMasivoService
                 ->first();
 
             if ($existing?->trashed()) {
-                $errors[] = 'El expediente existe con baja lógica y requiere restauración autorizada antes de importarlo.';
+                if ($this->isRollbackArchivedExpediente($existing)) {
+                    $action = 'restaurar';
+                    $warnings[] = 'El expediente fue archivado por una reversión controlada previa y será restaurado al aplicar el lote.';
+                } else {
+                    $errors[] = 'El expediente existe con baja lógica y requiere restauración autorizada antes de importarlo.';
+                }
             } else {
                 $action = $existing ? 'actualizar' : 'insertar';
             }
@@ -726,7 +750,14 @@ class RegistroMasivoService
     }
 
     /**
-     * @return array{accion:string,numero_activo:string,expediente_id:int,estatus_documental:string,documentos_guardados:array}
+     * @return array{
+     *     accion:string,
+     *     numero_activo:string,
+     *     expediente_id:int,
+     *     estatus_documental:string,
+     *     documentos_guardados:array,
+     *     rollback:array
+     * }
      */
     private function applyValidatedRow(
         array $data,
@@ -741,16 +772,29 @@ class RegistroMasivoService
         $existing = Expediente::withTrashed()
             ->where('numero_activo', $numeroActivo)
             ->where('folio_factura', $folioFactura)
+            ->lockForUpdate()
             ->first();
 
-        if ($existing?->trashed()) {
+        if ($existing?->trashed() && !$this->isRollbackArchivedExpediente($existing)) {
             throw new RuntimeException(
                 "El expediente {$numeroActivo}/{$folioFactura} fue dado de baja antes de aplicar el lote."
             );
         }
 
-        $activoAntes = Activo::where('numero_activo', $numeroActivo)->first();
-        $expedienteAntes = $existing?->toArray();
+        $activoAntes = $this->snapshotActivo($numeroActivo);
+        $expedienteAntes = $existing
+            ? $this->snapshotExpediente((int) $existing->id)
+            : null;
+        $valorAntes = $this->snapshotValorActivo($numeroActivo);
+        $restoredFromRollback = $existing?->trashed() === true;
+
+        if ($restoredFromRollback) {
+            $existing->restore();
+            $existing->forceFill([
+                'deleted_by' => null,
+                'delete_reason' => null,
+            ])->save();
+        }
 
         $activo = Activo::updateOrCreate(
             ['numero_activo' => $numeroActivo],
@@ -761,29 +805,29 @@ class RegistroMasivoService
                 'planta_id' => $resolved['planta_id'],
                 'ubicacion_id' => $data['ubicacion_codigo'] !== ''
                     ? $resolved['ubicacion_id']
-                    : $activoAntes?->ubicacion_id,
+                    : data_get($activoAntes, 'ubicacion_id'),
                 'responsable_id' => $data['responsable_correo'] !== ''
                     ? $resolved['responsable_id']
-                    : $activoAntes?->responsable_id,
+                    : data_get($activoAntes, 'responsable_id'),
                 'descripcion' => $data['descripcion'],
                 'serie' => $data['serie'] !== ''
                     ? $data['serie']
-                    : $activoAntes?->serie,
+                    : data_get($activoAntes, 'serie'),
                 'marca' => $data['marca'] !== ''
                     ? $data['marca']
-                    : $activoAntes?->marca,
+                    : data_get($activoAntes, 'marca'),
                 'modelo' => $data['modelo'] !== ''
                     ? $data['modelo']
-                    : $activoAntes?->modelo,
+                    : data_get($activoAntes, 'modelo'),
                 'fecha_adquisicion' => $data['fecha_adquisicion'] !== ''
                     ? $resolved['fecha_adquisicion']
-                    : $activoAntes?->fecha_adquisicion,
+                    : data_get($activoAntes, 'fecha_adquisicion'),
                 'estatus_operativo' => $resolved['estatus_operativo']
-                    ?? $activoAntes?->estatus_operativo
+                    ?? data_get($activoAntes, 'estatus_operativo')
                     ?? 'en_operacion',
                 'estatus_documental' => 'incompleto',
                 'activo' => true,
-                'creado_por' => $activoAntes?->creado_por ?: $userId,
+                'creado_por' => data_get($activoAntes, 'creado_por') ?: $userId,
                 'actualizado_por' => $userId,
             ]
         );
@@ -806,6 +850,8 @@ class RegistroMasivoService
                     : $existing?->observaciones,
                 'creado_por' => $existing?->creado_por ?: $userId,
                 'actualizado_por' => $userId,
+                'deleted_by' => null,
+                'delete_reason' => null,
             ]
         );
 
@@ -842,22 +888,29 @@ class RegistroMasivoService
             'actualizado_por' => $userId,
         ]);
 
-        $action = $expediente->wasRecentlyCreated ? 'insertar' : 'actualizar';
+        $action = $restoredFromRollback
+            ? 'restaurar'
+            : ($expediente->wasRecentlyCreated ? 'insertar' : 'actualizar');
+
+        $auditAction = match ($action) {
+            'insertar' => 'IMPORTACION_EXPEDIENTE_ALTA',
+            'restaurar' => 'IMPORTACION_EXP_RESTAURADA',
+            default => 'IMPORTACION_EXPEDIENTE_ACTUALIZACION',
+        };
 
         $this->registrarBitacoraDetalle(
             userId: $userId,
             numeroActivo: $numeroActivo,
-            accion: $action === 'insertar'
-                ? 'IMPORTACION_EXPEDIENTE_ALTA'
-                : 'IMPORTACION_EXPEDIENTE_ACTUALIZACION',
+            accion: $auditAction,
             registroClave: (string) $expediente->id,
             antes: [
-                'activo' => $activoAntes?->toArray(),
+                'activo' => $activoAntes,
                 'expediente' => $expedienteAntes,
+                'valor' => $valorAntes,
             ],
             despues: [
-                'activo' => $activo->fresh()?->toArray(),
-                'expediente' => $expediente->fresh()?->toArray(),
+                'activo' => $this->snapshotActivo($numeroActivo),
+                'expediente' => $this->snapshotExpediente((int) $expediente->id),
                 'documentos_guardados' => $savedDocuments,
             ]
         );
@@ -868,6 +921,17 @@ class RegistroMasivoService
             'expediente_id' => (int) $expediente->id,
             'estatus_documental' => $documentStatus,
             'documentos_guardados' => $savedDocuments,
+            'rollback' => [
+                'version' => 1,
+                'ready' => false,
+                'before' => [
+                    'activo' => $activoAntes,
+                    'expediente' => $expedienteAntes,
+                    'valor' => $valorAntes,
+                ],
+                'after' => null,
+                'documents' => $savedDocuments,
+            ],
         ];
     }
 
@@ -1252,14 +1316,30 @@ class RegistroMasivoService
         $normalizedName = Str::lower(trim(basename($nombreArchivo)));
         $hash = $stored['hash_sha256'];
 
-        $existing = DocumentoExpediente::where('expediente_id', $expediente->id)
+        $matchingQuery = DocumentoExpediente::where(
+            'expediente_id',
+            $expediente->id
+        )
             ->where('tipo_documento', $tipoDocumento)
             ->where(function ($query) use ($normalizedName, $hash): void {
                 $query->whereRaw('LOWER(nombre_archivo) = ?', [$normalizedName])
                     ->orWhere('hash_sha256', $hash);
-            })
+            });
+
+        $matchingDocuments = (clone $matchingQuery)
             ->orderByDesc('version')
-            ->first();
+            ->lockForUpdate()
+            ->get();
+
+        $previousSnapshots = $matchingDocuments
+            ->sortBy('id')
+            ->map(fn (DocumentoExpediente $document): array => $this->documentSnapshotFromModel(
+                $document
+            ))
+            ->values()
+            ->all();
+
+        $existing = $matchingDocuments->first();
 
         if ($existing) {
             DocumentoExpediente::where('expediente_id', $expediente->id)
@@ -1302,6 +1382,9 @@ class RegistroMasivoService
             'version' => $document->version,
             'hash_sha256' => $document->hash_sha256,
             'storage_disk' => $document->storage_disk,
+            'ruta_archivo' => $document->ruta_archivo,
+            'created' => $this->documentSnapshotFromModel($document),
+            'previous' => $previousSnapshots,
         ];
     }
 
@@ -1579,6 +1662,261 @@ class RegistroMasivoService
         return in_array($value, ['MXN', 'USD', 'EUR'], true)
             ? $value
             : null;
+    }
+
+    private function finalizeRollbackSnapshots(
+        ImportacionMasiva $batch,
+        \Illuminate\Support\Collection $rows
+    ): void {
+        try {
+            DB::transaction(function () use ($batch, $rows): void {
+                /** @var ImportacionMasiva|null $lockedBatch */
+                $lockedBatch = ImportacionMasiva::query()
+                    ->whereKey($batch->id)
+                    ->lockForUpdate()
+                    ->first();
+
+                if (!$lockedBatch) {
+                    throw new RuntimeException(
+                        'El lote aplicado no está disponible para consolidar su instantánea de reversión.'
+                    );
+                }
+
+                $assetNumbers = $rows
+                    ->filter(fn (mixed $candidate): bool => $candidate instanceof ImportacionMasivaFila)
+                    ->map(function (ImportacionMasivaFila $candidate): string {
+                        $result = is_array($candidate->resultado)
+                            ? $candidate->resultado
+                            : [];
+
+                        return trim((string) ($result['numero_activo'] ?? ''));
+                    })
+                    ->filter()
+                    ->values();
+
+                if ($assetNumbers->count() !== $assetNumbers->unique()->count()) {
+                    $summary = $lockedBatch->resumen ?? [];
+                    $summary['reversion'] = [
+                        'disponible' => false,
+                        'estado' => 'no_disponible',
+                        'motivo' => 'El lote contiene más de un expediente para el mismo activo. La reversión automática se bloqueó para evitar restaurar estados intermedios ambiguos.',
+                    ];
+
+                    $lockedBatch->update([
+                        'reversion_disponible_hasta' => null,
+                        'resumen' => $summary,
+                    ]);
+
+                    return;
+                }
+
+                foreach ($rows as $candidate) {
+                    if (!$candidate instanceof ImportacionMasivaFila) {
+                        continue;
+                    }
+
+                    /** @var ImportacionMasivaFila|null $row */
+                    $row = ImportacionMasivaFila::query()
+                        ->whereKey($candidate->id)
+                        ->lockForUpdate()
+                        ->first();
+
+                    if (!$row) {
+                        throw new RuntimeException(
+                            "No fue posible consolidar la instantánea de la fila {$candidate->numero_fila}."
+                        );
+                    }
+
+                    $result = is_array($row->resultado) ? $row->resultado : [];
+                    $numeroActivo = (string) ($result['numero_activo'] ?? '');
+                    $expedienteId = (int) ($result['expediente_id'] ?? 0);
+
+                    if ($numeroActivo === '' || $expedienteId <= 0) {
+                        throw new RuntimeException(
+                            "No fue posible consolidar la instantánea de la fila {$row->numero_fila}."
+                        );
+                    }
+
+                    $result['rollback']['after'] = [
+                        'activo' => $this->snapshotActivo($numeroActivo),
+                        'expediente' => $this->snapshotExpediente($expedienteId),
+                        'valor' => $this->snapshotValorActivo($numeroActivo),
+                    ];
+                    $result['rollback']['ready'] = true;
+                    $result['rollback']['captured_at'] = now()->toIso8601String();
+
+                    $row->update(['resultado' => $result]);
+                }
+
+                $hours = max(
+                    1,
+                    (int) config('swafi.importaciones.reversion_horas', 24)
+                );
+                $deadline = ($lockedBatch->aplicada_at ?: now())
+                    ->copy()
+                    ->addHours($hours);
+                $summary = $lockedBatch->resumen ?? [];
+                $summary['reversion'] = [
+                    'disponible' => true,
+                    'estado' => 'lista',
+                    'version' => 1,
+                    'horas' => $hours,
+                    'disponible_hasta' => $deadline->toIso8601String(),
+                ];
+
+                $lockedBatch->update([
+                    'reversion_disponible_hasta' => $deadline,
+                    'resumen' => $summary,
+                ]);
+            }, 3);
+        } catch (\Throwable $exception) {
+            report($exception);
+
+            $freshBatch = $batch->fresh();
+
+            if (!$freshBatch) {
+                return;
+            }
+
+            $summary = $freshBatch->resumen ?? [];
+            $summary['reversion'] = [
+                'disponible' => false,
+                'estado' => 'no_disponible',
+                'motivo' => 'No fue posible consolidar la instantánea posterior al lote.',
+            ];
+
+            $freshBatch->update([
+                'reversion_disponible_hasta' => null,
+                'resumen' => $summary,
+            ]);
+        }
+    }
+
+    private function isRollbackArchivedExpediente(Expediente $expediente): bool
+    {
+        return $expediente->trashed()
+            && str_starts_with(
+                trim((string) $expediente->delete_reason),
+                '[IMPORT_ROLLBACK]'
+            );
+    }
+
+    private function snapshotActivo(string $numeroActivo): ?array
+    {
+        $row = DB::table('activos')
+            ->where('numero_activo', $numeroActivo)
+            ->lockForUpdate()
+            ->first([
+                'numero_activo',
+                'tipo_activo_id',
+                'proveedor_id',
+                'centro_costo_id',
+                'planta_id',
+                'ubicacion_id',
+                'responsable_id',
+                'descripcion',
+                'serie',
+                'marca',
+                'modelo',
+                'fecha_adquisicion',
+                'estatus_operativo',
+                'estatus_documental',
+                'activo',
+                'creado_por',
+                'actualizado_por',
+                'created_at',
+                'updated_at',
+            ]);
+
+        return $row ? (array) $row : null;
+    }
+
+    private function snapshotExpediente(int $expedienteId): ?array
+    {
+        $row = DB::table('expedientes')
+            ->where('id', $expedienteId)
+            ->lockForUpdate()
+            ->first([
+                'id',
+                'numero_activo',
+                'folio_factura',
+                'uuid_cfdi',
+                'fecha_factura',
+                'monto_factura',
+                'moneda',
+                'estatus',
+                'observaciones',
+                'creado_por',
+                'actualizado_por',
+                'deleted_at',
+                'deleted_by',
+                'delete_reason',
+                'created_at',
+                'updated_at',
+            ]);
+
+        return $row ? (array) $row : null;
+    }
+
+    private function snapshotValorActivo(string $numeroActivo): ?array
+    {
+        $row = DB::table('valores_activo')
+            ->where('numero_activo', $numeroActivo)
+            ->whereNull('deleted_at')
+            ->lockForUpdate()
+            ->first([
+                'id',
+                'numero_activo',
+                'valor_fiscal',
+                'valor_financiero',
+                'moneda',
+                'tipo_cambio',
+                'fecha_tipo_cambio',
+                'origen_tipo_cambio',
+                'depreciacion_acumulada',
+                'valor_en_libros',
+                'vida_util_meses',
+                'estatus_contable',
+                'motivo_cambio',
+                'cfdi_validacion_id',
+                'conciliacion_cfdi',
+                'conciliacion_detalle',
+                'fecha_corte',
+                'registrado_por',
+                'deleted_at',
+                'deleted_by',
+                'delete_reason',
+                'created_at',
+                'updated_at',
+            ]);
+
+        return $row ? (array) $row : null;
+    }
+
+    private function documentSnapshotFromModel(
+        DocumentoExpediente $document
+    ): array {
+        $fields = [
+            'id',
+            'expediente_id',
+            'tipo_documento',
+            'nombre_archivo',
+            'ruta_archivo',
+            'storage_disk',
+            'mime_type',
+            'tamano_bytes',
+            'hash_sha256',
+            'version',
+            'vigente',
+            'cargado_por',
+            'created_at',
+            'updated_at',
+        ];
+
+        return array_intersect_key(
+            $document->getAttributes(),
+            array_flip($fields)
+        );
     }
 
     private function normalizeEstatusOperativo(?string $value): ?string
