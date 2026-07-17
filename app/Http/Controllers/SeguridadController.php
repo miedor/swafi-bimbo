@@ -2,14 +2,21 @@
 
 namespace App\Http\Controllers;
 
-use App\Rules\SwafiPasswordPolicy;
+use App\Http\Requests\StoreSecurityUserRequest;
+use App\Http\Requests\UpdateSecurityUserStatusRequest;
+use App\Services\UserAccessManagementService;
+use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\Rule;
 
 class SeguridadController extends Controller
 {
+    public function __construct(
+        private readonly UserAccessManagementService $userAccess
+    ) {
+    }
+
     public function index(Request $request)
     {
         $tabActivo = $this->normalizeTab($request->input('tab', 'usuarios'));
@@ -35,6 +42,10 @@ class SeguridadController extends Controller
                 ->paginate((int) $request->input('per_page', 10), ['*'], 'usuarios_page')
                 ->withQueryString(),
             'roles' => $this->rolesWithPermissions(),
+            'rolesAsignables' => DB::table('roles')
+                ->where('activo', 1)
+                ->orderBy('nombre')
+                ->get(['id', 'nombre', 'descripcion', 'activo']),
             'permissions' => DB::table('permissions')
                 ->orderBy('clave')
                 ->get(),
@@ -51,165 +62,80 @@ class SeguridadController extends Controller
         ]);
     }
 
-    public function storeUser(Request $request)
+    public function storeUser(StoreSecurityUserRequest $request)
     {
-        $id = $request->input('id');
-
-        $rules = [
-            'id' => ['nullable', 'integer', 'exists:users,id'],
-            'usuario' => ['required', 'string', 'max:80', Rule::unique('users', 'usuario')->ignore($id)],
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($id)],
-            'password' => [$id ? 'nullable' : 'required', 'string', 'max:120', new SwafiPasswordPolicy()],
-            'estatus' => ['required', Rule::in(['activo', 'inactivo', 'bloqueado'])],
-            'role_ids' => ['nullable', 'array'],
-            'role_ids.*' => ['integer', 'exists:roles,id'],
-        ];
-
-        $validated = $request->validate($rules, $this->messages());
-
-        if ($id) {
-            $usuarioActual = DB::table('users')->where('id', $id)->first();
-
-            if (
-                $usuarioActual
-                && ($usuarioActual->estatus ?? 'activo') === 'bloqueado'
-                && ($validated['estatus'] ?? '') === 'activo'
-                && empty($validated['password'])
-            ) {
-                return back()
-                    ->withErrors([
-                        'password' => 'Para desbloquear un usuario debes capturar una nueva contraseña que cumpla la política de seguridad.',
-                    ])
-                    ->withInput($request->except('password'));
-            }
+        try {
+            $result = $this->userAccess->saveUser(
+                validated: $request->validated(),
+                actorId: (int) $request->session()->get('swafi_user_id'),
+                ip: $request->ip()
+            );
+        } catch (DomainException $exception) {
+            return back()
+                ->withErrors(['usuario' => $exception->getMessage()])
+                ->withInput($request->except('password'));
         }
 
-        $roleIds = array_values(array_unique($validated['role_ids'] ?? []));
-        unset($validated['role_ids']);
+        $message = $result['created']
+            ? 'El usuario se creó correctamente con sus roles asignados.'
+            : 'El usuario y sus roles se actualizaron correctamente.';
 
-        DB::transaction(function () use ($validated, $roleIds, $id) {
-            $before = $id
-                ? DB::table('users')->where('id', $id)->first()
-                : null;
-
-            $now = now();
-
-            $payload = [
-                'usuario' => $validated['usuario'],
-                'name' => $validated['name'],
-                'email' => $validated['email'],
-                'estatus' => $validated['estatus'],
-                'updated_at' => $now,
-            ];
-
-            if (!empty($validated['password'])) {
-                $payload['password'] = Hash::make($validated['password']);
-                $payload['password_changed_at'] = $now;
-                $payload['intentos_fallidos'] = 0;
-                $payload['ultimo_intento_fallido'] = null;
-                $payload['bloqueado_en'] = null;
-                $payload['bloqueado_motivo'] = null;
-            }
-
-            if (($validated['estatus'] ?? '') !== 'bloqueado' && ($before->estatus ?? null) === 'bloqueado' && !empty($validated['password'])) {
-                $payload['intentos_fallidos'] = 0;
-                $payload['ultimo_intento_fallido'] = null;
-                $payload['bloqueado_en'] = null;
-                $payload['bloqueado_motivo'] = null;
-            }
-
-            if ($id) {
-                DB::table('users')
-                    ->where('id', $id)
-                    ->update($payload);
-
-                $userId = (int) $id;
-                $accion = 'SEGURIDAD_USUARIO_ACTUALIZACION';
-            } else {
-                $payload['created_at'] = $now;
-                $userId = (int) DB::table('users')->insertGetId($payload);
-                $accion = 'SEGURIDAD_USUARIO_ALTA';
-            }
-
-            DB::table('role_user')
-                ->where('user_id', $userId)
-                ->delete();
-
-            foreach ($roleIds as $roleId) {
-                DB::table('role_user')->insert([
-                    'user_id' => $userId,
-                    'role_id' => $roleId,
-                ]);
-            }
-
-            $after = DB::table('users')
-                ->where('id', $userId)
-                ->first();
-
-            $this->registrarBitacora(
-                accion: $accion,
-                tablaAfectada: 'users',
-                registroClave: (string) $userId,
-                antes: $before ? (array) $before : null,
-                despues: [
-                    'usuario' => $after ? (array) $after : null,
-                    'roles_asignados' => $roleIds,
-                ]
-            );
-        });
+        if (!$result['created'] && ($result['authorization_changed'] || $result['password_changed'])) {
+            $message .= ' Sus sesiones anteriores fueron revocadas para aplicar el cambio de seguridad.';
+        }
 
         return redirect()
             ->route('seguridad', ['tab' => 'usuarios'])
-            ->with('success', $id ? 'El usuario se actualizó correctamente.' : 'El usuario se creó correctamente.');
+            ->with('success', $message);
     }
 
-    public function destroyUser(int $user)
+    public function destroyUser(UpdateSecurityUserStatusRequest $request, int $user)
     {
-        if ((int) session('swafi_user_id') === $user) {
+        return $this->changeUserStatus($request, $user, 'inactivo');
+    }
+
+    public function activateUser(UpdateSecurityUserStatusRequest $request, int $user)
+    {
+        return $this->changeUserStatus($request, $user, 'activo');
+    }
+
+    private function changeUserStatus(
+        UpdateSecurityUserStatusRequest $request,
+        int $user,
+        string $expectedStatus
+    ) {
+        $validated = $request->validated();
+
+        if (($validated['estatus'] ?? null) !== $expectedStatus) {
             return redirect()
                 ->route('seguridad', ['tab' => 'usuarios'])
                 ->withErrors([
-                    'usuario' => 'No puedes desactivar el usuario con el que tienes la sesión actual.',
+                    'usuario' => 'La operación solicitada no coincide con el estatus indicado.',
                 ]);
         }
 
-        $before = DB::table('users')
-            ->where('id', $user)
-            ->first();
-
-        if (!$before) {
-            return redirect()
-                ->route('seguridad', ['tab' => 'usuarios'])
-                ->withErrors([
-                    'usuario' => 'El usuario seleccionado no existe.',
-                ]);
-        }
-
-        DB::transaction(function () use ($user, $before) {
-            DB::table('users')
-                ->where('id', $user)
-                ->update([
-                    'estatus' => 'inactivo',
-                    'updated_at' => now(),
-                ]);
-
-            $after = DB::table('users')
-                ->where('id', $user)
-                ->first();
-
-            $this->registrarBitacora(
-                accion: 'SEGURIDAD_USUARIO_DESACTIVACION',
-                tablaAfectada: 'users',
-                registroClave: (string) $user,
-                antes: (array) $before,
-                despues: $after ? (array) $after : null
+        try {
+            $this->userAccess->changeStatus(
+                targetUserId: $user,
+                nextStatus: $expectedStatus,
+                actorId: (int) $request->session()->get('swafi_user_id'),
+                reason: $validated['motivo'] ?? null,
+                ip: $request->ip()
             );
-        });
+        } catch (DomainException $exception) {
+            return redirect()
+                ->route('seguridad', ['tab' => 'usuarios'])
+                ->withErrors(['usuario' => $exception->getMessage()]);
+        }
 
         return redirect()
             ->route('seguridad', ['tab' => 'usuarios'])
-            ->with('success', 'El usuario fue desactivado correctamente.');
+            ->with(
+                'success',
+                $expectedStatus === 'activo'
+                    ? 'El usuario fue activado correctamente.'
+                    : 'El usuario fue desactivado y sus sesiones fueron revocadas.'
+            );
     }
 
     public function storeRole(Request $request)
