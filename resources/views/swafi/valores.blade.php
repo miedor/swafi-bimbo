@@ -813,6 +813,8 @@
                     <a href="{{ route('expediente', $row->expediente_id) }}">Consultar</a>
                   @endif
 
+                  <a href="{{ route('valores.historial', $row->numero_activo) }}">Historial</a>
+
                   @if($canAdministrarValores)
                     <a href="{{ route('valores', array_merge(request()->query(), ['panel' => 'captura', 'editar_valor' => $row->valor_id])) }}">Editar</a>
 
