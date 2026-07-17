@@ -228,6 +228,7 @@ class SwafiAuth
 
             'seguridad.usuarios.store',
             'seguridad.usuarios.destroy',
+            'seguridad.usuarios.activate',
             'seguridad.roles.store',
             'seguridad.roles.destroy',
             'seguridad.permisos.store' => 'seguridad.administrar',
