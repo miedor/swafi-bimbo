@@ -13,7 +13,8 @@ use Illuminate\Validation\ValidationException;
 class TransferWorkflowService
 {
     public function __construct(
-        private readonly InventoryPeriodService $periods
+        private readonly InventoryPeriodService $periods,
+        private readonly SwafiAuthorizationService $authorization
     ) {
     }
 
@@ -43,6 +44,18 @@ class TransferWorkflowService
             $isCrossPlant = (int) $destination->planta_id !== (int) $asset->planta_id;
 
             if ($isCrossPlant) {
+                $assignedApproverId = !empty($data['aprobador_asignado_id'])
+                    ? (int) $data['aprobador_asignado_id']
+                    : 0;
+
+                $assignedApprover = $this->resolveActiveCaptureApprover($assignedApproverId);
+
+                if ($userId !== null && (int) $assignedApprover->id === $userId) {
+                    throw ValidationException::withMessages([
+                        'aprobador_asignado_id' => 'Por separación de funciones, la persona solicitante no puede asignarse a sí misma la aprobación del traslado.',
+                    ]);
+                }
+
                 $pendingRequest = SolicitudTraslado::query()
                     ->where('numero_activo', $asset->numero_activo)
                     ->where('estatus', 'pendiente')
@@ -61,12 +74,17 @@ class TransferWorkflowService
                     'ubicacion_origen_id' => $asset->ubicacion_id,
                     'ubicacion_destino_id' => (int) $destination->id,
                     'responsable_destino_id' => $responsibleId,
+                    'aprobador_asignado_id' => (int) $assignedApprover->id,
                     'fecha_movimiento' => $movementDate,
                     'motivo' => trim((string) $data['motivo']),
                     'evidencia' => $data['evidencia'] ?? null,
                     'estatus' => 'pendiente',
                     'solicitado_por' => $userId,
                     'solicitado_at' => now(),
+                    'notificacion_aprobador_at' => null,
+                    'ultimo_intento_notificacion_at' => null,
+                    'notificacion_aprobador_intentos' => 0,
+                    'notificacion_aprobador_error' => null,
                 ]);
 
                 $this->audit(
@@ -76,13 +94,20 @@ class TransferWorkflowService
                     table: 'solicitudes_traslado',
                     recordKey: (string) $request->id,
                     before: ['activo' => $asset->toArray()],
-                    after: ['solicitud' => $request->toArray()]
+                    after: [
+                        'solicitud' => $request->toArray(),
+                        'aprobador_asignado' => [
+                            'id' => $assignedApprover->id,
+                            'nombre' => $assignedApprover->name,
+                            'email' => $assignedApprover->email,
+                        ],
+                    ]
                 );
 
                 return [
                     'type' => 'transfer_request',
                     'request' => $request,
-                    'message' => 'El traslado entre plantas quedó pendiente de aprobación por Contabilidad. La ubicación actual no fue modificada.',
+                    'message' => 'El traslado entre plantas quedó asignado a '.$assignedApprover->name.' para su aprobación. La ubicación actual no fue modificada.',
                 ];
             }
 
@@ -117,6 +142,7 @@ class TransferWorkflowService
                 ->firstOrFail();
 
             $this->assertPending($request);
+            $this->assertAssignedApproverCanResolve($request, $approverId);
 
             $asset = Activo::query()
                 ->where('numero_activo', $request->numero_activo)
@@ -202,6 +228,7 @@ class TransferWorkflowService
                 ->firstOrFail();
 
             $this->assertPending($request);
+            $this->assertAssignedApproverCanResolve($request, $approverId);
             $before = $request->toArray();
 
             $request->update([
@@ -282,6 +309,75 @@ class TransferWorkflowService
                 'comentario_resolucion' => 'La solicitud ya fue resuelta y no puede procesarse nuevamente.',
             ]);
         }
+    }
+
+    private function resolveActiveCaptureApprover(int $approverId): object
+    {
+        if ($approverId <= 0) {
+            throw ValidationException::withMessages([
+                'aprobador_asignado_id' => 'Selecciona el Usuario Captura responsable de aprobar o rechazar el traslado entre plantas.',
+            ]);
+        }
+
+        $approver = DB::table('users as u')
+            ->join('role_user as ru', 'ru.user_id', '=', 'u.id')
+            ->join('roles as r', 'r.id', '=', 'ru.role_id')
+            ->join('permission_role as pr', 'pr.role_id', '=', 'r.id')
+            ->join('permissions as p', 'p.id', '=', 'pr.permission_id')
+            ->where('u.id', $approverId)
+            ->where('u.estatus', 'activo')
+            ->where('r.activo', 1)
+            ->where('r.nombre', 'Usuario Captura')
+            ->where('p.clave', 'ubicaciones.aprobar_traslados')
+            ->select([
+                'u.id',
+                'u.usuario',
+                'u.name',
+                'u.email',
+            ])
+            ->distinct()
+            ->first();
+
+        if (!$approver || !filter_var($approver->email, FILTER_VALIDATE_EMAIL)) {
+            throw ValidationException::withMessages([
+                'aprobador_asignado_id' => 'La persona seleccionada debe ser un Usuario Captura activo, con permiso para aprobar traslados y correo válido.',
+            ]);
+        }
+
+        return $approver;
+    }
+
+    private function assertAssignedApproverCanResolve(
+        SolicitudTraslado $request,
+        ?int $approverId
+    ): void {
+        $userId = (int) ($approverId ?? 0);
+
+        if ($userId <= 0) {
+            throw ValidationException::withMessages([
+                'comentario_resolucion' => 'No fue posible identificar al usuario que intenta resolver la solicitud.',
+            ]);
+        }
+
+        $context = $this->authorization->contextForUser($userId);
+
+        if ($context['is_admin']) {
+            return;
+        }
+
+        if ((int) ($request->aprobador_asignado_id ?? 0) !== $userId) {
+            throw ValidationException::withMessages([
+                'comentario_resolucion' => 'La solicitud está asignada a otro Usuario Captura. Solo la persona responsable designada o el Administrador SWAFI pueden resolverla.',
+            ]);
+        }
+
+        if (!in_array('ubicaciones.aprobar_traslados', $context['permissions'], true)) {
+            throw ValidationException::withMessages([
+                'comentario_resolucion' => 'Tu usuario ya no cuenta con el permiso requerido para resolver traslados.',
+            ]);
+        }
+
+        $this->resolveActiveCaptureApprover($userId);
     }
 
     private function assertResponsibleActive(?int $responsibleId): void
