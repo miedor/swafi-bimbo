@@ -12,6 +12,7 @@ use App\Models\MovimientoUbicacion;
 use App\Services\InventoryPeriodService;
 use App\Services\SwafiAuthorizationService;
 use App\Services\SwafiStorageService;
+use App\Services\TransferNotificationService;
 use App\Services\TransferWorkflowService;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
@@ -26,7 +27,8 @@ class UbicacionInventarioController extends Controller
         private readonly SwafiStorageService $storage,
         private readonly TransferWorkflowService $transferWorkflow,
         private readonly InventoryPeriodService $inventoryPeriods,
-        private readonly SwafiAuthorizationService $authorization
+        private readonly SwafiAuthorizationService $authorization,
+        private readonly TransferNotificationService $transferNotifications
     ) {
     }
 
@@ -58,21 +60,26 @@ class UbicacionInventarioController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
+        $currentUserId = $this->userId();
+        $authorizationContext = $this->authorization->contextForUser((int) ($currentUserId ?? 0));
         $canManageLocations = $this->authorization->canCurrentUser('ubicaciones.administrar');
         $canApproveTransfers = $this->authorization->canCurrentUser('ubicaciones.aprobar_traslados');
         $canManageInventoryPeriods = $this->authorization->canCurrentUser('ubicaciones.cerrar_inventario');
+        $isAdministrator = (bool) ($authorizationContext['is_admin'] ?? false);
 
         return view('swafi.ubicacion', [
             'resultados' => $resultados,
             'catalogos' => $this->catalogos(),
             'filtros' => $request->all(),
-            'solicitudesTraslado' => $this->transferRequests($canApproveTransfers),
+            'solicitudesTraslado' => $this->transferRequests($canApproveTransfers, $isAdministrator),
             'periodosInventario' => $this->inventoryPeriodsList(),
-            'pendingTransfersCount' => $this->pendingTransferCount($canApproveTransfers),
+            'pendingTransfersCount' => $this->pendingTransferCount($canApproveTransfers, $isAdministrator),
             'blockedPeriodsCount' => $this->blockedPeriodCount(),
             'canManageLocations' => $canManageLocations,
             'canApproveTransfers' => $canApproveTransfers,
             'canManageInventoryPeriods' => $canManageInventoryPeriods,
+            'isAdministrator' => $isAdministrator,
+            'currentUserId' => $currentUserId,
         ]);
     }
 
@@ -80,25 +87,31 @@ class UbicacionInventarioController extends Controller
     {
         $data = $request->validated();
 
+        $userId = $this->userId();
         $result = $this->transferWorkflow->registerMovementOrTransfer(
             data: $data,
-            userId: $this->userId()
+            userId: $userId
         );
 
         $redirectParameters = [
             'numero_activo' => $data['numero_activo'],
         ];
+        $message = $result['message'];
+        $flashType = 'success';
 
         if ($result['type'] === 'transfer_request') {
             $redirectParameters['panel'] = 'traslados';
+            $notification = $this->transferNotifications->sendAssignment(
+                transferRequest: $result['request'],
+                triggeredBy: $userId
+            );
+            $message .= ' '.$notification['message'];
+            $flashType = $notification['sent'] ? 'success' : 'warning';
         }
 
         return redirect()
             ->route('ubicacion', $redirectParameters)
-            ->with(
-                $result['type'] === 'transfer_request' ? 'warning' : 'success',
-                $result['message']
-            );
+            ->with($flashType, $message);
     }
 
     public function storeInventario(StoreInventarioActivoRequest $request)
@@ -399,7 +412,7 @@ class UbicacionInventarioController extends Controller
         return [
             'activos' => DB::table('activos')
                 ->where('activo', true)
-                ->select('numero_activo', 'descripcion')
+                ->select('numero_activo', 'descripcion', 'planta_id')
                 ->orderBy('numero_activo')
                 ->get(),
 
@@ -440,10 +453,11 @@ class UbicacionInventarioController extends Controller
                 ->get(),
 
             'usuariosContabilidad' => $this->auditRecipients(),
+            'usuariosAprobadoresTraslado' => $this->transferApprovers(),
         ];
     }
 
-    private function transferRequests(bool $canApproveTransfers)
+    private function transferRequests(bool $canApproveTransfers, bool $isAdministrator)
     {
         $query = DB::table('solicitudes_traslado as st')
             ->join('activos as a', 'a.numero_activo', '=', 'st.numero_activo')
@@ -454,6 +468,7 @@ class UbicacionInventarioController extends Controller
             ->join('plantas as pd', 'pd.id', '=', 'ud.planta_id')
             ->leftJoin('responsables as rd', 'rd.id', '=', 'st.responsable_destino_id')
             ->leftJoin('users as us', 'us.id', '=', 'st.solicitado_por')
+            ->leftJoin('users as ua', 'ua.id', '=', 'st.aprobador_asignado_id')
             ->leftJoin('users as ur', 'ur.id', '=', 'st.resuelto_por')
             ->select([
                 'st.id',
@@ -464,7 +479,13 @@ class UbicacionInventarioController extends Controller
                 'st.motivo',
                 'st.evidencia',
                 'st.estatus',
+                'st.solicitado_por',
                 'st.solicitado_at',
+                'st.aprobador_asignado_id',
+                'st.notificacion_aprobador_at',
+                'st.ultimo_intento_notificacion_at',
+                'st.notificacion_aprobador_intentos',
+                'st.notificacion_aprobador_error',
                 'st.resuelto_at',
                 'st.comentario_resolucion',
                 'st.movimiento_id',
@@ -477,10 +498,16 @@ class UbicacionInventarioController extends Controller
                 'rd.nombre as responsable_destino',
                 'us.name as solicitado_por_nombre',
                 'us.email as solicitado_por_email',
+                'ua.name as aprobador_asignado_nombre',
+                'ua.email as aprobador_asignado_email',
                 'ur.name as resuelto_por_nombre',
             ]);
 
-        if (!$canApproveTransfers) {
+        if ($canApproveTransfers) {
+            if (!$isAdministrator) {
+                $query->where('st.aprobador_asignado_id', $this->userId());
+            }
+        } else {
             $query->where('st.solicitado_por', $this->userId());
         }
 
@@ -521,12 +548,16 @@ class UbicacionInventarioController extends Controller
             ->withQueryString();
     }
 
-    private function pendingTransferCount(bool $canApproveTransfers): int
+    private function pendingTransferCount(bool $canApproveTransfers, bool $isAdministrator): int
     {
         $query = DB::table('solicitudes_traslado')
             ->where('estatus', 'pendiente');
 
-        if (!$canApproveTransfers) {
+        if ($canApproveTransfers) {
+            if (!$isAdministrator) {
+                $query->where('aprobador_asignado_id', $this->userId());
+            }
+        } else {
             $query->where('solicitado_por', $this->userId());
         }
 
@@ -538,6 +569,39 @@ class UbicacionInventarioController extends Controller
         return DB::table('periodos_inventario')
             ->where('estatus', 'bloqueado')
             ->count();
+    }
+
+    private function transferApprovers()
+    {
+        $query = DB::table('users as u')
+            ->join('role_user as ru', 'ru.user_id', '=', 'u.id')
+            ->join('roles as r', 'r.id', '=', 'ru.role_id')
+            ->join('permission_role as pr', 'pr.role_id', '=', 'r.id')
+            ->join('permissions as p', 'p.id', '=', 'pr.permission_id')
+            ->where('u.estatus', 'activo')
+            ->where('r.activo', 1)
+            ->where('r.nombre', 'Usuario Captura')
+            ->where('p.clave', 'ubicaciones.aprobar_traslados')
+            ->whereNotNull('u.email')
+            ->where('u.email', '<>', '');
+
+        $currentUserId = $this->userId();
+
+        if ($currentUserId !== null) {
+            $query->where('u.id', '<>', $currentUserId);
+        }
+
+        return $query
+            ->select([
+                'u.id',
+                'u.usuario',
+                'u.name',
+                'u.email',
+            ])
+            ->distinct()
+            ->orderBy('u.name')
+            ->orderBy('u.email')
+            ->get();
     }
 
     private function auditRecipients()

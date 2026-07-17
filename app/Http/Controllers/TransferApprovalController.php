@@ -4,12 +4,17 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\ResolveTransferRequest;
 use App\Models\SolicitudTraslado;
+use App\Services\SwafiAuthorizationService;
+use App\Services\TransferNotificationService;
 use App\Services\TransferWorkflowService;
+use Symfony\Component\HttpKernel\Exception\AccessDeniedHttpException;
 
 class TransferApprovalController extends Controller
 {
     public function __construct(
-        private readonly TransferWorkflowService $workflow
+        private readonly TransferWorkflowService $workflow,
+        private readonly TransferNotificationService $notifications,
+        private readonly SwafiAuthorizationService $authorization
     ) {
     }
 
@@ -37,6 +42,30 @@ class TransferApprovalController extends Controller
         return redirect()
             ->route('ubicacion', ['panel' => 'traslados'])
             ->with('warning', 'La solicitud de traslado fue rechazada. La ubicación actual del activo no cambió.');
+    }
+
+    public function resendNotification(SolicitudTraslado $solicitud)
+    {
+        $userId = $this->userId();
+        $context = $this->authorization->contextForUser((int) ($userId ?? 0));
+
+        if (
+            !$context['is_admin']
+            && (int) ($solicitud->solicitado_por ?? 0) !== (int) ($userId ?? 0)
+        ) {
+            throw new AccessDeniedHttpException(
+                'Solo la persona que creó la solicitud o el Administrador SWAFI pueden reenviar la notificación.'
+            );
+        }
+
+        $result = $this->notifications->sendAssignment(
+            transferRequest: $solicitud,
+            triggeredBy: $userId
+        );
+
+        return redirect()
+            ->route('ubicacion', ['panel' => 'traslados'])
+            ->with($result['sent'] ? 'success' : 'warning', $result['message']);
     }
 
     private function userId(): ?int
