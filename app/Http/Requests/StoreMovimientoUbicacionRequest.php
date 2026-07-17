@@ -34,6 +34,18 @@ class StoreMovimientoUbicacionRequest extends FormRequest
                 Rule::exists('responsables', 'id')->where(fn ($query) => $query->where('estatus', 'activo')),
             ],
 
+            /*
+             * Este campo solo es obligatorio cuando la ubicación pertenece a otra
+             * planta. La validación de esa regla de negocio y del rol Usuario
+             * Captura se ejecuta dentro de TransferWorkflowService, después de
+             * bloquear el activo y resolver la planta destino.
+             */
+            'aprobador_asignado_id' => [
+                'nullable',
+                'integer',
+                Rule::exists('users', 'id')->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
+
             'fecha_movimiento' => [
                 'required',
                 'date',
@@ -65,6 +77,9 @@ class StoreMovimientoUbicacionRequest extends FormRequest
             'ubicacion_destino_id.exists' => 'La ubicación seleccionada no existe o se encuentra inactiva.',
 
             'responsable_id.exists' => 'El responsable seleccionado no existe o se encuentra inactivo.',
+
+            'aprobador_asignado_id.integer' => 'El Usuario Captura seleccionado no es válido.',
+            'aprobador_asignado_id.exists' => 'El Usuario Captura seleccionado no existe o se encuentra inactivo.',
 
             'fecha_movimiento.required' => 'La fecha del movimiento es obligatoria.',
             'fecha_movimiento.date' => 'La fecha del movimiento no tiene un formato válido.',
