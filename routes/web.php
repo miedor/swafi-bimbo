@@ -233,6 +233,10 @@ Route::middleware('swafi.auth')->group(function () {
         ->whereNumber('user')
         ->name('seguridad.usuarios.destroy');
 
+    Route::patch('/seguridad-acceso/usuarios/{user}/activar', [SeguridadController::class, 'activateUser'])
+        ->whereNumber('user')
+        ->name('seguridad.usuarios.activate');
+
     Route::post('/seguridad-acceso/roles', [SeguridadController::class, 'storeRole'])->name('seguridad.roles.store');
     Route::delete('/seguridad-acceso/roles/{role}', [SeguridadController::class, 'destroyRole'])
         ->whereNumber('role')
