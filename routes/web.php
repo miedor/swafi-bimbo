@@ -97,6 +97,10 @@ Route::middleware('swafi.auth')->group(function () {
         ->whereNumber('solicitud')
         ->name('ubicacion.traslados.rechazar');
 
+    Route::post('/ubicacion-inventario/traslados/{solicitud}/notificar', [TransferApprovalController::class, 'resendNotification'])
+        ->whereNumber('solicitud')
+        ->name('ubicacion.traslados.notificar');
+
     Route::post('/ubicacion-inventario/periodos', [InventoryPeriodController::class, 'store'])
         ->name('ubicacion.periodos.store');
 
