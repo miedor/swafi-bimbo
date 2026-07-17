@@ -30,13 +30,21 @@ class ImportacionMasiva extends Model
         'filas_actualizadas',
         'resumen',
         'aplicada_at',
+        'reversion_disponible_hasta',
+        'revertida_at',
+        'revertida_por',
+        'motivo_reversion',
+        'reversion_resumen',
         'cancelada_at',
         'expira_at',
     ];
 
     protected $casts = [
         'resumen' => 'array',
+        'reversion_resumen' => 'array',
         'aplicada_at' => 'datetime',
+        'reversion_disponible_hasta' => 'datetime',
+        'revertida_at' => 'datetime',
         'cancelada_at' => 'datetime',
         'expira_at' => 'datetime',
         'total_filas' => 'integer',
@@ -57,9 +65,54 @@ class ImportacionMasiva extends Model
         return $this->belongsTo(User::class, 'user_id');
     }
 
+    public function usuarioReversion(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'revertida_por');
+    }
+
     public function estaVigente(): bool
     {
         return $this->estado === 'previsualizada'
             && (!$this->expira_at || $this->expira_at->isFuture());
+    }
+
+    public function esRevertible(): bool
+    {
+        return $this->estado === 'aplicada'
+            && $this->reversion_disponible_hasta?->isFuture() === true
+            && data_get($this->resumen, 'reversion.disponible') === true;
+    }
+
+    public function motivoNoRevertible(): ?string
+    {
+        if ($this->estado === 'revertida') {
+            return 'El lote ya fue revertido.';
+        }
+
+        if ($this->estado !== 'aplicada') {
+            return 'Solo los lotes aplicados pueden revertirse.';
+        }
+
+        if (!$this->reversion_disponible_hasta) {
+            return 'El lote no contiene una instantánea de reversión compatible con HU-029.';
+        }
+
+        if ($this->reversion_disponible_hasta->isPast()) {
+            return 'La ventana autorizada de reversión ya terminó.';
+        }
+
+        if (data_get($this->resumen, 'reversion.disponible') !== true) {
+            $reason = trim((string) data_get(
+                $this->resumen,
+                'reversion.motivo',
+                ''
+            ));
+
+            return $reason !== ''
+                ? $reason
+                : 'No fue posible consolidar la instantánea posterior a la aplicación.';
+        }
+
+        return null;
     }
 }
