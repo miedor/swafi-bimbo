@@ -64,7 +64,7 @@ class UserLifecycleSecurityConfigurationTest extends TestCase
         $service = $this->read('app/Services/UserAccessManagementService.php');
 
         self::assertStringContainsString("private const ADMIN_ROLE = 'Administrador SWAFI';", $service);
-        self::assertStringContainsString("->where('u.id', '<>', $targetUserId)", $service);
+        self::assertStringContainsString('->where(\'u.id\', \'<>\', $targetUserId)', $service);
         self::assertStringContainsString('La operación dejaría a SWAFI sin un Administrador activo.', $service);
         self::assertStringContainsString('Asigna primero el rol a otra cuenta.', $service);
     }
@@ -82,8 +82,8 @@ class UserLifecycleSecurityConfigurationTest extends TestCase
     {
         $service = $this->read('app/Services/UserAccessManagementService.php');
 
-        self::assertStringContainsString("DB::table('sessions')->where('user_id', $userId)->delete();", $service);
-        self::assertStringContainsString("DB::table('users')->where('id', $userId)->update(['remember_token' => null]);", $service);
+        self::assertStringContainsString('DB::table(\'sessions\')->where(\'user_id\', $userId)->delete();', $service);
+        self::assertStringContainsString('DB::table(\'users\')->where(\'id\', $userId)->update([\'remember_token\' => null]);', $service);
         self::assertStringContainsString('$authorizationChanged || $passwordChanged', $service);
     }
 
