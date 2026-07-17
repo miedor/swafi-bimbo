@@ -4,30 +4,12 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Facades\Hash;
 
 class SwafiCatalogSeeder extends Seeder
 {
     public function run(): void
     {
         $now = now();
-
-        /*
-        |--------------------------------------------------------------------------
-        | Usuario administrador de prototipo
-        |--------------------------------------------------------------------------
-        */
-
-        DB::table('users')->updateOrInsert(
-            ['email' => 'admin.swafi@bimbo.local'],
-            [
-                'name' => 'Administrador SWAFI',
-                'password' => Hash::make('12345678'),
-                'email_verified_at' => $now,
-                'created_at' => $now,
-                'updated_at' => $now,
-            ]
-        );
 
         /*
         |--------------------------------------------------------------------------
@@ -131,13 +113,6 @@ class SwafiCatalogSeeder extends Seeder
         $this->attachPermissions($capturaRoleId, $capturaPermisos);
         $this->attachPermissions($consultaRoleId, $consultaPermisos);
         $this->attachPermissions($plantaRoleId, $plantaPermisos);
-
-        $adminUserId = DB::table('users')->where('email', 'admin.swafi@bimbo.local')->value('id');
-
-        DB::table('role_user')->updateOrInsert([
-            'user_id' => $adminUserId,
-            'role_id' => $adminRoleId,
-        ]);
 
         /*
         |--------------------------------------------------------------------------
