@@ -81,17 +81,18 @@ verify_requested_tests_in_copy() {
     done
 }
 
+# La existencia de una prueba explícita se valida antes de exigir Composer o
+# instalar dependencias. Esto produce un diagnóstico inmediato incluso en un
+# ambiente donde todavía no se han preparado las herramientas de desarrollo.
+command -v find >/dev/null 2>&1 || fail 'find no está disponible en el ambiente.'
+command -v sed >/dev/null 2>&1 || fail 'sed no está disponible en el ambiente.'
+command -v sort >/dev/null 2>&1 || fail 'sort no está disponible en el ambiente.'
+validate_requested_test_files "$PROJECT_ROOT" "$@"
+
 command -v php >/dev/null 2>&1 || fail 'PHP no está disponible en el ambiente.'
 command -v composer >/dev/null 2>&1 || fail 'Composer no está disponible en el ambiente.'
 command -v tar >/dev/null 2>&1 || fail 'tar no está disponible en el ambiente.'
 command -v mktemp >/dev/null 2>&1 || fail 'mktemp no está disponible en el ambiente.'
-command -v find >/dev/null 2>&1 || fail 'find no está disponible en el ambiente.'
-command -v sed >/dev/null 2>&1 || fail 'sed no está disponible en el ambiente.'
-command -v sort >/dev/null 2>&1 || fail 'sort no está disponible en el ambiente.'
-
-# Verifica los archivos solicitados antes de instalar dependencias. Así se evita
-# descargar PHPUnit cuando el archivo todavía no forma parte del despliegue.
-validate_requested_test_files "$PROJECT_ROOT" "$@"
 
 TEMP_ROOT="$(mktemp -d "${TMPDIR:-/tmp}/swafi-tests.XXXXXX")"
 TEST_ROOT="$TEMP_ROOT/project"
