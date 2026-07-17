@@ -59,7 +59,7 @@
     request()->routeIs('registro-individual') => 'file-plus',
     request()->routeIs('registro-masivo') => 'upload',
     request()->routeIs('expediente') => 'file-search',
-    request()->routeIs('valores') => 'coins',
+    request()->routeIs('valores*') => 'coins',
     request()->routeIs('ubicacion') => 'map-pin',
     request()->routeIs('busqueda') => 'search',
     request()->routeIs('reportes') => 'chart',
@@ -70,7 +70,7 @@
   };
 
   $m01Open = request()->routeIs('registro-individual') || request()->routeIs('registro-masivo') || request()->routeIs('expediente');
-  $m02Open = request()->routeIs('valores') || request()->routeIs('ubicacion');
+  $m02Open = request()->routeIs('valores*') || request()->routeIs('ubicacion');
   $m03Open = request()->routeIs('busqueda') || request()->routeIs('reportes');
   $m04Open = request()->routeIs('catalogos') || request()->routeIs('seguridad');
 @endphp
@@ -696,7 +696,7 @@
 
         <div class="nav-submenu {{ $m02Open ? 'is-open' : '' }}" data-nav-group="m02">
           @if ($swafiCan('valores.ver') || $swafiCan('valores.administrar'))
-            <a class="nav-item {{ request()->routeIs('valores') ? 'active' : '' }}" href="{{ route('valores') }}">
+            <a class="nav-item {{ request()->routeIs('valores*') ? 'active' : '' }}" href="{{ route('valores') }}">
               {!! $swafiIcon('coins', 'nav-icon') !!}
               <span>Valores fiscales y financieros</span>
             </a>
