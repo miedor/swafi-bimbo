@@ -407,6 +407,7 @@ class AuthController extends Controller
             ->join('roles as r', 'r.id', '=', 'ru.role_id')
             ->where('ru.user_id', $userId)
             ->where('r.activo', 1)
+            ->where('p.activo', 1)
             ->distinct()
             ->pluck('p.clave')
             ->all();

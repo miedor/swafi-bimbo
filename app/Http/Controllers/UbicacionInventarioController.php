@@ -580,6 +580,7 @@ class UbicacionInventarioController extends Controller
             ->join('permissions as p', 'p.id', '=', 'pr.permission_id')
             ->where('u.estatus', 'activo')
             ->where('r.activo', 1)
+            ->where('p.activo', 1)
             ->where('r.nombre', 'Usuario Captura')
             ->where('p.clave', 'ubicaciones.aprobar_traslados')
             ->whereNotNull('u.email')

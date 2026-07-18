@@ -2,18 +2,23 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreSecurityPermissionRequest;
+use App\Http\Requests\StoreSecurityRoleRequest;
 use App\Http\Requests\StoreSecurityUserRequest;
+use App\Http\Requests\UpdateSecurityPermissionStatusRequest;
+use App\Http\Requests\UpdateSecurityRoleStatusRequest;
 use App\Http\Requests\UpdateSecurityUserStatusRequest;
+use App\Services\RolePermissionManagementService;
 use App\Services\UserAccessManagementService;
 use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Validation\Rule;
 
 class SeguridadController extends Controller
 {
     public function __construct(
-        private readonly UserAccessManagementService $userAccess
+        private readonly UserAccessManagementService $userAccess,
+        private readonly RolePermissionManagementService $rolePermissions
     ) {
     }
 
@@ -23,6 +28,10 @@ class SeguridadController extends Controller
 
         $usuariosQuery = $this->usuariosQuery($request);
         $bitacoraQuery = $this->bitacoraQuery($request);
+        $permissionsAsignables = DB::table('permissions')
+            ->where('activo', 1)
+            ->orderBy('clave')
+            ->get(['id', 'clave', 'descripcion', 'activo', 'es_sistema']);
 
         if ($tabActivo === 'usuarios' && $request->input('export') === 'csv') {
             return $this->exportUsuariosCsv($usuariosQuery);
@@ -45,10 +54,10 @@ class SeguridadController extends Controller
             'rolesAsignables' => DB::table('roles')
                 ->where('activo', 1)
                 ->orderBy('nombre')
-                ->get(['id', 'nombre', 'descripcion', 'activo']),
-            'permissions' => DB::table('permissions')
-                ->orderBy('clave')
-                ->get(),
+                ->get(['id', 'nombre', 'descripcion', 'activo', 'es_sistema']),
+            'permissionsByModule' => $permissionsAsignables
+                ->groupBy(fn ($permission) => explode('.', (string) $permission->clave, 2)[0]),
+            'permissions' => $this->permissionsWithUsage(),
             'bitacora' => $bitacoraQuery
                 ->paginate((int) $request->input('per_page', 10), ['*'], 'bitacora_page')
                 ->withQueryString(),
@@ -138,176 +147,149 @@ class SeguridadController extends Controller
             );
     }
 
-    public function storeRole(Request $request)
+    public function storeRole(StoreSecurityRoleRequest $request)
     {
-        $id = $request->input('id');
-
-        $validated = $request->validate([
-            'id' => ['nullable', 'integer', 'exists:roles,id'],
-            'nombre' => ['required', 'string', 'max:50', Rule::unique('roles', 'nombre')->ignore($id)],
-            'descripcion' => ['nullable', 'string', 'max:255'],
-            'activo' => ['required', Rule::in(['1', '0'])],
-            'permission_ids' => ['nullable', 'array'],
-            'permission_ids.*' => ['integer', 'exists:permissions,id'],
-        ], $this->messages());
-
-        $permissionIds = array_values(array_unique($validated['permission_ids'] ?? []));
-        unset($validated['permission_ids']);
-
-        DB::transaction(function () use ($validated, $permissionIds, $id) {
-            $before = $id
-                ? DB::table('roles')->where('id', $id)->first()
-                : null;
-
-            $now = now();
-
-            $payload = [
-                'nombre' => $validated['nombre'],
-                'descripcion' => $validated['descripcion'] ?? null,
-                'activo' => (int) $validated['activo'],
-                'updated_at' => $now,
-            ];
-
-            if ($id) {
-                DB::table('roles')
-                    ->where('id', $id)
-                    ->update($payload);
-
-                $roleId = (int) $id;
-                $accion = 'SEGURIDAD_ROL_ACTUALIZACION';
-            } else {
-                $payload['created_at'] = $now;
-                $roleId = (int) DB::table('roles')->insertGetId($payload);
-                $accion = 'SEGURIDAD_ROL_ALTA';
-            }
-
-            DB::table('permission_role')
-                ->where('role_id', $roleId)
-                ->delete();
-
-            foreach ($permissionIds as $permissionId) {
-                DB::table('permission_role')->insert([
-                    'role_id' => $roleId,
-                    'permission_id' => $permissionId,
-                ]);
-            }
-
-            $after = DB::table('roles')
-                ->where('id', $roleId)
-                ->first();
-
-            $this->registrarBitacora(
-                accion: $accion,
-                tablaAfectada: 'roles',
-                registroClave: (string) $roleId,
-                antes: $before ? (array) $before : null,
-                despues: [
-                    'rol' => $after ? (array) $after : null,
-                    'permisos_asignados' => $permissionIds,
-                ]
+        try {
+            $result = $this->rolePermissions->saveRole(
+                validated: $request->validated(),
+                actorId: (int) $request->session()->get('swafi_user_id'),
+                ip: $request->ip()
             );
-        });
-
-        return redirect()
-            ->route('seguridad', ['tab' => 'roles'])
-            ->with('success', $id ? 'El rol se actualizó correctamente.' : 'El rol se creó correctamente.');
-    }
-
-    public function destroyRole(int $role)
-    {
-        $before = DB::table('roles')
-            ->where('id', $role)
-            ->first();
-
-        if (!$before) {
-            return redirect()
-                ->route('seguridad', ['tab' => 'roles'])
-                ->withErrors([
-                    'rol' => 'El rol seleccionado no existe.',
-                ]);
+        } catch (DomainException $exception) {
+            return back()
+                ->withErrors(['rol' => $exception->getMessage()])
+                ->withInput();
         }
 
-        DB::transaction(function () use ($role, $before) {
-            DB::table('roles')
-                ->where('id', $role)
-                ->update([
-                    'activo' => 0,
-                    'updated_at' => now(),
-                ]);
+        $message = $result['created']
+            ? 'El rol se creó correctamente con sus permisos asignados.'
+            : 'El rol y su matriz de permisos se actualizaron correctamente.';
 
-            $after = DB::table('roles')
-                ->where('id', $role)
-                ->first();
-
-            $this->registrarBitacora(
-                accion: 'SEGURIDAD_ROL_DESACTIVACION',
-                tablaAfectada: 'roles',
-                registroClave: (string) $role,
-                antes: (array) $before,
-                despues: $after ? (array) $after : null
-            );
-        });
+        if (!$result['created'] && $result['permissions_changed'] && $result['affected_users'] > 0) {
+            $message .= ' Los cambios de autorización se reflejarán en la siguiente solicitud de los usuarios asignados.';
+        }
 
         return redirect()
             ->route('seguridad', ['tab' => 'roles'])
-            ->with('success', 'El rol fue desactivado correctamente.');
+            ->with('success', $message);
     }
 
-    public function storePermission(Request $request)
+    public function destroyRole(UpdateSecurityRoleStatusRequest $request, int $role)
     {
-        $id = $request->input('id');
+        return $this->changeRoleStatus($request, $role, 'inactivo');
+    }
 
-        $validated = $request->validate([
-            'id' => ['nullable', 'integer', 'exists:permissions,id'],
-            'clave' => ['required', 'string', 'max:80', Rule::unique('permissions', 'clave')->ignore($id)],
-            'descripcion' => ['nullable', 'string', 'max:255'],
-        ], $this->messages());
+    public function activateRole(UpdateSecurityRoleStatusRequest $request, int $role)
+    {
+        return $this->changeRoleStatus($request, $role, 'activo');
+    }
 
-        DB::transaction(function () use ($validated, $id) {
-            $before = $id
-                ? DB::table('permissions')->where('id', $id)->first()
-                : null;
+    private function changeRoleStatus(
+        UpdateSecurityRoleStatusRequest $request,
+        int $role,
+        string $expectedStatus
+    ) {
+        $validated = $request->validated();
 
-            $now = now();
+        if (($validated['estatus'] ?? null) !== $expectedStatus) {
+            return redirect()
+                ->route('seguridad', ['tab' => 'roles'])
+                ->withErrors(['rol' => 'La operación solicitada no coincide con el estatus indicado.']);
+        }
 
-            if ($id) {
-                DB::table('permissions')
-                    ->where('id', $id)
-                    ->update([
-                        'clave' => $validated['clave'],
-                        'descripcion' => $validated['descripcion'] ?? null,
-                        'updated_at' => $now,
-                    ]);
-
-                $permissionId = (int) $id;
-                $accion = 'SEGURIDAD_PERMISO_ACTUALIZACION';
-            } else {
-                $permissionId = (int) DB::table('permissions')->insertGetId([
-                    'clave' => $validated['clave'],
-                    'descripcion' => $validated['descripcion'] ?? null,
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ]);
-
-                $accion = 'SEGURIDAD_PERMISO_ALTA';
-            }
-
-            $after = DB::table('permissions')
-                ->where('id', $permissionId)
-                ->first();
-
-            $this->registrarBitacora(
-                accion: $accion,
-                tablaAfectada: 'permissions',
-                registroClave: (string) $permissionId,
-                antes: $before ? (array) $before : null,
-                despues: $after ? (array) $after : null
+        try {
+            $this->rolePermissions->changeRoleStatus(
+                roleId: $role,
+                nextStatus: $expectedStatus,
+                reason: (string) $validated['motivo'],
+                actorId: (int) $request->session()->get('swafi_user_id'),
+                ip: $request->ip()
             );
-        });
+        } catch (DomainException $exception) {
+            return redirect()
+                ->route('seguridad', ['tab' => 'roles'])
+                ->withErrors(['rol' => $exception->getMessage()]);
+        }
 
         return redirect()
             ->route('seguridad', ['tab' => 'roles'])
-            ->with('success', $id ? 'El permiso se actualizó correctamente.' : 'El permiso se creó correctamente.');
+            ->with(
+                'success',
+                $expectedStatus === 'activo'
+                    ? 'El rol fue activado correctamente.'
+                    : 'El rol fue desactivado correctamente.'
+            );
+    }
+
+    public function storePermission(StoreSecurityPermissionRequest $request)
+    {
+        try {
+            $result = $this->rolePermissions->savePermission(
+                validated: $request->validated(),
+                actorId: (int) $request->session()->get('swafi_user_id'),
+                ip: $request->ip()
+            );
+        } catch (DomainException $exception) {
+            return back()
+                ->withErrors(['permiso' => $exception->getMessage()])
+                ->withInput();
+        }
+
+        return redirect()
+            ->route('seguridad', ['tab' => 'roles'])
+            ->with(
+                'success',
+                $result['created']
+                    ? 'El permiso se creó correctamente y quedó disponible para los roles.'
+                    : 'La descripción del permiso se actualizó correctamente.'
+            );
+    }
+
+    public function destroyPermission(UpdateSecurityPermissionStatusRequest $request, int $permission)
+    {
+        return $this->changePermissionStatus($request, $permission, 'inactivo');
+    }
+
+    public function activatePermission(UpdateSecurityPermissionStatusRequest $request, int $permission)
+    {
+        return $this->changePermissionStatus($request, $permission, 'activo');
+    }
+
+    private function changePermissionStatus(
+        UpdateSecurityPermissionStatusRequest $request,
+        int $permission,
+        string $expectedStatus
+    ) {
+        $validated = $request->validated();
+
+        if (($validated['estatus'] ?? null) !== $expectedStatus) {
+            return redirect()
+                ->route('seguridad', ['tab' => 'roles'])
+                ->withErrors(['permiso' => 'La operación solicitada no coincide con el estatus indicado.']);
+        }
+
+        try {
+            $this->rolePermissions->changePermissionStatus(
+                permissionId: $permission,
+                nextStatus: $expectedStatus,
+                reason: (string) $validated['motivo'],
+                actorId: (int) $request->session()->get('swafi_user_id'),
+                ip: $request->ip()
+            );
+        } catch (DomainException $exception) {
+            return redirect()
+                ->route('seguridad', ['tab' => 'roles'])
+                ->withErrors(['permiso' => $exception->getMessage()]);
+        }
+
+        return redirect()
+            ->route('seguridad', ['tab' => 'roles'])
+            ->with(
+                'success',
+                $expectedStatus === 'activo'
+                    ? 'El permiso fue activado y se agregó al rol Administrador SWAFI.'
+                    : 'El permiso fue desactivado correctamente.'
+            );
     }
 
     private function normalizeTab(?string $tab): string
@@ -388,25 +370,84 @@ class SeguridadController extends Controller
         return DB::table('roles as r')
             ->leftJoin('permission_role as pr', 'pr.role_id', '=', 'r.id')
             ->leftJoin('permissions as p', 'p.id', '=', 'pr.permission_id')
+            ->leftJoin('role_user as ru', 'ru.role_id', '=', 'r.id')
+            ->leftJoin('users as u', 'u.id', '=', 'ru.user_id')
             ->select([
                 'r.id',
                 'r.nombre',
                 'r.descripcion',
                 'r.activo',
+                'r.es_sistema',
                 'r.created_at',
                 'r.updated_at',
-                DB::raw("COALESCE(GROUP_CONCAT(p.clave ORDER BY p.clave SEPARATOR ', '), 'Sin permisos') as permisos"),
-                DB::raw('COUNT(p.id) as total_permisos'),
+                DB::raw(
+                    "COALESCE(
+                        GROUP_CONCAT(
+                            DISTINCT CASE WHEN p.activo = 1 THEN p.clave END
+                            ORDER BY p.clave SEPARATOR ', '
+                        ),
+                        'Sin permisos activos'
+                    ) as permisos"
+                ),
+                DB::raw('COUNT(DISTINCT CASE WHEN p.activo = 1 THEN p.id END) as total_permisos'),
+                DB::raw('COUNT(DISTINCT u.id) as total_usuarios'),
+                DB::raw("COUNT(DISTINCT CASE WHEN u.estatus = 'activo' THEN u.id END) as usuarios_activos"),
             ])
             ->groupBy(
                 'r.id',
                 'r.nombre',
                 'r.descripcion',
                 'r.activo',
+                'r.es_sistema',
                 'r.created_at',
                 'r.updated_at'
             )
             ->orderBy('r.nombre')
+            ->get();
+    }
+
+    private function permissionsWithUsage()
+    {
+        return DB::table('permissions as p')
+            ->leftJoin('permission_role as pr', 'pr.permission_id', '=', 'p.id')
+            ->leftJoin('roles as r', 'r.id', '=', 'pr.role_id')
+            ->select([
+                'p.id',
+                'p.clave',
+                'p.descripcion',
+                'p.activo',
+                'p.es_sistema',
+                'p.created_at',
+                'p.updated_at',
+                DB::raw(
+                    "COALESCE(
+                        GROUP_CONCAT(
+                            DISTINCT CASE
+                                WHEN r.nombre <> 'Administrador SWAFI' THEN r.nombre
+                            END
+                            ORDER BY r.nombre SEPARATOR ', '
+                        ),
+                        'Solo Administrador SWAFI'
+                    ) as roles_asignados"
+                ),
+                DB::raw(
+                    "COUNT(
+                        DISTINCT CASE
+                            WHEN r.nombre <> 'Administrador SWAFI' THEN r.id
+                        END
+                    ) as total_roles_no_admin"
+                ),
+            ])
+            ->groupBy(
+                'p.id',
+                'p.clave',
+                'p.descripcion',
+                'p.activo',
+                'p.es_sistema',
+                'p.created_at',
+                'p.updated_at'
+            )
+            ->orderBy('p.clave')
             ->get();
     }
 
@@ -521,7 +562,7 @@ class SeguridadController extends Controller
             'usuarios_activos' => DB::table('users')->where('estatus', 'activo')->count(),
             'usuarios_bloqueados' => DB::table('users')->where('estatus', 'bloqueado')->count(),
             'roles_activos' => DB::table('roles')->where('activo', 1)->count(),
-            'permisos_total' => DB::table('permissions')->count(),
+            'permisos_total' => DB::table('permissions')->where('activo', 1)->count(),
             'eventos_bitacora' => DB::table('bitacora_auditoria')->count(),
         ];
     }
@@ -579,16 +620,22 @@ class SeguridadController extends Controller
             fputcsv($output, [
                 'Rol',
                 'Descripción',
+                'Tipo',
                 'Activo',
-                'Total permisos',
-                'Permisos',
+                'Usuarios asignados',
+                'Usuarios activos',
+                'Total permisos activos',
+                'Permisos activos',
             ]);
 
             foreach ($rows as $row) {
                 fputcsv($output, [
                     $row->nombre,
                     $row->descripcion,
+                    ((int) $row->es_sistema) === 1 ? 'Base del sistema' : 'Personalizado',
                     ((int) $row->activo) === 1 ? 'Sí' : 'No',
+                    $row->total_usuarios,
+                    $row->usuarios_activos,
                     $row->total_permisos,
                     $row->permisos,
                 ]);
@@ -639,39 +686,4 @@ class SeguridadController extends Controller
         ]);
     }
 
-    private function messages(): array
-    {
-        return [
-            'required' => 'El campo :attribute es obligatorio.',
-            'unique' => 'El valor capturado en :attribute ya existe.',
-            'email' => 'El correo electrónico no tiene un formato válido.',
-            'exists' => 'El valor seleccionado en :attribute no existe.',
-            'min' => 'El campo :attribute no cumple la longitud mínima.',
-            'max' => 'El campo :attribute supera la longitud permitida.',
-            'in' => 'El campo :attribute contiene un valor no válido.',
-        ];
-    }
-
-    private function registrarBitacora(
-        string $accion,
-        ?string $tablaAfectada,
-        ?string $registroClave,
-        ?array $antes,
-        ?array $despues
-    ): void {
-        DB::table('bitacora_auditoria')->insert([
-            'numero_activo' => null,
-            'user_id' => session('swafi_user_id'),
-            'modulo' => 'M04 Administración y seguridad del sistema',
-            'accion' => $accion,
-            'tabla_afectada' => $tablaAfectada,
-            'registro_clave' => $registroClave,
-            'antes' => $antes ? json_encode($antes, JSON_UNESCAPED_UNICODE) : null,
-            'despues' => $despues ? json_encode($despues, JSON_UNESCAPED_UNICODE) : null,
-            'ip' => request()->ip(),
-            'fecha_evento' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
 }
