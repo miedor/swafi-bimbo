@@ -30,6 +30,7 @@ class SwafiCatalogSeeder extends Seeder
                 [
                     'descripcion' => $role['descripcion'],
                     'activo' => 1,
+                    'es_sistema' => 1,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]
@@ -62,6 +63,8 @@ class SwafiCatalogSeeder extends Seeder
                 ['clave' => $permission['clave']],
                 [
                     'descripcion' => $permission['descripcion'],
+                    'activo' => 1,
+                    'es_sistema' => 1,
                     'created_at' => $now,
                     'updated_at' => $now,
                 ]
@@ -79,7 +82,7 @@ class SwafiCatalogSeeder extends Seeder
         $consultaRoleId = DB::table('roles')->where('nombre', 'Usuario Consulta / Auditoría')->value('id');
         $plantaRoleId = DB::table('roles')->where('nombre', 'Usuario Planta / Inventarios')->value('id');
 
-        $allPermissionIds = DB::table('permissions')->pluck('id');
+        $allPermissionIds = DB::table('permissions')->where('activo', 1)->pluck('id');
 
         foreach ($allPermissionIds as $permissionId) {
             DB::table('permission_role')->updateOrInsert([
