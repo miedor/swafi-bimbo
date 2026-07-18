@@ -304,18 +304,131 @@
         color: #176b36;
     }
 
+
+
+    .sec-audit-detail {
+        margin-top: 20px;
+        border: 1px solid #cfe0f5;
+        box-shadow: 0 14px 34px rgba(18, 52, 90, 0.08);
+    }
+
+    .sec-audit-meta-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    .sec-audit-meta {
+        min-width: 0;
+        padding: 10px 12px;
+        border: 1px solid #e1eaf6;
+        border-radius: 13px;
+        background: #f8fbff;
+    }
+
+    .sec-audit-meta span {
+        display: block;
+        margin-bottom: 4px;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 800;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+    }
+
+    .sec-audit-meta strong {
+        display: block;
+        color: #173f70;
+        font-size: 13px;
+        overflow-wrap: anywhere;
+    }
+
+    .sec-audit-value {
+        display: block;
+        min-width: 180px;
+        max-width: 420px;
+        max-height: 140px;
+        overflow: auto;
+        padding: 8px 9px;
+        border-radius: 10px;
+        background: #f7f9fc;
+        color: #243b58;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        line-height: 1.45;
+        white-space: pre-wrap;
+        overflow-wrap: anywhere;
+    }
+
+    .sec-audit-snapshots {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+    }
+
+    .sec-audit-snapshot {
+        border: 1px solid #e1eaf6;
+        border-radius: 13px;
+        background: #ffffff;
+        overflow: hidden;
+    }
+
+    .sec-audit-snapshot > summary {
+        cursor: pointer;
+        padding: 10px 12px;
+        color: #174f9a;
+        font-size: 12px;
+        font-weight: 900;
+    }
+
+    .sec-audit-snapshot-list {
+        display: grid;
+        gap: 8px;
+        padding: 0 12px 12px;
+    }
+
+    .sec-audit-snapshot-item {
+        padding: 8px;
+        border-radius: 10px;
+        background: #f8fbff;
+    }
+
+    .sec-audit-snapshot-item strong {
+        display: block;
+        margin-bottom: 3px;
+        color: #31577f;
+        font-size: 11px;
+    }
+
+    .sec-export-note {
+        margin-top: 10px;
+        color: #64748b;
+        font-size: 11px;
+        line-height: 1.4;
+    }
+
     @media (max-width: 1100px) {
         .sec-grid,
-        .sec-kpi-grid {
-            grid-template-columns: 1fr;
+        .sec-kpi-grid,
+        .sec-audit-meta-grid {
+            grid-template-columns: 1fr 1fr;
         }
     }
 
     @media (max-width: 760px) {
         .sec-form-grid,
         .sec-filter-grid,
-        .sec-check-grid {
+        .sec-check-grid,
+        .sec-audit-meta-grid,
+        .sec-audit-snapshots {
             grid-template-columns: 1fr !important;
+        }
+
+        .sec-audit-value {
+            min-width: 150px;
+            max-width: 300px;
         }
     }
 </style>
@@ -341,49 +454,57 @@
 @endif
 
 <div class="sec-kpi-grid">
-    <div class="sec-kpi">
-        <strong>{{ number_format((int) $kpis['usuarios_total']) }}</strong>
-        <span>Usuarios</span>
-    </div>
+    @if ($canManageSecurity)
+        <div class="sec-kpi">
+            <strong>{{ number_format((int) $kpis['usuarios_total']) }}</strong>
+            <span>Usuarios</span>
+        </div>
 
-    <div class="sec-kpi">
-        <strong>{{ number_format((int) $kpis['usuarios_activos']) }}</strong>
-        <span>Usuarios activos</span>
-    </div>
+        <div class="sec-kpi">
+            <strong>{{ number_format((int) $kpis['usuarios_activos']) }}</strong>
+            <span>Usuarios activos</span>
+        </div>
 
-    <div class="sec-kpi">
-        <strong>{{ number_format((int) ($kpis['usuarios_bloqueados'] ?? 0)) }}</strong>
-        <span>Usuarios bloqueados</span>
-    </div>
+        <div class="sec-kpi">
+            <strong>{{ number_format((int) ($kpis['usuarios_bloqueados'] ?? 0)) }}</strong>
+            <span>Usuarios bloqueados</span>
+        </div>
 
-    <div class="sec-kpi">
-        <strong>{{ number_format((int) $kpis['roles_activos']) }}</strong>
-        <span>Roles activos</span>
-    </div>
+        <div class="sec-kpi">
+            <strong>{{ number_format((int) $kpis['roles_activos']) }}</strong>
+            <span>Roles activos</span>
+        </div>
 
-    <div class="sec-kpi">
-        <strong>{{ number_format((int) $kpis['permisos_total']) }}</strong>
-        <span>Permisos</span>
-    </div>
+        <div class="sec-kpi">
+            <strong>{{ number_format((int) $kpis['permisos_total']) }}</strong>
+            <span>Permisos</span>
+        </div>
+    @endif
 
-    <div class="sec-kpi">
-        <strong>{{ number_format((int) $kpis['eventos_bitacora']) }}</strong>
-        <span>Eventos bitácora</span>
-    </div>
+    @if ($canViewAudit)
+        <div class="sec-kpi">
+            <strong>{{ number_format((int) $kpis['eventos_bitacora']) }}</strong>
+            <span>Eventos bitácora</span>
+        </div>
+    @endif
 </div>
 
-<div class="sec-tabs">
-    <a class="{{ $tabActivo === 'usuarios' ? 'active' : '' }}" href="{{ route('seguridad', ['tab' => 'usuarios']) }}">
-        Usuarios
-    </a>
+<div class="sec-tabs" aria-label="Secciones de Seguridad y acceso">
+    @if ($canManageSecurity)
+        <a class="{{ $tabActivo === 'usuarios' ? 'active' : '' }}" href="{{ route('seguridad', ['tab' => 'usuarios']) }}">
+            Usuarios
+        </a>
 
-    <a class="{{ $tabActivo === 'roles' ? 'active' : '' }}" href="{{ route('seguridad', ['tab' => 'roles']) }}">
-        Roles y permisos
-    </a>
+        <a class="{{ $tabActivo === 'roles' ? 'active' : '' }}" href="{{ route('seguridad', ['tab' => 'roles']) }}">
+            Roles y permisos
+        </a>
+    @endif
 
-    <a class="{{ $tabActivo === 'bitacora' ? 'active' : '' }}" href="{{ route('seguridad', ['tab' => 'bitacora']) }}">
-        Bitácora
-    </a>
+    @if ($canViewAudit)
+        <a class="{{ $tabActivo === 'bitacora' ? 'active' : '' }}" href="{{ route('seguridad', ['tab' => 'bitacora']) }}">
+            Bitácora
+        </a>
+    @endif
 </div>
 
 @if ($tabActivo === 'usuarios')
@@ -1082,143 +1203,341 @@
 @endif
 
 @if ($tabActivo === 'bitacora')
+    @php
+        $bitacoraBaseParams = collect(request()->query())
+            ->except(['export', 'detalle_bitacora', 'bitacora_page'])
+            ->filter(fn ($value) => $value !== null && $value !== '')
+            ->all();
+        $bitacoraBaseParams['tab'] = 'bitacora';
+        $selectedAuditUser = (string) ($filtros['usuario_bitacora_id'] ?? '');
+        $selectedAuditModule = (string) ($filtros['modulo'] ?? '');
+        $selectedAuditAction = (string) ($filtros['accion'] ?? '');
+    @endphp
+
     <div data-swafi-query-workspace data-swafi-query-key="seguridad-bitacora">
-    <section class="card" data-swafi-query-panel>
-        <div class="section-title">
-            <h2>Filtros de bitácora</h2>
-            <span class="pill ok">Auditoría</span>
-        </div>
-
-        <form method="GET" action="{{ route('seguridad') }}" class="sec-filter" data-swafi-query-form>
-            <input type="hidden" name="tab" value="bitacora">
-
-            <div class="sec-filter-grid">
-                <label>
-                    <span>Buscar</span>
-                    <input name="buscar_bitacora" value="{{ $filtros['buscar_bitacora'] ?? '' }}" placeholder="Usuario, acción, módulo, tabla">
-                </label>
-
-                <label>
-                    <span>Número de activo</span>
-                    <input name="numero_activo" value="{{ $filtros['numero_activo'] ?? '' }}" placeholder="Ej. BIM-537028">
-                </label>
-
-                <label>
-                    <span>Módulo</span>
-                    <input name="modulo" value="{{ $filtros['modulo'] ?? '' }}" placeholder="Ej. M04">
-                </label>
-
-                <label>
-                    <span>Acción</span>
-                    <input name="accion" value="{{ $filtros['accion'] ?? '' }}" placeholder="Ej. ALTA">
-                </label>
-
-                <label>
-                    <span>Fecha desde</span>
-                    <input type="date" name="fecha_desde" value="{{ $filtros['fecha_desde'] ?? '' }}">
-                </label>
-
-                <label>
-                    <span>Fecha hasta</span>
-                    <input type="date" name="fecha_hasta" value="{{ $filtros['fecha_hasta'] ?? '' }}">
-                </label>
-
-                <label>
-                    <span>Registros por página</span>
-                    @php
-                        $perPageBitacora = (string) ($filtros['per_page'] ?? 10);
-                    @endphp
-
-                    <select name="per_page">
-                        @foreach ([10, 25, 50] as $size)
-                            <option value="{{ $size }}" {{ $perPageBitacora === (string) $size ? 'selected' : '' }}>
-                                {{ $size }}
-                            </option>
-                        @endforeach
-                    </select>
-                </label>
+        <section class="card" data-swafi-query-panel>
+            <div class="section-title">
+                <h2>Filtros de bitácora</h2>
+                <span class="pill ok">HU-093 · Auditoría</span>
             </div>
 
-            <div class="action-group" style="margin-top:12px">
-                <button class="tab" type="submit">Consultar</button>
-                <button class="tab" type="submit" name="export" value="csv">Exportar CSV</button>
-                <a class="tab" href="{{ route('seguridad', ['tab' => 'bitacora']) }}">Limpiar filtros</a>
+            <form method="GET" action="{{ route('seguridad') }}" class="sec-filter" data-swafi-query-form>
+                <input type="hidden" name="tab" value="bitacora">
+
+                <div class="sec-filter-grid">
+                    <label>
+                        <span>Buscar</span>
+                        <input
+                            name="buscar_bitacora"
+                            value="{{ $filtros['buscar_bitacora'] ?? '' }}"
+                            maxlength="160"
+                            placeholder="Usuario, acción, módulo, tabla o registro"
+                        >
+                    </label>
+
+                    <label>
+                        <span>Persona usuaria</span>
+                        <select name="usuario_bitacora_id">
+                            <option value="">Todas las personas usuarias</option>
+                            @foreach ($bitacoraOpciones['users'] as $auditUser)
+                                <option
+                                    value="{{ $auditUser->id }}"
+                                    {{ $selectedAuditUser === (string) $auditUser->id ? 'selected' : '' }}
+                                >
+                                    {{ $auditUser->name }} · {{ $auditUser->usuario ?: $auditUser->email }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </label>
+
+                    <label>
+                        <span>Número de activo</span>
+                        <input
+                            name="numero_activo"
+                            value="{{ $filtros['numero_activo'] ?? '' }}"
+                            maxlength="30"
+                            placeholder="Ej. BIM-537028"
+                        >
+                    </label>
+
+                    <label>
+                        <span>Módulo</span>
+                        <select name="modulo">
+                            <option value="">Todos los módulos</option>
+                            @foreach ($bitacoraOpciones['modules'] as $module)
+                                <option value="{{ $module }}" {{ $selectedAuditModule === (string) $module ? 'selected' : '' }}>
+                                    {{ $module }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </label>
+
+                    <label>
+                        <span>Acción</span>
+                        <select name="accion">
+                            <option value="">Todas las acciones</option>
+                            @foreach ($bitacoraOpciones['actions'] as $action)
+                                <option value="{{ $action }}" {{ $selectedAuditAction === (string) $action ? 'selected' : '' }}>
+                                    {{ $action }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </label>
+
+                    <label>
+                        <span>Fecha desde</span>
+                        <input type="date" name="fecha_desde" value="{{ $filtros['fecha_desde'] ?? '' }}">
+                    </label>
+
+                    <label>
+                        <span>Fecha hasta</span>
+                        <input type="date" name="fecha_hasta" value="{{ $filtros['fecha_hasta'] ?? '' }}">
+                    </label>
+
+                    <label>
+                        <span>Registros por página</span>
+                        @php
+                            $perPageBitacora = (string) ($filtros['per_page'] ?? 10);
+                        @endphp
+
+                        <select name="per_page">
+                            @foreach ([10, 25, 50] as $size)
+                                <option value="{{ $size }}" {{ $perPageBitacora === (string) $size ? 'selected' : '' }}>
+                                    {{ $size }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </label>
+                </div>
+
+                <div class="action-group" style="margin-top:12px">
+                    <button class="tab" type="submit">Consultar</button>
+                    <button class="tab" type="submit" name="export" value="csv">Exportar CSV</button>
+                    <button class="tab" type="submit" name="export" value="xlsx">Exportar Excel</button>
+                    <button class="tab" type="submit" name="export" value="pdf">Exportar PDF</button>
+                    <a class="tab" href="{{ route('seguridad', ['tab' => 'bitacora']) }}">Limpiar filtros</a>
+                </div>
+
+                <p class="sec-export-note">
+                    Las exportaciones respetan los filtros y admiten hasta
+                    {{ number_format((int) $bitacoraExportLimit) }} eventos por archivo. Los valores sensibles
+                    como contraseñas, tokens y secretos se excluyen del detalle y de las exportaciones.
+                </p>
+            </form>
+        </section>
+
+        @if ($bitacoraDetalle)
+            @php
+                $detalleEvento = $bitacoraDetalle['event'];
+            @endphp
+
+            <section
+                class="card sec-audit-detail"
+                id="swafi-seguridad-bitacora-detalle"
+                aria-labelledby="swafi-audit-detail-title"
+            >
+                <div class="section-title">
+                    <div>
+                        <h2 id="swafi-audit-detail-title">Detalle del evento #{{ $detalleEvento->id }}</h2>
+                        <small>Valores anteriores y posteriores protegidos contra exposición de secretos.</small>
+                    </div>
+                    <a class="tab" href="{{ route('seguridad', $bitacoraBaseParams) }}">Cerrar detalle</a>
+                </div>
+
+                <div class="sec-audit-meta-grid">
+                    <div class="sec-audit-meta">
+                        <span>Fecha y hora</span>
+                        <strong>{{ $detalleEvento->fecha_evento }}</strong>
+                    </div>
+                    <div class="sec-audit-meta">
+                        <span>Persona usuaria</span>
+                        <strong>
+                            {{ $detalleEvento->usuario_nombre ?: 'Sistema' }}
+                            @if ($detalleEvento->usuario || $detalleEvento->usuario_email)
+                                · {{ $detalleEvento->usuario ?: $detalleEvento->usuario_email }}
+                            @endif
+                        </strong>
+                    </div>
+                    <div class="sec-audit-meta">
+                        <span>Módulo y acción</span>
+                        <strong>{{ $detalleEvento->modulo }} · {{ $detalleEvento->accion }}</strong>
+                    </div>
+                    <div class="sec-audit-meta">
+                        <span>Origen</span>
+                        <strong>{{ $detalleEvento->ip ?: 'IP no registrada' }}</strong>
+                    </div>
+                    <div class="sec-audit-meta">
+                        <span>Tabla</span>
+                        <strong>{{ $detalleEvento->tabla_afectada ?: '—' }}</strong>
+                    </div>
+                    <div class="sec-audit-meta">
+                        <span>Registro</span>
+                        <strong>{{ $detalleEvento->registro_clave ?: '—' }}</strong>
+                    </div>
+                    <div class="sec-audit-meta">
+                        <span>Activo</span>
+                        <strong>{{ $detalleEvento->numero_activo ?: '—' }}</strong>
+                    </div>
+                    <div class="sec-audit-meta">
+                        <span>Referencia</span>
+                        <strong>AUD-{{ str_pad((string) $detalleEvento->id, 8, '0', STR_PAD_LEFT) }}</strong>
+                    </div>
+                </div>
+
+                <div class="section-title">
+                    <h3>Cambios identificados</h3>
+                    <span class="pill ok">{{ count($bitacoraDetalle['changes']) }} diferencia(s)</span>
+                </div>
+
+                <div class="sec-table-scroll">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Campo</th>
+                                <th>Valor anterior</th>
+                                <th>Valor posterior</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @forelse ($bitacoraDetalle['changes'] as $change)
+                                <tr>
+                                    <td>
+                                        <strong>{{ $change['label'] }}</strong><br>
+                                        <small>{{ $change['field'] }}</small>
+                                    </td>
+                                    <td><span class="sec-audit-value">{{ $change['before'] }}</span></td>
+                                    <td><span class="sec-audit-value">{{ $change['after'] }}</span></td>
+                                </tr>
+                            @empty
+                                <tr>
+                                    <td colspan="3">
+                                        El evento no contiene diferencias comparables o corresponde a una acción informativa.
+                                    </td>
+                                </tr>
+                            @endforelse
+                        </tbody>
+                    </table>
+                </div>
+
+                <div class="sec-audit-snapshots">
+                    <details class="sec-audit-snapshot">
+                        <summary>Ver estado anterior completo</summary>
+                        <div class="sec-audit-snapshot-list">
+                            @forelse ($bitacoraDetalle['before'] as $item)
+                                <div class="sec-audit-snapshot-item">
+                                    <strong>{{ $item['label'] }}</strong>
+                                    <span class="sec-audit-value">{{ $item['value'] }}</span>
+                                </div>
+                            @empty
+                                <div class="sec-audit-snapshot-item">No existe estado anterior registrado.</div>
+                            @endforelse
+                        </div>
+                    </details>
+
+                    <details class="sec-audit-snapshot">
+                        <summary>Ver estado posterior completo</summary>
+                        <div class="sec-audit-snapshot-list">
+                            @forelse ($bitacoraDetalle['after'] as $item)
+                                <div class="sec-audit-snapshot-item">
+                                    <strong>{{ $item['label'] }}</strong>
+                                    <span class="sec-audit-value">{{ $item['value'] }}</span>
+                                </div>
+                            @empty
+                                <div class="sec-audit-snapshot-item">No existe estado posterior registrado.</div>
+                            @endforelse
+                        </div>
+                    </details>
+                </div>
+            </section>
+        @endif
+
+        <section class="card table-card" style="margin-top:20px" data-swafi-query-results id="swafi-seguridad-bitacora-resultados">
+            <div class="section-title">
+                <h2>Bitácora de auditoría</h2>
+                <span class="pill ok">{{ number_format($bitacora->total()) }} evento(s)</span>
             </div>
-        </form>
-    </section>
 
-    <section class="card table-card" style="margin-top:20px" data-swafi-query-results id="swafi-seguridad-bitacora-resultados">
-        <div class="section-title">
-            <h2>Bitácora de auditoría</h2>
-            <span class="pill ok">Trazabilidad</span>
-        </div>
-
-        <div class="sec-table-scroll">
-            <table>
-                <thead>
-                    <tr>
-                        <th>Fecha</th>
-                        <th>Usuario</th>
-                        <th>Módulo</th>
-                        <th>Acción</th>
-                        <th>Tabla</th>
-                        <th>Registro</th>
-                        <th>Activo</th>
-                        <th>IP</th>
-                    </tr>
-                </thead>
-
-                <tbody>
-                    @forelse ($bitacora as $evento)
+            <div class="sec-table-scroll">
+                <table>
+                    <thead>
                         <tr>
-                            <td>{{ $evento->fecha_evento }}</td>
-                            <td>
-                                {{ $evento->usuario ?: ($evento->usuario_email ?: 'Sistema') }}<br>
-                                <small>{{ $evento->usuario_nombre ?: 'Sin nombre' }}</small>
-                            </td>
-                            <td>{{ $evento->modulo }}</td>
-                            <td><strong>{{ $evento->accion }}</strong></td>
-                            <td>{{ $evento->tabla_afectada ?: '—' }}</td>
-                            <td>{{ $evento->registro_clave ?: '—' }}</td>
-                            <td>{{ $evento->numero_activo ?: '—' }}</td>
-                            <td>{{ $evento->ip ?: '—' }}</td>
+                            <th>Fecha</th>
+                            <th>Usuario</th>
+                            <th>Módulo</th>
+                            <th>Acción</th>
+                            <th>Tabla</th>
+                            <th>Registro</th>
+                            <th>Activo</th>
+                            <th>IP</th>
+                            <th>Detalle</th>
                         </tr>
-                    @empty
-                        <tr>
-                            <td colspan="8">No existen eventos de bitácora con los criterios seleccionados.</td>
-                        </tr>
-                    @endforelse
-                </tbody>
-            </table>
-        </div>
+                    </thead>
 
-        <div class="table-footer">
-            <div class="table-summary">
-                Mostrando {{ $bitacora->firstItem() ?? 0 }}–{{ $bitacora->lastItem() ?? 0 }}
-                de {{ $bitacora->total() }} resultados
+                    <tbody>
+                        @forelse ($bitacora as $evento)
+                            @php
+                                $detailParams = array_merge(
+                                    $bitacoraBaseParams,
+                                    [
+                                        'detalle_bitacora' => $evento->id,
+                                        'swafi_focus' => 'swafi-seguridad-bitacora-detalle',
+                                    ]
+                                );
+                            @endphp
+                            <tr>
+                                <td>{{ $evento->fecha_evento }}</td>
+                                <td>
+                                    {{ $evento->usuario ?: ($evento->usuario_email ?: 'Sistema') }}<br>
+                                    <small>{{ $evento->usuario_nombre ?: 'Sin nombre' }}</small>
+                                </td>
+                                <td>{{ $evento->modulo }}</td>
+                                <td><strong>{{ $evento->accion }}</strong></td>
+                                <td>{{ $evento->tabla_afectada ?: '—' }}</td>
+                                <td>{{ $evento->registro_clave ?: '—' }}</td>
+                                <td>{{ $evento->numero_activo ?: '—' }}</td>
+                                <td>{{ $evento->ip ?: '—' }}</td>
+                                <td>
+                                    <a class="tab" href="{{ route('seguridad', $detailParams) }}">
+                                        Ver detalle
+                                    </a>
+                                </td>
+                            </tr>
+                        @empty
+                            <tr>
+                                <td colspan="9">No existen eventos de bitácora con los criterios seleccionados.</td>
+                            </tr>
+                        @endforelse
+                    </tbody>
+                </table>
             </div>
 
-            <div class="table-pagination">
-                @if ($bitacora->onFirstPage())
-                    <span class="page-link disabled">Anterior</span>
-                @else
-                    <a class="page-link" href="{{ $bitacora->previousPageUrl() }}">Anterior</a>
-                @endif
+            <div class="table-footer">
+                <div class="table-summary">
+                    Mostrando {{ $bitacora->firstItem() ?? 0 }}–{{ $bitacora->lastItem() ?? 0 }}
+                    de {{ $bitacora->total() }} resultados
+                </div>
 
-                <span class="page-link active">{{ $bitacora->currentPage() }}</span>
+                <div class="table-pagination">
+                    @if ($bitacora->onFirstPage())
+                        <span class="page-link disabled">Anterior</span>
+                    @else
+                        <a class="page-link" href="{{ $bitacora->previousPageUrl() }}">Anterior</a>
+                    @endif
 
-                @if ($bitacora->hasMorePages())
-                    <a class="page-link" href="{{ $bitacora->nextPageUrl() }}">Siguiente</a>
-                @else
-                    <span class="page-link disabled">Siguiente</span>
-                @endif
+                    <span class="page-link active">{{ $bitacora->currentPage() }}</span>
+
+                    @if ($bitacora->hasMorePages())
+                        <a class="page-link" href="{{ $bitacora->nextPageUrl() }}">Siguiente</a>
+                    @else
+                        <span class="page-link disabled">Siguiente</span>
+                    @endif
+                </div>
+
+                <div class="table-page-size">
+                    <span>HU-093 y HU-094</span>
+                </div>
             </div>
-
-            <div class="table-page-size">
-                <span>M04 bitácora funcional</span>
-            </div>
-        </div>
-    </section>
+        </section>
     </div>
 @endif
 
