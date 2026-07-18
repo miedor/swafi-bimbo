@@ -2,53 +2,73 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\SecurityIndexRequest;
 use App\Http\Requests\StoreSecurityPermissionRequest;
 use App\Http\Requests\StoreSecurityRoleRequest;
 use App\Http\Requests\StoreSecurityUserRequest;
 use App\Http\Requests\UpdateSecurityPermissionStatusRequest;
 use App\Http\Requests\UpdateSecurityRoleStatusRequest;
 use App\Http\Requests\UpdateSecurityUserStatusRequest;
+use App\Services\AuditLogService;
 use App\Services\RolePermissionManagementService;
+use App\Services\SimplePdfTableExporter;
+use App\Services\SimpleXlsxExporter;
 use App\Services\UserAccessManagementService;
 use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Throwable;
 
 class SeguridadController extends Controller
 {
     public function __construct(
         private readonly UserAccessManagementService $userAccess,
-        private readonly RolePermissionManagementService $rolePermissions
+        private readonly RolePermissionManagementService $rolePermissions,
+        private readonly AuditLogService $auditLog,
+        private readonly SimpleXlsxExporter $xlsxExporter,
+        private readonly SimplePdfTableExporter $pdfExporter
     ) {
     }
 
-    public function index(Request $request)
+    public function index(SecurityIndexRequest $request)
     {
-        $tabActivo = $this->normalizeTab($request->input('tab', 'usuarios'));
+        $filters = $request->validated();
+        $tabActivo = $this->normalizeTab($filters['tab'] ?? 'usuarios');
+        $perPage = (int) ($filters['per_page'] ?? 10);
+        $sessionRoles = collect($request->session()->get('swafi_roles', []))
+            ->map(fn ($role) => mb_strtolower(trim((string) $role)));
+        $sessionPermissions = collect($request->session()->get('swafi_permissions', []))
+            ->map(fn ($permission) => trim((string) $permission));
+        $canManageSecurity = $sessionRoles->contains('administrador swafi')
+            || $sessionPermissions->contains('seguridad.administrar');
+        $canViewAudit = $sessionRoles->contains('administrador swafi')
+            || $sessionPermissions->contains('bitacora.ver');
 
         $usuariosQuery = $this->usuariosQuery($request);
-        $bitacoraQuery = $this->bitacoraQuery($request);
+        $bitacoraQuery = $this->auditLog->query($filters);
         $permissionsAsignables = DB::table('permissions')
             ->where('activo', 1)
             ->orderBy('clave')
             ->get(['id', 'clave', 'descripcion', 'activo', 'es_sistema']);
 
-        if ($tabActivo === 'usuarios' && $request->input('export') === 'csv') {
+        $exportFormat = (string) ($filters['export'] ?? '');
+
+        if ($tabActivo === 'usuarios' && $exportFormat === 'csv') {
             return $this->exportUsuariosCsv($usuariosQuery);
         }
 
-        if ($tabActivo === 'roles' && $request->input('export') === 'csv') {
+        if ($tabActivo === 'roles' && $exportFormat === 'csv') {
             return $this->exportRolesCsv();
         }
 
-        if ($tabActivo === 'bitacora' && $request->input('export') === 'csv') {
-            return $this->exportBitacoraCsv($bitacoraQuery);
+        if ($tabActivo === 'bitacora' && in_array($exportFormat, ['csv', 'xlsx', 'pdf'], true)) {
+            return $this->exportBitacora($exportFormat, $filters, $request);
         }
 
         return view('swafi.seguridad', [
             'tabActivo' => $tabActivo,
             'usuarios' => $usuariosQuery
-                ->paginate((int) $request->input('per_page', 10), ['*'], 'usuarios_page')
+                ->paginate($perPage, ['*'], 'usuarios_page')
                 ->withQueryString(),
             'roles' => $this->rolesWithPermissions(),
             'rolesAsignables' => DB::table('roles')
@@ -59,14 +79,27 @@ class SeguridadController extends Controller
                 ->groupBy(fn ($permission) => explode('.', (string) $permission->clave, 2)[0]),
             'permissions' => $this->permissionsWithUsage(),
             'bitacora' => $bitacoraQuery
-                ->paginate((int) $request->input('per_page', 10), ['*'], 'bitacora_page')
+                ->paginate($perPage, ['*'], 'bitacora_page')
                 ->withQueryString(),
-            'usuarioEdit' => $this->findUserForEdit($request->input('editar_usuario')),
-            'rolEdit' => $this->findRoleForEdit($request->input('editar_rol')),
-            'permisoEdit' => $this->findPermissionForEdit($request->input('editar_permiso')),
-            'usuarioRoles' => $this->userRolesForEdit($request->input('editar_usuario')),
-            'rolPermisos' => $this->rolePermissionsForEdit($request->input('editar_rol')),
-            'filtros' => $request->all(),
+            'bitacoraDetalle' => $tabActivo === 'bitacora'
+                ? $this->auditLog->detail(
+                    isset($filters['detalle_bitacora'])
+                        ? (int) $filters['detalle_bitacora']
+                        : null
+                )
+                : null,
+            'bitacoraOpciones' => $tabActivo === 'bitacora'
+                ? $this->auditLog->filterOptions()
+                : ['users' => collect(), 'modules' => collect(), 'actions' => collect()],
+            'bitacoraExportLimit' => $this->auditLog->exportLimit(),
+            'canManageSecurity' => $canManageSecurity,
+            'canViewAudit' => $canViewAudit,
+            'usuarioEdit' => $this->findUserForEdit($filters['editar_usuario'] ?? null),
+            'rolEdit' => $this->findRoleForEdit($filters['editar_rol'] ?? null),
+            'permisoEdit' => $this->findPermissionForEdit($filters['editar_permiso'] ?? null),
+            'usuarioRoles' => $this->userRolesForEdit($filters['editar_usuario'] ?? null),
+            'rolPermisos' => $this->rolePermissionsForEdit($filters['editar_rol'] ?? null),
+            'filtros' => $filters,
             'kpis' => $this->buildKpis(),
         ]);
     }
@@ -451,63 +484,6 @@ class SeguridadController extends Controller
             ->get();
     }
 
-    private function bitacoraQuery(Request $request)
-    {
-        $query = DB::table('bitacora_auditoria as b')
-            ->leftJoin('users as u', 'u.id', '=', 'b.user_id')
-            ->select([
-                'b.id',
-                'b.numero_activo',
-                'b.modulo',
-                'b.accion',
-                'b.tabla_afectada',
-                'b.registro_clave',
-                'b.ip',
-                'b.fecha_evento',
-                'u.usuario as usuario',
-                'u.name as usuario_nombre',
-                'u.email as usuario_email',
-            ]);
-
-        if ($request->filled('buscar_bitacora')) {
-            $buscar = '%' . trim($request->input('buscar_bitacora')) . '%';
-
-            $query->where(function ($where) use ($buscar) {
-                $where->where('b.modulo', 'like', $buscar)
-                    ->orWhere('b.accion', 'like', $buscar)
-                    ->orWhere('b.tabla_afectada', 'like', $buscar)
-                    ->orWhere('b.registro_clave', 'like', $buscar)
-                    ->orWhere('u.usuario', 'like', $buscar)
-                    ->orWhere('u.name', 'like', $buscar)
-                    ->orWhere('u.email', 'like', $buscar);
-            });
-        }
-
-        if ($request->filled('modulo')) {
-            $query->where('b.modulo', 'like', '%' . $request->input('modulo') . '%');
-        }
-
-        if ($request->filled('accion')) {
-            $query->where('b.accion', 'like', '%' . $request->input('accion') . '%');
-        }
-
-        if ($request->filled('numero_activo')) {
-            $query->where('b.numero_activo', 'like', '%' . $request->input('numero_activo') . '%');
-        }
-
-        if ($request->filled('fecha_desde')) {
-            $query->whereDate('b.fecha_evento', '>=', $request->input('fecha_desde'));
-        }
-
-        if ($request->filled('fecha_hasta')) {
-            $query->whereDate('b.fecha_evento', '<=', $request->input('fecha_hasta'));
-        }
-
-        return $query
-            ->orderByDesc('b.fecha_evento')
-            ->orderByDesc('b.id');
-    }
-
     private function findUserForEdit(?string $id)
     {
         return $id
@@ -647,43 +623,144 @@ class SeguridadController extends Controller
         ]);
     }
 
-    private function exportBitacoraCsv($query)
-    {
-        $rows = $query->get();
+    private function exportBitacora(
+        string $format,
+        array $filters,
+        SecurityIndexRequest $request
+    ) {
+        $redirectFilters = collect($filters)
+            ->except(['export', 'detalle_bitacora'])
+            ->filter(fn ($value) => $value !== null && $value !== '')
+            ->all();
+        $redirectFilters['tab'] = 'bitacora';
 
-        return response()->streamDownload(function () use ($rows) {
-            $output = fopen('php://output', 'w');
+        try {
+            $export = $this->auditLog->rowsForExport($filters);
+            $rows = $export['rows']->map(function ($row): array {
+                return [
+                    $row->fecha_evento,
+                    $row->usuario ?: ($row->usuario_email ?: 'Sistema'),
+                    $row->usuario_nombre ?: 'Sin nombre',
+                    $row->modulo,
+                    $row->accion,
+                    $row->tabla_afectada ?: '—',
+                    $row->registro_clave ?: '—',
+                    $row->numero_activo ?: '—',
+                    $row->ip ?: '—',
+                    $this->auditLog->snapshotForExport($row->antes),
+                    $this->auditLog->snapshotForExport($row->despues),
+                ];
+            })->all();
 
-            fwrite($output, "\xEF\xBB\xBF");
-
-            fputcsv($output, [
+            $headers = [
                 'Fecha evento',
                 'Usuario',
+                'Nombre',
                 'Módulo',
                 'Acción',
                 'Tabla',
                 'Registro',
                 'Número activo',
                 'IP',
-            ]);
+                'Antes',
+                'Después',
+            ];
 
-            foreach ($rows as $row) {
-                fputcsv($output, [
-                    $row->fecha_evento,
-                    $row->usuario ?: $row->usuario_email,
-                    $row->modulo,
-                    $row->accion,
-                    $row->tabla_afectada,
-                    $row->registro_clave,
-                    $row->numero_activo,
-                    $row->ip,
+            $timestamp = now()->format('Ymd_His');
+            $actorId = (int) $request->session()->get('swafi_user_id');
+            $this->auditLog->registerExport(
+                format: $format,
+                actorId: $actorId,
+                ip: $request->ip(),
+                filters: $filters,
+                rowCount: count($rows)
+            );
+
+            if ($format === 'xlsx') {
+                $bytes = $this->xlsxExporter->exportBytes('Bitácora SWAFI', $headers, $rows);
+
+                return response($bytes, 200, [
+                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'Content-Disposition' => 'attachment; filename="bitacora_swafi_' . $timestamp . '.xlsx"',
+                    'Content-Length' => (string) strlen($bytes),
+                    'X-Content-Type-Options' => 'nosniff',
+                    'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
                 ]);
             }
 
-            fclose($output);
-        }, 'bitacora_swafi_' . now()->format('Ymd_His') . '.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
-        ]);
+            if ($format === 'pdf') {
+                $bytes = $this->pdfExporter->export(
+                    title: 'Bitácora de auditoría SWAFI',
+                    headers: $headers,
+                    rows: $rows,
+                    metadata: [
+                        'usuario' => (string) $request->session()->get('swafi_user_name', 'Usuario SWAFI'),
+                        'fecha' => now()->format('d/m/Y H:i:s'),
+                        'filtros' => $this->auditLog->filterSummary($filters),
+                    ]
+                );
+
+                return response($bytes, 200, [
+                    'Content-Type' => 'application/pdf',
+                    'Content-Disposition' => 'attachment; filename="bitacora_swafi_' . $timestamp . '.pdf"',
+                    'Content-Length' => (string) strlen($bytes),
+                    'X-Content-Type-Options' => 'nosniff',
+                    'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                ]);
+            }
+
+            return response()->streamDownload(function () use ($headers, $rows): void {
+                $output = fopen('php://output', 'wb');
+
+                if ($output === false) {
+                    return;
+                }
+
+                fwrite($output, "\xEF\xBB\xBF");
+                fputcsv($output, $headers);
+
+                foreach ($rows as $row) {
+                    fputcsv(
+                        $output,
+                        array_map(fn ($value) => $this->csvSafeValue($value), $row)
+                    );
+                }
+
+                fclose($output);
+            }, 'bitacora_swafi_' . $timestamp . '.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'X-Content-Type-Options' => 'nosniff',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+            ]);
+        } catch (DomainException $exception) {
+            return redirect()
+                ->route('seguridad', $redirectFilters)
+                ->withErrors(['bitacora' => $exception->getMessage()]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return redirect()
+                ->route('seguridad', $redirectFilters)
+                ->withErrors([
+                    'bitacora' => 'No fue posible generar la exportación solicitada. '
+                        . 'Prueba con un rango de fechas menor o utiliza otro formato.',
+                ]);
+        }
+    }
+
+    private function csvSafeValue(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        $trimmed = ltrim($value);
+
+        if ($trimmed !== '' && in_array($trimmed[0], ['=', '+', '-', '@'], true)) {
+            return "'" . $value;
+        }
+
+        return $value;
     }
 
 }
