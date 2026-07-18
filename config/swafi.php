@@ -17,6 +17,22 @@ return [
         ),
     ],
 
+
+    'bitacora' => [
+        /*
+         * Límite máximo de filas por archivo para evitar exportaciones que
+         * consuman memoria de forma excesiva en Laravel Cloud. Los filtros de
+         * la consulta se aplican antes de validar este límite.
+         */
+        'limite_exportacion' => min(
+            50000,
+            max(
+                100,
+                (int) env('SWAFI_AUDIT_EXPORT_LIMIT', 10000)
+            )
+        ),
+    ],
+
     'administrador_inicial' => [
         /*
          * Identidad no secreta utilizada únicamente por el comando
