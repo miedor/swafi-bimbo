@@ -223,6 +223,87 @@
         line-height: 1.45;
     }
 
+
+    .sec-system-note {
+        display: flex;
+        align-items: flex-start;
+        gap: 8px;
+        padding: 10px 12px;
+        border: 1px solid #cfe0f5;
+        border-radius: 13px;
+        background: #f1f7ff;
+        color: #31577f;
+        font-size: 12px;
+        line-height: 1.45;
+    }
+
+    .sec-permission-groups {
+        display: grid;
+        gap: 10px;
+        margin-top: 8px;
+    }
+
+    .sec-permission-group {
+        border: 1px solid #dce7f4;
+        border-radius: 13px;
+        background: #fbfdff;
+        overflow: hidden;
+    }
+
+    .sec-permission-group > summary {
+        cursor: pointer;
+        padding: 10px 12px;
+        color: #174f9a;
+        font-size: 12px;
+        font-weight: 900;
+        list-style-position: inside;
+    }
+
+    .sec-permission-group .sec-check-grid {
+        padding: 0 10px 10px;
+    }
+
+    .sec-action-muted {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        color: #7a8798;
+        font-size: 11px;
+        font-weight: 800;
+    }
+
+    .sec-code {
+        display: inline-block;
+        max-width: 100%;
+        padding: 3px 7px;
+        border-radius: 8px;
+        background: #eef4fb;
+        color: #173f70;
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 11px;
+        overflow-wrap: anywhere;
+    }
+
+    .sec-inline-form {
+        display: inline;
+    }
+
+    .sec-inline-form button {
+        border: 0;
+        background: none;
+        font-weight: 800;
+        cursor: pointer;
+        padding: 0;
+    }
+
+    .sec-inline-form button.danger {
+        color: #b42318;
+    }
+
+    .sec-inline-form button.success {
+        color: #176b36;
+    }
+
     @media (max-width: 1100px) {
         .sec-grid,
         .sec-kpi-grid {
@@ -605,20 +686,23 @@
     @php
         $editandoRol = $rolEdit !== null;
         $editandoPermiso = $permisoEdit !== null;
+        $rolEsSistema = $editandoRol && ((int) ($rolEdit->es_sistema ?? 0)) === 1;
+        $rolEsAdministrador = $editandoRol && (($rolEdit->nombre ?? '') === 'Administrador SWAFI');
         $activoRol = (string) old('activo', $rolEdit ? (string) $rolEdit->activo : '1');
-
         $permisosSeleccionados = old('permission_ids', $rolPermisos);
 
         if (!is_array($permisosSeleccionados)) {
             $permisosSeleccionados = [];
         }
+
+        $permisosSeleccionados = array_map('strval', $permisosSeleccionados);
     @endphp
 
     <section class="sec-grid">
         <div class="card">
             <div class="section-title">
                 <h2>{{ $editandoRol ? 'Editar rol' : 'Alta de rol' }}</h2>
-                <span class="pill ok">Roles</span>
+                <span class="pill ok">HU-091</span>
             </div>
 
             <form method="POST" action="{{ route('seguridad.roles.store') }}">
@@ -626,52 +710,111 @@
 
                 @if ($editandoRol)
                     <input type="hidden" name="id" value="{{ $rolEdit->id }}">
+                    <input type="hidden" name="activo" value="{{ (int) $rolEdit->activo === 1 ? '1' : '0' }}">
                 @endif
 
                 <div class="sec-form-grid">
                     <label>
                         <span>Nombre del rol</span>
-                        <input name="nombre" value="{{ old('nombre', $rolEdit->nombre ?? '') }}" required>
+                        <input
+                            name="nombre"
+                            value="{{ old('nombre', $rolEdit->nombre ?? '') }}"
+                            minlength="3"
+                            maxlength="50"
+                            {{ $rolEsSistema ? 'readonly' : '' }}
+                            required
+                        >
                     </label>
 
-                    <label>
-                        <span>Estatus</span>
-                        <select name="activo" required>
-                            <option value="1" {{ $activoRol === '1' ? 'selected' : '' }}>Activo</option>
-                            <option value="0" {{ $activoRol === '0' ? 'selected' : '' }}>Inactivo</option>
-                        </select>
-                    </label>
+                    @if (!$editandoRol)
+                        <label>
+                            <span>Estatus inicial</span>
+                            <select name="activo" required>
+                                <option value="1" {{ $activoRol === '1' ? 'selected' : '' }}>Activo</option>
+                                <option value="0" {{ $activoRol === '0' ? 'selected' : '' }}>Inactivo</option>
+                            </select>
+                        </label>
+                    @else
+                        <div class="sec-system-note">
+                            <strong>Estatus:</strong>
+                            <span>
+                                {{ (int) $rolEdit->activo === 1 ? 'Activo' : 'Inactivo' }}.
+                                Utiliza la acción del listado para cambiarlo con trazabilidad.
+                            </span>
+                        </div>
+                    @endif
 
                     <label class="sec-field-wide">
                         <span>Descripción</span>
-                        <textarea name="descripcion">{{ old('descripcion', $rolEdit->descripcion ?? '') }}</textarea>
+                        <textarea name="descripcion" minlength="10" maxlength="255" required>{{ old('descripcion', $rolEdit->descripcion ?? '') }}</textarea>
                     </label>
 
-                    <div class="sec-field-wide">
-                        <span>Permisos asignados</span>
-
-                        <div class="sec-check-grid">
-                            @foreach ($permissions as $permission)
-                                @php
-                                    $permissionId = (string) $permission->id;
-                                    $permissionMarcado = in_array($permissionId, array_map('strval', $permisosSeleccionados), true);
-                                @endphp
-
-                                <label class="sec-check">
-                                    <input type="checkbox" name="permission_ids[]" value="{{ $permission->id }}" {{ $permissionMarcado ? 'checked' : '' }}>
-                                    <span>
-                                        {{ $permission->clave }}<br>
-                                        <small>{{ $permission->descripcion }}</small>
-                                    </span>
-                                </label>
-                            @endforeach
+                    @if ($rolEsSistema)
+                        <div class="sec-system-note sec-field-wide">
+                            <strong>Rol base protegido.</strong>
+                            <span>
+                                Su nombre y estatus no pueden modificarse porque existen flujos y reglas de autorización que dependen de esa identidad.
+                            </span>
                         </div>
+                    @endif
+
+                    <div class="sec-field-wide">
+                        <span>Permisos activos asignados</span>
+
+                        @if ($rolEsAdministrador)
+                            <div class="sec-system-note">
+                                <strong>Acceso integral.</strong>
+                                <span>
+                                    Administrador SWAFI recibe automáticamente todos los permisos activos. La matriz se sincroniza en el servidor.
+                                </span>
+                            </div>
+                        @else
+                            <div class="sec-permission-groups">
+                                @foreach ($permissionsByModule as $moduloPermiso => $permisosModulo)
+                                    @php
+                                        $idsModulo = collect($permisosModulo)
+                                            ->pluck('id')
+                                            ->map(fn ($id) => (string) $id)
+                                            ->all();
+                                        $grupoTieneSeleccion = count(array_intersect($idsModulo, $permisosSeleccionados)) > 0;
+                                    @endphp
+
+                                    <details class="sec-permission-group" {{ $grupoTieneSeleccion ? 'open' : '' }}>
+                                        <summary>
+                                            {{ strtoupper($moduloPermiso) }} · {{ $permisosModulo->count() }} permiso(s)
+                                        </summary>
+
+                                        <div class="sec-check-grid">
+                                            @foreach ($permisosModulo as $permission)
+                                                @php
+                                                    $permissionId = (string) $permission->id;
+                                                    $permissionMarcado = in_array($permissionId, $permisosSeleccionados, true);
+                                                @endphp
+
+                                                <label class="sec-check">
+                                                    <input
+                                                        type="checkbox"
+                                                        name="permission_ids[]"
+                                                        value="{{ $permission->id }}"
+                                                        {{ $permissionMarcado ? 'checked' : '' }}
+                                                    >
+                                                    <span>
+                                                        <span class="sec-code">{{ $permission->clave }}</span><br>
+                                                        <small>{{ $permission->descripcion }}</small>
+                                                    </span>
+                                                </label>
+                                            @endforeach
+                                        </div>
+                                    </details>
+                                @endforeach
+                            </div>
+                        @endif
                     </div>
                 </div>
 
                 <div class="action-group" style="margin-top:14px">
                     <button class="tab" type="submit">
-                        {{ $editandoRol ? 'Actualizar rol' : 'Guardar rol' }}
+                        {{ $editandoRol ? 'Actualizar rol y permisos' : 'Guardar rol' }}
                     </button>
 
                     <a class="tab" href="{{ route('seguridad', ['tab' => 'roles']) }}">
@@ -679,12 +822,16 @@
                     </a>
                 </div>
             </form>
+
+            <div class="sec-help">
+                Los roles activos requieren al menos un permiso activo. Los roles base conservan su identidad y los cambios de permisos se reflejan en la siguiente solicitud autenticada.
+            </div>
         </div>
 
         <div class="card">
             <div class="section-title">
                 <h2>{{ $editandoPermiso ? 'Editar permiso' : 'Alta de permiso' }}</h2>
-                <span class="pill ok">Permisos</span>
+                <span class="pill ok">HU-092</span>
             </div>
 
             <form method="POST" action="{{ route('seguridad.permisos.store') }}">
@@ -695,20 +842,38 @@
                 @endif
 
                 <div class="sec-form-grid">
-                    <label>
-                        <span>Clave del permiso</span>
-                        <input name="clave" value="{{ old('clave', $permisoEdit->clave ?? '') }}" placeholder="ej. reportes.exportar" required>
+                    <label class="sec-field-wide">
+                        <span>Clave técnica del permiso</span>
+                        <input
+                            name="clave"
+                            value="{{ old('clave', $permisoEdit->clave ?? '') }}"
+                            placeholder="ej. reportes.exportar"
+                            minlength="5"
+                            maxlength="80"
+                            pattern="[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+"
+                            {{ $editandoPermiso ? 'readonly' : '' }}
+                            required
+                        >
                     </label>
 
                     <label class="sec-field-wide">
                         <span>Descripción</span>
-                        <textarea name="descripcion">{{ old('descripcion', $permisoEdit->descripcion ?? '') }}</textarea>
+                        <textarea name="descripcion" minlength="10" maxlength="255" required>{{ old('descripcion', $permisoEdit->descripcion ?? '') }}</textarea>
                     </label>
+
+                    @if ($editandoPermiso)
+                        <div class="sec-system-note sec-field-wide">
+                            <strong>Clave inmutable.</strong>
+                            <span>
+                                La clave técnica no puede renombrarse después de su creación porque puede estar vinculada con rutas, middleware y pruebas.
+                            </span>
+                        </div>
+                    @endif
                 </div>
 
                 <div class="action-group" style="margin-top:14px">
                     <button class="tab" type="submit">
-                        {{ $editandoPermiso ? 'Actualizar permiso' : 'Guardar permiso' }}
+                        {{ $editandoPermiso ? 'Actualizar descripción' : 'Guardar permiso' }}
                     </button>
 
                     <a class="tab" href="{{ route('seguridad', ['tab' => 'roles']) }}">
@@ -718,7 +883,7 @@
             </form>
 
             <div class="sec-help">
-                Los permisos quedan disponibles para asignarse a roles. En esta etapa se administran permisos y se guardan en sesión al iniciar acceso.
+                Los permisos nuevos se crean activos y se incorporan automáticamente al rol Administrador SWAFI. Para desactivar un permiso personalizado primero debe retirarse de los demás roles.
             </div>
         </div>
     </section>
@@ -736,9 +901,10 @@
                 <thead>
                     <tr>
                         <th>Rol</th>
+                        <th>Tipo</th>
                         <th>Descripción</th>
-                        <th>Permisos</th>
-                        <th>Total permisos</th>
+                        <th>Permisos activos</th>
+                        <th>Usuarios</th>
                         <th>Estatus</th>
                         <th>Acciones</th>
                     </tr>
@@ -746,18 +912,31 @@
 
                 <tbody>
                     @forelse ($roles as $rol)
+                        @php
+                            $rolSistema = ((int) $rol->es_sistema) === 1;
+                            $rolActivo = ((int) $rol->activo) === 1;
+                            $tieneUsuarios = ((int) $rol->total_usuarios) > 0;
+                        @endphp
+
                         <tr>
                             <td><strong>{{ $rol->nombre }}</strong></td>
-                            <td>{{ $rol->descripcion ?: 'Sin descripción' }}</td>
-                            <td>{{ $rol->permisos }}</td>
-                            <td>{{ $rol->total_permisos }}</td>
                             <td>
-                                @php
-                                    $claseRol = ((int) $rol->activo) === 1 ? 'sec-status-ok' : 'sec-status-warn';
-                                @endphp
-
-                                <span class="sec-status {{ $claseRol }}">
-                                    {{ ((int) $rol->activo) === 1 ? 'Activo' : 'Inactivo' }}
+                                <span class="sec-status {{ $rolSistema ? 'sec-status-ok' : 'sec-status-warn' }}">
+                                    {{ $rolSistema ? 'Base' : 'Personalizado' }}
+                                </span>
+                            </td>
+                            <td>{{ $rol->descripcion ?: 'Sin descripción' }}</td>
+                            <td>
+                                <strong>{{ $rol->total_permisos }}</strong><br>
+                                <small>{{ $rol->permisos }}</small>
+                            </td>
+                            <td>
+                                <strong>{{ $rol->total_usuarios }}</strong> asignado(s)<br>
+                                <small>{{ $rol->usuarios_activos }} activo(s)</small>
+                            </td>
+                            <td>
+                                <span class="sec-status {{ $rolActivo ? 'sec-status-ok' : 'sec-status-warn' }}">
+                                    {{ $rolActivo ? 'Activo' : 'Inactivo' }}
                                 </span>
                             </td>
                             <td>
@@ -766,20 +945,43 @@
                                         Editar
                                     </a>
 
-                                    <form method="POST" action="{{ route('seguridad.roles.destroy', $rol->id) }}" style="display:inline" onsubmit="return confirm('¿Deseas desactivar este rol?');">
-                                        @csrf
-                                        @method('DELETE')
-
-                                        <button type="submit" style="border:0;background:none;color:#b42318;font-weight:800;cursor:pointer;padding:0">
-                                            Desactivar
-                                        </button>
-                                    </form>
+                                    @if ($rolSistema)
+                                        <span class="sec-action-muted">Protegido</span>
+                                    @elseif ($rolActivo && $tieneUsuarios)
+                                        <span class="sec-action-muted">Reasigna usuarios</span>
+                                    @elseif ($rolActivo)
+                                        <form
+                                            class="sec-inline-form"
+                                            method="POST"
+                                            action="{{ route('seguridad.roles.destroy', $rol->id) }}"
+                                            onsubmit="return confirm('¿Deseas desactivar este rol personalizado?');"
+                                        >
+                                            @csrf
+                                            @method('DELETE')
+                                            <input type="hidden" name="estatus" value="inactivo">
+                                            <input type="hidden" name="motivo" value="Desactivación administrativa del rol desde Seguridad y acceso.">
+                                            <button class="danger" type="submit">Desactivar</button>
+                                        </form>
+                                    @else
+                                        <form
+                                            class="sec-inline-form"
+                                            method="POST"
+                                            action="{{ route('seguridad.roles.activate', $rol->id) }}"
+                                            onsubmit="return confirm('¿Deseas activar este rol personalizado?');"
+                                        >
+                                            @csrf
+                                            @method('PATCH')
+                                            <input type="hidden" name="estatus" value="activo">
+                                            <input type="hidden" name="motivo" value="Reactivación administrativa del rol desde Seguridad y acceso.">
+                                            <button class="success" type="submit">Activar</button>
+                                        </form>
+                                    @endif
                                 </div>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="6">No existen roles registrados.</td>
+                            <td colspan="7">No existen roles registrados.</td>
                         </tr>
                     @endforelse
                 </tbody>
@@ -790,7 +992,7 @@
     <section class="card table-card" style="margin-top:20px">
         <div class="section-title">
             <h2>Permisos registrados</h2>
-            <span class="pill ok">Catálogo de permisos</span>
+            <span class="pill ok">Catálogo técnico protegido</span>
         </div>
 
         <div class="sec-table-scroll">
@@ -798,29 +1000,79 @@
                 <thead>
                     <tr>
                         <th>Clave</th>
+                        <th>Tipo</th>
                         <th>Descripción</th>
-                        <th>Actualizado</th>
+                        <th>Roles relacionados</th>
+                        <th>Estatus</th>
                         <th>Acciones</th>
                     </tr>
                 </thead>
 
                 <tbody>
                     @forelse ($permissions as $permission)
+                        @php
+                            $permisoSistema = ((int) $permission->es_sistema) === 1;
+                            $permisoActivo = ((int) $permission->activo) === 1;
+                            $asignadoOtrosRoles = ((int) $permission->total_roles_no_admin) > 0;
+                        @endphp
+
                         <tr>
-                            <td><strong>{{ $permission->clave }}</strong></td>
+                            <td><span class="sec-code">{{ $permission->clave }}</span></td>
+                            <td>
+                                <span class="sec-status {{ $permisoSistema ? 'sec-status-ok' : 'sec-status-warn' }}">
+                                    {{ $permisoSistema ? 'Sistema' : 'Personalizado' }}
+                                </span>
+                            </td>
                             <td>{{ $permission->descripcion ?: 'Sin descripción' }}</td>
-                            <td>{{ $permission->updated_at }}</td>
+                            <td>{{ $permission->roles_asignados }}</td>
+                            <td>
+                                <span class="sec-status {{ $permisoActivo ? 'sec-status-ok' : 'sec-status-warn' }}">
+                                    {{ $permisoActivo ? 'Activo' : 'Inactivo' }}
+                                </span>
+                            </td>
                             <td>
                                 <div class="table-actions">
                                     <a href="{{ route('seguridad', ['tab' => 'roles', 'editar_permiso' => $permission->id]) }}">
-                                        Editar
+                                        Editar descripción
                                     </a>
+
+                                    @if ($permisoSistema)
+                                        <span class="sec-action-muted">Protegido</span>
+                                    @elseif ($permisoActivo && $asignadoOtrosRoles)
+                                        <span class="sec-action-muted">Retíralo de roles</span>
+                                    @elseif ($permisoActivo)
+                                        <form
+                                            class="sec-inline-form"
+                                            method="POST"
+                                            action="{{ route('seguridad.permisos.destroy', $permission->id) }}"
+                                            onsubmit="return confirm('¿Deseas desactivar este permiso personalizado?');"
+                                        >
+                                            @csrf
+                                            @method('DELETE')
+                                            <input type="hidden" name="estatus" value="inactivo">
+                                            <input type="hidden" name="motivo" value="Desactivación administrativa del permiso desde Seguridad y acceso.">
+                                            <button class="danger" type="submit">Desactivar</button>
+                                        </form>
+                                    @else
+                                        <form
+                                            class="sec-inline-form"
+                                            method="POST"
+                                            action="{{ route('seguridad.permisos.activate', $permission->id) }}"
+                                            onsubmit="return confirm('¿Deseas activar este permiso personalizado?');"
+                                        >
+                                            @csrf
+                                            @method('PATCH')
+                                            <input type="hidden" name="estatus" value="activo">
+                                            <input type="hidden" name="motivo" value="Reactivación administrativa del permiso desde Seguridad y acceso.">
+                                            <button class="success" type="submit">Activar</button>
+                                        </form>
+                                    @endif
                                 </div>
                             </td>
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="4">No existen permisos registrados.</td>
+                            <td colspan="6">No existen permisos registrados.</td>
                         </tr>
                     @endforelse
                 </tbody>
