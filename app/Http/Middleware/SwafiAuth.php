@@ -231,7 +231,10 @@ class SwafiAuth
             'seguridad.usuarios.activate',
             'seguridad.roles.store',
             'seguridad.roles.destroy',
-            'seguridad.permisos.store' => 'seguridad.administrar',
+            'seguridad.roles.activate',
+            'seguridad.permisos.store',
+            'seguridad.permisos.destroy',
+            'seguridad.permisos.activate' => 'seguridad.administrar',
 
             default => null,
         };
