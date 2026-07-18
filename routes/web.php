@@ -242,5 +242,18 @@ Route::middleware('swafi.auth')->group(function () {
         ->whereNumber('role')
         ->name('seguridad.roles.destroy');
 
-    Route::post('/seguridad-acceso/permisos', [SeguridadController::class, 'storePermission'])->name('seguridad.permisos.store');
+    Route::patch('/seguridad-acceso/roles/{role}/activar', [SeguridadController::class, 'activateRole'])
+        ->whereNumber('role')
+        ->name('seguridad.roles.activate');
+
+    Route::post('/seguridad-acceso/permisos', [SeguridadController::class, 'storePermission'])
+        ->name('seguridad.permisos.store');
+
+    Route::delete('/seguridad-acceso/permisos/{permission}', [SeguridadController::class, 'destroyPermission'])
+        ->whereNumber('permission')
+        ->name('seguridad.permisos.destroy');
+
+    Route::patch('/seguridad-acceso/permisos/{permission}/activar', [SeguridadController::class, 'activatePermission'])
+        ->whereNumber('permission')
+        ->name('seguridad.permisos.activate');
 });
