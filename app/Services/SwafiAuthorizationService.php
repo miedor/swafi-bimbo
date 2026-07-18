@@ -64,6 +64,7 @@ class SwafiAuthorizationService
             ->join('roles as r', 'r.id', '=', 'ru.role_id')
             ->where('ru.user_id', $userId)
             ->where('r.activo', 1)
+            ->where('p.activo', 1)
             ->orderBy('p.clave')
             ->distinct()
             ->pluck('p.clave')
@@ -82,11 +83,12 @@ class SwafiAuthorizationService
         | Administrador SWAFI = acceso integral
         |--------------------------------------------------------------------------
         | Si el usuario posee el rol Administrador SWAFI, se incorporan todos los
-        | permisos existentes. Esto evita una pérdida temporal de acceso cuando una
+        | permisos activos. Esto evita una pérdida temporal de acceso cuando una
         | migración crea un permiso nuevo y la tabla pivote aún no se ha sincronizado.
         */
         if ($isAdmin) {
             $allPermissions = DB::table('permissions')
+                ->where('activo', 1)
                 ->orderBy('clave')
                 ->pluck('clave')
                 ->map(fn ($permission) => trim((string) $permission))

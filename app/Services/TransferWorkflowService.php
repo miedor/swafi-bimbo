@@ -327,6 +327,7 @@ class TransferWorkflowService
             ->where('u.id', $approverId)
             ->where('u.estatus', 'activo')
             ->where('r.activo', 1)
+            ->where('p.activo', 1)
             ->where('r.nombre', 'Usuario Captura')
             ->where('p.clave', 'ubicaciones.aprobar_traslados')
             ->select([

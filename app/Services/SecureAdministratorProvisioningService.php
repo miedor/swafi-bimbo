@@ -75,6 +75,7 @@ class SecureAdministratorProvisioningService
             }
 
             $permissionIds = DB::table('permissions')
+                ->where('activo', 1)
                 ->orderBy('id')
                 ->lockForUpdate()
                 ->pluck('id');
