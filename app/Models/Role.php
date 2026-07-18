@@ -16,6 +16,7 @@ class Role extends Model
 
     protected $casts = [
         'activo' => 'boolean',
+        'es_sistema' => 'boolean',
     ];
 
     public function permissions()

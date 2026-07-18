@@ -11,6 +11,12 @@ class Permission extends Model
     protected $fillable = [
         'clave',
         'descripcion',
+        'activo',
+    ];
+
+    protected $casts = [
+        'activo' => 'boolean',
+        'es_sistema' => 'boolean',
     ];
 
     public function roles()
