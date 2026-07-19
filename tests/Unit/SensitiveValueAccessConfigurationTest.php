@@ -34,11 +34,23 @@ class SensitiveValueAccessConfigurationTest extends TestCase
 
         self::assertStringContainsString("'proveedor_id' => 'a.proveedor_id'", $controller);
         self::assertStringContainsString("'moneda' => 'v.moneda'", $controller);
-        self::assertStringContainsString("if (!$includeSensitiveValues) {\n            return;", $controller);
+        self::assertMatchesRegularExpression(
+            '/if \(!\$includeSensitiveValues\) \{\s+return;/s',
+            $controller
+        );
         self::assertStringContainsString('return $this->canViewSensitiveValues()', $controller);
-        self::assertStringContainsString("&& $this->authorization->canCurrentUser('reportes.exportar')", $controller);
-        self::assertStringContainsString("'canExportarExcel' => $canViewSensitiveValues", $controller);
-        self::assertStringContainsString("'canExportarPdf' => $canViewSensitiveValues", $controller);
+        self::assertStringContainsString(
+            '&& $this->authorization->canCurrentUser(\'reportes.exportar\')',
+            $controller
+        );
+        self::assertStringContainsString(
+            '\'canExportarExcel\' => $canViewSensitiveValues',
+            $controller
+        );
+        self::assertStringContainsString(
+            '\'canExportarPdf\' => $canViewSensitiveValues',
+            $controller
+        );
     }
 
     public function test_history_and_individual_exports_are_denied_before_loading_sensitive_data(): void

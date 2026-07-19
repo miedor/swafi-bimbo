@@ -23,8 +23,10 @@ class ValorActivoHistoryConfigurationTest extends TestCase
         self::assertStringContainsString('ValorActivoHistoryController', $routes);
         self::assertStringContainsString("->name('valores.historial')", $routes);
         self::assertStringContainsString("->where('numeroActivo', '[A-Za-z0-9._-]+')", $routes);
-        self::assertStringContainsString(
-            "'valores.historial' => 'valores.ver'",
+        self::assertMatchesRegularExpression(
+            "~(?:'valores\.historial'\s*=>\s*'valores\.ver'|"
+            . "'valores'\s*,\s*'valores\.historial'\s*,\s*"
+            . "'valores\.exportar-ficha'\s*=>\s*'valores\.ver')~s",
             $middleware
         );
     }
