@@ -73,13 +73,33 @@ class PtiiLogicalDeletionCoverageTest extends TestCase
         $roles = $this->read('app/Services/RolePermissionManagementService.php');
         $catalogs = $this->read('app/Services/CatalogManagementService.php');
 
+        $userStatusAssignment = <<<'PHP'
+'estatus' => $nextStatus
+PHP;
+        $roleStatusAssignment = <<<'PHP'
+'activo' => $nextStatus === 'activo' ? 1 : 0
+PHP;
+        $userPhysicalDelete = <<<'PHP'
+DB::table('users')->where('id', $targetUserId)->delete()
+PHP;
+        $rolePhysicalDelete = <<<'PHP'
+DB::table('roles')->where('id', $roleId)->delete()
+PHP;
+        $permissionPhysicalDelete = <<<'PHP'
+DB::table('permissions')->where('id', $permissionId)->delete()
+PHP;
+
         self::assertStringContainsString('Activa o desactiva una cuenta sin destruir su historial.', $users);
-        self::assertStringContainsString("'estatus' => $nextStatus", $users);
-        self::assertStringContainsString("'activo' => $nextStatus === 'activo' ? 1 : 0", $roles);
+        self::assertStringContainsString($userStatusAssignment, $users);
+        self::assertGreaterThanOrEqual(
+            2,
+            substr_count($roles, $roleStatusAssignment),
+            'Los roles y permisos deben conservar su ciclo de activación e inactivación.'
+        );
         self::assertStringContainsString('assertCatalogCanBeDeactivated', $catalogs);
-        self::assertStringNotContainsString("DB::table('users')->where('id', $targetUserId)->delete()", $users);
-        self::assertStringNotContainsString("DB::table('roles')->where('id', $roleId)->delete()", $roles);
-        self::assertStringNotContainsString("DB::table('permissions')->where('id', $permissionId)->delete()", $roles);
+        self::assertStringNotContainsString($userPhysicalDelete, $users);
+        self::assertStringNotContainsString($rolePhysicalDelete, $roles);
+        self::assertStringNotContainsString($permissionPhysicalDelete, $roles);
     }
 
     public function test_physical_database_deletes_are_limited_to_pivots_sessions_or_temporary_tokens(): void
