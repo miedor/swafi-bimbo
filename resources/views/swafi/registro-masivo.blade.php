@@ -325,6 +325,12 @@
 
 @section('content')
 
+@php
+    $documentaryStatusLabels = collect($catalogos['estatusDocumentales'] ?? [])
+        ->pluck('nombre', 'clave')
+        ->all();
+@endphp
+
 @if (session('success'))
     <div class="rm-message rm-message-success">
         {{ session('success') }}
@@ -796,9 +802,11 @@
                 @endphp
                 <select name="estatus">
                     <option value="">Todos</option>
-                    <option value="completo" {{ $estatusSeleccionado === 'completo' ? 'selected' : '' }}>Completo</option>
-                    <option value="incompleto" {{ $estatusSeleccionado === 'incompleto' ? 'selected' : '' }}>Incompleto</option>
-                    <option value="observado" {{ $estatusSeleccionado === 'observado' ? 'selected' : '' }}>Observado</option>
+                    @foreach (($catalogos['estatusDocumentales'] ?? collect()) as $estatusDocumental)
+                        <option value="{{ $estatusDocumental->clave }}" {{ $estatusSeleccionado === $estatusDocumental->clave ? 'selected' : '' }}>
+                            {{ $estatusDocumental->nombre }}
+                        </option>
+                    @endforeach
                 </select>
             </label>
 
@@ -917,7 +925,7 @@
                         @endphp
 
                         <span class="pill {{ $pillClass }}">
-                            {{ ucfirst($estatusFila) }}
+                            {{ $documentaryStatusLabels[$estatusFila] ?? \Illuminate\Support\Str::headline($estatusFila) }}
                         </span>
                     </td>
 

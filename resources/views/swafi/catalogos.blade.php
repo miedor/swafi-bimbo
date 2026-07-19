@@ -436,6 +436,41 @@
                     </label>
                 @endif
 
+                @if (in_array($catalogoActivo, ['estatus_documentales', 'estatus_operativos'], true))
+                    <label>
+                        <span>Clave técnica</span>
+                        <input
+                            name="clave"
+                            value="{{ old('clave', $registroEdit->clave ?? '') }}"
+                            maxlength="20"
+                            pattern="[a-z][a-z0-9_]*"
+                            {{ $editing ? 'readonly' : '' }}
+                            required
+                        >
+                    </label>
+
+                    <label>
+                        <span>Nombre visible</span>
+                        <input name="nombre" value="{{ old('nombre', $registroEdit->nombre ?? '') }}" maxlength="80" required>
+                    </label>
+
+                    <label class="cat-field-wide">
+                        <span>Descripción</span>
+                        <input name="descripcion" value="{{ old('descripcion', $registroEdit->descripcion ?? '') }}" maxlength="255">
+                    </label>
+
+                    <label>
+                        <span>Orden de presentación</span>
+                        <input type="number" name="orden" min="1" max="999" value="{{ old('orden', $registroEdit->orden ?? 100) }}" required>
+                    </label>
+
+                    <div class="cat-help cat-field-wide" style="margin-top:0">
+                        La clave técnica se utiliza en reglas, filtros e integridad referencial. Después de crear el estatus
+                        no puede modificarse. Los estatus base de SWAFI pueden actualizar su nombre y descripción, pero no
+                        pueden desactivarse.
+                    </div>
+                @endif
+
                 @if ($catalogoActivo === 'areas')
                     <label>
                         <span>Planta</span>
@@ -682,7 +717,7 @@
         </div>
     </div>
 
-    @if (in_array($catalogoActivo, ['plantas', 'centros_costo', 'categorias_activo', 'tipos_activo', 'areas'], true))
+    @if (in_array($catalogoActivo, ['plantas', 'centros_costo', 'categorias_activo', 'tipos_activo', 'estatus_documentales', 'estatus_operativos', 'areas'], true))
         @if ($dependenciasCatalogo === [])
             <div class="cat-message cat-message-success" style="margin-top:14px;margin-bottom:0">
                 @if ($catalogoActivo === 'plantas')
@@ -693,6 +728,10 @@
                     Esta categoría no presenta tipos de activo activos que impidan su desactivación.
                 @elseif ($catalogoActivo === 'tipos_activo')
                     Este tipo de activo no presenta activos vigentes que impidan su desactivación.
+                @elseif ($catalogoActivo === 'estatus_documentales')
+                    Este estatus documental personalizado no está en uso y puede desactivarse.
+                @elseif ($catalogoActivo === 'estatus_operativos')
+                    Este estatus operativo personalizado no está en uso y puede desactivarse.
                 @else
                     Esta área no presenta ubicaciones, activos o traslados pendientes que impidan su desactivación.
                 @endif
@@ -708,6 +747,10 @@
                         Dependencias que protegen la integridad de la categoría de activo:
                     @elseif ($catalogoActivo === 'tipos_activo')
                         Dependencias que protegen la integridad del tipo de activo:
+                    @elseif ($catalogoActivo === 'estatus_documentales')
+                        Dependencias que protegen la integridad del estatus documental:
+                    @elseif ($catalogoActivo === 'estatus_operativos')
+                        Dependencias que protegen la integridad del estatus operativo:
                     @else
                         Dependencias que protegen la integridad del área:
                     @endif
@@ -871,6 +914,10 @@
                                     <span class="pill {{ $pillClass }}">
                                         {{ ucfirst($estatusFila) }}
                                     </span>
+                                @elseif ($key === 'es_sistema')
+                                    <span class="pill {{ ($row->es_sistema ?? false) ? 'ok' : 'warn' }}">
+                                        {{ ($row->es_sistema ?? false) ? 'Sí' : 'No' }}
+                                    </span>
                                 @else
                                     {{ data_get($row, $key) !== null && data_get($row, $key) !== '' ? data_get($row, $key) : '—' }}
                                 @endif
@@ -891,22 +938,28 @@
                                     </a>
 
                                     @if (($row->estatus ?? 'activo') === 'activo')
-                                        <form
-                                            method="POST"
-                                            action="{{ route('catalogos.destroy', [$catalogoActivo, $row->id]) }}"
-                                            onsubmit="return confirm('{{ $catalogoActivo === 'plantas' ? 'SWAFI verificará activos, centros de costo, áreas, ubicaciones, inventarios y traslados. ¿Deseas intentar desactivar esta planta?' : (in_array($catalogoActivo, ['centros_costo', 'categorias_activo', 'tipos_activo', 'areas'], true) ? 'SWAFI verificará las dependencias operativas antes de desactivar el registro. ¿Deseas continuar?' : '¿Deseas desactivar este registro del catálogo?') }}');"
-                                            style="display:inline"
-                                        >
-                                            @csrf
-                                            @method('DELETE')
-                                            <input type="hidden" name="estatus" value="inactivo">
-                                            <button
-                                                type="submit"
-                                                style="border:0;background:none;color:#b42318;font-weight:800;cursor:pointer;padding:0"
+                                        @if (in_array($catalogoActivo, ['estatus_documentales', 'estatus_operativos'], true) && ($row->es_sistema ?? false))
+                                            <span class="pill ok" title="Estatus base requerido por las reglas automáticas de SWAFI">
+                                                Protegido
+                                            </span>
+                                        @else
+                                            <form
+                                                method="POST"
+                                                action="{{ route('catalogos.destroy', [$catalogoActivo, $row->id]) }}"
+                                                onsubmit="return confirm('{{ $catalogoActivo === 'plantas' ? 'SWAFI verificará activos, centros de costo, áreas, ubicaciones, inventarios y traslados. ¿Deseas intentar desactivar esta planta?' : (in_array($catalogoActivo, ['centros_costo', 'categorias_activo', 'tipos_activo', 'estatus_documentales', 'estatus_operativos', 'areas'], true) ? 'SWAFI verificará las dependencias operativas y la protección de estatus base antes de desactivar el registro. ¿Deseas continuar?' : '¿Deseas desactivar este registro del catálogo?') }}');"
+                                                style="display:inline"
                                             >
-                                                Desactivar
-                                            </button>
-                                        </form>
+                                                @csrf
+                                                @method('DELETE')
+                                                <input type="hidden" name="estatus" value="inactivo">
+                                                <button
+                                                    type="submit"
+                                                    style="border:0;background:none;color:#b42318;font-weight:800;cursor:pointer;padding:0"
+                                                >
+                                                    Desactivar
+                                                </button>
+                                            </form>
+                                        @endif
                                     @else
                                         <form
                                             method="POST"

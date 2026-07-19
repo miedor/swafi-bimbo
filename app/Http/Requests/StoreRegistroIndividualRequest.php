@@ -49,7 +49,10 @@ class StoreRegistroIndividualRequest extends FormRequest
             'fecha_adquisicion' => ['nullable', 'date'],
             'estatus_operativo' => [
                 'required',
-                Rule::in(['en_operacion', 'baja', 'traslado']),
+                'string',
+                'max:20',
+                Rule::exists('estatus_operativos', 'clave')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
             ],
 
             'folio_factura' => [
@@ -126,7 +129,7 @@ class StoreRegistroIndividualRequest extends FormRequest
             'responsable_id.exists' => 'El responsable seleccionado no existe.',
 
             'estatus_operativo.required' => 'El estatus operativo es obligatorio.',
-            'estatus_operativo.in' => 'El estatus operativo seleccionado no es válido.',
+            'estatus_operativo.exists' => 'El estatus operativo seleccionado no existe o está inactivo.',
 
             'folio_factura.required' => 'El folio de factura es obligatorio.',
             'folio_factura.unique' => 'El activo ya tiene registrado un expediente con ese folio de factura.',

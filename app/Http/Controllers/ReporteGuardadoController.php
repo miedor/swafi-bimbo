@@ -74,6 +74,20 @@ class ReporteGuardadoController extends Controller
             'columnas' => ['nullable', 'array', 'max:25'],
             'columnas.*' => ['string', 'max:80'],
             'orientacion' => ['nullable', Rule::in(['horizontal', 'vertical'])],
+            'estatus_documental' => [
+                'nullable',
+                'string',
+                'max:20',
+                Rule::exists('estatus_documentales', 'clave')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
+            'estatus_operativo' => [
+                'nullable',
+                'string',
+                'max:20',
+                Rule::exists('estatus_operativos', 'clave')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
         ], [
             'nombre_reporte_guardado.required' => 'Captura un nombre para guardar los parámetros del reporte.',
             'nombre_reporte_guardado.min' => 'El nombre del reporte debe tener al menos 3 caracteres.',
@@ -83,6 +97,8 @@ class ReporteGuardadoController extends Controller
             'tipo_reporte.in' => 'El tipo de reporte seleccionado no es válido.',
             'columnas.max' => 'No puedes guardar más de 25 columnas.',
             'orientacion.in' => 'La orientación seleccionada no es válida.',
+            'estatus_documental.exists' => 'El estatus documental seleccionado no existe o está inactivo.',
+            'estatus_operativo.exists' => 'El estatus operativo seleccionado no existe o está inactivo.',
         ]);
 
         $requiredPermission = self::REPORT_PERMISSIONS[$validated['tipo_reporte']] ?? null;

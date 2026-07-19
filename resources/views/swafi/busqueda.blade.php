@@ -209,6 +209,8 @@
   $ordenSeleccionado = (string) ($filtros['ordenar_por'] ?? 'fecha_factura');
   $direccionSeleccionada = (string) ($filtros['direccion'] ?? 'desc');
   $perPageSeleccionado = (string) ($filtros['per_page'] ?? '10');
+  $documentaryStatusLabels = collect($catalogos['estatusDocumentales'] ?? [])->pluck('nombre', 'clave')->all();
+  $operationalStatusLabels = collect($catalogos['estatusOperativos'] ?? [])->pluck('nombre', 'clave')->all();
 
   $descripcionFiltros = function ($busqueda): string {
       $filtrosGuardados = (array) ($busqueda->filtros ?? []);
@@ -347,9 +349,11 @@
             <span>Estatus documental</span>
             <select name="estatus">
               <option value="">Todos</option>
-              <option value="completo" {{ $estatusSeleccionado === 'completo' ? 'selected' : '' }}>Completo</option>
-              <option value="incompleto" {{ $estatusSeleccionado === 'incompleto' ? 'selected' : '' }}>Incompleto</option>
-              <option value="observado" {{ $estatusSeleccionado === 'observado' ? 'selected' : '' }}>Observado</option>
+              @foreach($catalogos['estatusDocumentales'] as $estatusDocumental)
+                <option value="{{ $estatusDocumental->clave }}" {{ $estatusSeleccionado === $estatusDocumental->clave ? 'selected' : '' }}>
+                  {{ $estatusDocumental->nombre }}
+                </option>
+              @endforeach
             </select>
           </label>
 
@@ -357,9 +361,11 @@
             <span>Estatus operativo</span>
             <select name="estatus_operativo">
               <option value="">Todos</option>
-              <option value="en_operacion" {{ $estatusOperativoSeleccionado === 'en_operacion' ? 'selected' : '' }}>En operación</option>
-              <option value="traslado" {{ $estatusOperativoSeleccionado === 'traslado' ? 'selected' : '' }}>Traslado</option>
-              <option value="baja" {{ $estatusOperativoSeleccionado === 'baja' ? 'selected' : '' }}>Baja</option>
+              @foreach($catalogos['estatusOperativos'] as $estatusOperativo)
+                <option value="{{ $estatusOperativo->clave }}" {{ $estatusOperativoSeleccionado === $estatusOperativo->clave ? 'selected' : '' }}>
+                  {{ $estatusOperativo->nombre }}
+                </option>
+              @endforeach
             </select>
           </label>
 
@@ -553,16 +559,13 @@
                       $pillClass = 'warn';
                   }
 
-                  $operativoTexto = 'En operación';
-
-                  if ($row->estatus_operativo === 'baja') {
-                      $operativoTexto = 'Baja';
-                  } elseif ($row->estatus_operativo === 'traslado') {
-                      $operativoTexto = 'Traslado';
-                  }
+                  $documentalTexto = $documentaryStatusLabels[$row->estatus]
+                      ?? \Illuminate\Support\Str::headline((string) $row->estatus);
+                  $operativoTexto = $operationalStatusLabels[$row->estatus_operativo]
+                      ?? \Illuminate\Support\Str::headline((string) $row->estatus_operativo);
                 @endphp
 
-                <span class="pill {{ $pillClass }}">{{ ucfirst($row->estatus) }}</span><br>
+                <span class="pill {{ $pillClass }}">{{ $documentalTexto }}</span><br>
                 <small>{{ $operativoTexto }}</small>
               </td>
 

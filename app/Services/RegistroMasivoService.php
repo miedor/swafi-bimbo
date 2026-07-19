@@ -49,8 +49,10 @@ class RegistroMasivoService
         'observaciones',
     ];
 
-    public function __construct(private readonly SwafiStorageService $storage)
-    {
+    public function __construct(
+        private readonly SwafiStorageService $storage,
+        private readonly AssetStatusCatalogService $statusCatalogs
+    ) {
     }
 
     public function previsualizar(
@@ -587,7 +589,7 @@ class RegistroMasivoService
         $estatusOperativo = $this->normalizeEstatusOperativo($data['estatus_operativo']);
 
         if ($data['estatus_operativo'] !== '' && $estatusOperativo === null) {
-            $errors[] = 'El estatus operativo debe ser en_operacion, traslado o baja.';
+            $errors[] = 'El estatus operativo no existe, está inactivo o no coincide con la clave técnica del catálogo.';
         }
 
         $proveedorId = $this->activeCatalogId('proveedores', 'rfc', $data['proveedor_rfc']);
@@ -1927,12 +1929,7 @@ class RegistroMasivoService
             return null;
         }
 
-        return match ($value) {
-            'en_operacion', 'operacion', 'activo' => 'en_operacion',
-            'traslado' => 'traslado',
-            'baja' => 'baja',
-            default => null,
-        };
+        return $this->statusCatalogs->normalizeOperationalInput($value);
     }
 
     private function safeFileName(string $name, string $defaultExtension): string

@@ -301,6 +301,54 @@ class SwafiCatalogSeeder extends Seeder
 
         /*
         |--------------------------------------------------------------------------
+        | Estatus documentales y operativos
+        |--------------------------------------------------------------------------
+        */
+
+        $estatusDocumentales = [
+            ['clave' => 'completo', 'nombre' => 'Completo', 'descripcion' => 'El expediente cuenta con la documentación base requerida.', 'orden' => 10],
+            ['clave' => 'incompleto', 'nombre' => 'Incompleto', 'descripcion' => 'El expediente aún no cuenta con todos los documentos requeridos.', 'orden' => 20],
+            ['clave' => 'observado', 'nombre' => 'Observado', 'descripcion' => 'El expediente presenta una inconsistencia o requiere seguimiento.', 'orden' => 30],
+        ];
+
+        foreach ($estatusDocumentales as $estatusDocumental) {
+            DB::table('estatus_documentales')->updateOrInsert(
+                ['clave' => $estatusDocumental['clave']],
+                [
+                    'nombre' => $estatusDocumental['nombre'],
+                    'descripcion' => $estatusDocumental['descripcion'],
+                    'orden' => $estatusDocumental['orden'],
+                    'es_sistema' => true,
+                    'estatus' => 'activo',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+
+        $estatusOperativos = [
+            ['clave' => 'en_operacion', 'nombre' => 'En operación', 'descripcion' => 'El activo se encuentra disponible en su ubicación operativa.', 'orden' => 10],
+            ['clave' => 'traslado', 'nombre' => 'Traslado', 'descripcion' => 'El activo se encuentra en proceso de traslado o reubicación controlada.', 'orden' => 20],
+            ['clave' => 'baja', 'nombre' => 'Baja', 'descripcion' => 'El activo ya no se encuentra disponible para la operación ordinaria.', 'orden' => 30],
+        ];
+
+        foreach ($estatusOperativos as $estatusOperativo) {
+            DB::table('estatus_operativos')->updateOrInsert(
+                ['clave' => $estatusOperativo['clave']],
+                [
+                    'nombre' => $estatusOperativo['nombre'],
+                    'descripcion' => $estatusOperativo['descripcion'],
+                    'orden' => $estatusOperativo['orden'],
+                    'es_sistema' => true,
+                    'estatus' => 'activo',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+
+        /*
+        |--------------------------------------------------------------------------
         | Responsables
         |--------------------------------------------------------------------------
         */

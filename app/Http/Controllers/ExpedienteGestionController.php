@@ -2,14 +2,20 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\AssetStatusCatalogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 
 class ExpedienteGestionController extends Controller
 {
+    public function __construct(private readonly AssetStatusCatalogService $statusCatalogs)
+    {
+    }
+
     public function edit(int $expediente): View
     {
         $detalle = $this->findEditableExpediente($expediente);
@@ -22,6 +28,7 @@ class ExpedienteGestionController extends Controller
             'plantas' => $this->catalogOptions('plantas'),
             'ubicaciones' => $this->catalogOptions('ubicaciones'),
             'responsables' => $this->catalogOptions('responsables'),
+            'estatusOperativos' => $this->statusCatalogs->operationalOptions(),
         ]);
     }
 
@@ -46,7 +53,13 @@ class ExpedienteGestionController extends Controller
             'marca' => ['nullable', 'string', 'max:100'],
             'modelo' => ['nullable', 'string', 'max:100'],
             'fecha_adquisicion' => ['nullable', 'date'],
-            'estatus_operativo' => ['required', 'in:en_operacion,baja,traslado'],
+            'estatus_operativo' => [
+                'required',
+                'string',
+                'max:20',
+                Rule::exists('estatus_operativos', 'clave')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
             'observaciones' => ['nullable', 'string', 'max:2000'],
         ], [
             'folio_factura.required' => 'El folio de factura es obligatorio.',
@@ -59,6 +72,7 @@ class ExpedienteGestionController extends Controller
             'planta_id.required' => 'Debes seleccionar una planta.',
             'descripcion.required' => 'La descripción del activo es obligatoria.',
             'estatus_operativo.required' => 'El estatus operativo es obligatorio.',
+            'estatus_operativo.exists' => 'El estatus operativo seleccionado no existe o está inactivo.',
         ]);
 
         $numeroActivo = $detalle->numero_activo;

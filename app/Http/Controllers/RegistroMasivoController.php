@@ -5,6 +5,7 @@ namespace App\Http\Controllers;
 use App\Http\Requests\ImportRegistroMasivoRequest;
 use App\Http\Requests\RevertImportacionMasivaRequest;
 use App\Models\ImportacionMasiva;
+use App\Services\AssetStatusCatalogService;
 use App\Services\BulkImportRollbackService;
 use App\Services\RegistroMasivoService;
 use App\Services\SimpleXlsxExporter;
@@ -13,6 +14,7 @@ use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 
@@ -22,12 +24,25 @@ class RegistroMasivoController extends Controller
         private readonly RegistroMasivoService $importService,
         private readonly BulkImportRollbackService $rollbackService,
         private readonly SimpleXlsxExporter $xlsxExporter,
-        private readonly SwafiAuthorizationService $authorization
+        private readonly SwafiAuthorizationService $authorization,
+        private readonly AssetStatusCatalogService $assetStatuses
     ) {
     }
 
     public function index(Request $request)
     {
+        $request->validate([
+            'estatus' => [
+                'nullable',
+                'string',
+                'max:20',
+                Rule::exists('estatus_documentales', 'clave')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
+        ], [
+            'estatus.exists' => 'El estatus documental seleccionado no existe o está inactivo.',
+        ]);
+
         $canRollbackImports = $this->authorization
             ->canCurrentUser('expedientes.revertir_importacion');
         $query = $this->baseQuery();
@@ -556,6 +571,8 @@ class RegistroMasivoController extends Controller
                 ->where('estatus', 'activo')
                 ->orderBy('nombre')
                 ->get(),
+
+            'estatusDocumentales' => $this->assetStatuses->documentaryOptions(),
         ];
     }
 

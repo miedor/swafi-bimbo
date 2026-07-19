@@ -472,10 +472,16 @@
 
                         <label class="ri-field">
                             <span>Estatus <b>*</b></span>
-                            <select name="estatus_operativo">
-                                <option value="en_operacion" @selected(old('estatus_operativo') == 'en_operacion')>En operación</option>
-                                <option value="baja" @selected(old('estatus_operativo') == 'baja')>Baja</option>
-                                <option value="traslado" @selected(old('estatus_operativo') == 'traslado')>Traslado</option>
+                            <select name="estatus_operativo" required>
+                                <option value="">Seleccione...</option>
+                                @foreach ($estatusOperativos as $estatusOperativo)
+                                    <option
+                                        value="{{ $estatusOperativo->clave }}"
+                                        @selected(old('estatus_operativo', 'en_operacion') === $estatusOperativo->clave)
+                                    >
+                                        {{ $estatusOperativo->nombre }}
+                                    </option>
+                                @endforeach
                             </select>
                         </label>
                     </div>

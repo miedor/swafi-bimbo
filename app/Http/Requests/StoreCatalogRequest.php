@@ -127,6 +127,36 @@ class StoreCatalogRequest extends FormRequest
                 'vida_util_meses' => ['nullable', 'integer', 'min:1', 'max:600'],
             ],
 
+            'estatus_documentales', 'estatus_operativos' => [
+                'clave' => [
+                    'required',
+                    'string',
+                    'min:2',
+                    'max:20',
+                    'regex:/^[a-z][a-z0-9_]*$/',
+                    Rule::unique(
+                        $catalog === 'estatus_documentales'
+                            ? 'estatus_documentales'
+                            : 'estatus_operativos',
+                        'clave'
+                    )->ignore($recordId),
+                ],
+                'nombre' => [
+                    'required',
+                    'string',
+                    'min:3',
+                    'max:80',
+                    Rule::unique(
+                        $catalog === 'estatus_documentales'
+                            ? 'estatus_documentales'
+                            : 'estatus_operativos',
+                        'nombre'
+                    )->ignore($recordId),
+                ],
+                'descripcion' => ['nullable', 'string', 'max:255'],
+                'orden' => ['required', 'integer', 'min:1', 'max:999'],
+            ],
+
             'areas' => [
                 'planta_id' => [
                     'required',
@@ -206,7 +236,9 @@ class StoreCatalogRequest extends FormRequest
             'email' => 'El correo electrónico no tiene un formato válido.',
             'regex' => 'El formato capturado en :attribute no es válido.',
             'rfc.regex' => 'El RFC debe contener 12 o 13 caracteres con estructura válida.',
-            'clave.regex' => 'La clave solo puede contener letras mayúsculas, números, punto, guion y guion bajo.',
+            'clave.regex' => in_array($this->catalog(), ['estatus_documentales', 'estatus_operativos'], true)
+                ? 'La clave técnica debe iniciar con una letra minúscula y solo puede contener letras minúsculas, números y guion bajo.'
+                : 'La clave solo puede contener letras mayúsculas, números, punto, guion y guion bajo.',
             'codigo_interno.regex' => 'El código interno solo puede contener letras mayúsculas, números, punto, guion y guion bajo.',
         ];
     }
@@ -224,6 +256,7 @@ class StoreCatalogRequest extends FormRequest
             'pais' => 'país',
             'descripcion' => 'descripción',
             'vida_util_meses' => 'vida útil en meses',
+            'orden' => 'orden de presentación',
             'categoria_activo_id' => 'categoría de activo',
             'planta_id' => 'planta',
             'area_id' => 'área',
@@ -304,9 +337,13 @@ class StoreCatalogRequest extends FormRequest
             'estatus' => mb_strtolower(trim((string) $this->input('estatus', 'activo'))),
         ];
 
-        foreach (['rfc', 'clave', 'codigo_interno'] as $field) {
+        foreach (['rfc', 'codigo_interno'] as $field) {
             $normalized[$field] = $this->normalizeUppercase($this->input($field));
         }
+
+        $normalized['clave'] = in_array($catalog, ['estatus_documentales', 'estatus_operativos'], true)
+            ? $this->normalizeStatusKey($this->input('clave'))
+            : $this->normalizeUppercase($this->input('clave'));
 
         foreach ([
             'nombre',
@@ -327,7 +364,7 @@ class StoreCatalogRequest extends FormRequest
             $normalized['pais'] = 'México';
         }
 
-        foreach (['planta_id', 'area_id', 'categoria_activo_id', 'vida_util_meses'] as $field) {
+        foreach (['planta_id', 'area_id', 'categoria_activo_id', 'vida_util_meses', 'orden'] as $field) {
             $normalized[$field] = $this->normalizeInteger($this->input($field));
         }
 
@@ -350,6 +387,20 @@ class StoreCatalogRequest extends FormRequest
         $normalized = $this->normalizeNullableString($value);
 
         return $normalized === null ? null : mb_strtoupper($normalized);
+    }
+
+    private function normalizeStatusKey(mixed $value): ?string
+    {
+        $normalized = $this->normalizeNullableString($value);
+
+        if ($normalized === null) {
+            return null;
+        }
+
+        $normalized = mb_strtolower($normalized);
+        $normalized = preg_replace('/[^a-z0-9]+/', '_', $normalized) ?? '';
+
+        return trim($normalized, '_') ?: null;
     }
 
     private function normalizeInteger(mixed $value): ?int

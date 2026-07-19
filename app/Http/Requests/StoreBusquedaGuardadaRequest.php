@@ -105,11 +105,19 @@ class StoreBusquedaGuardadaRequest extends FormRequest
             ],
             'filtros.estatus' => [
                 'nullable',
-                Rule::in(['completo', 'incompleto', 'observado']),
+                'string',
+                'max:20',
+                Rule::exists('estatus_documentales', 'clave')->where(
+                    static fn ($query) => $query->where('estatus', 'activo')
+                ),
             ],
             'filtros.estatus_operativo' => [
                 'nullable',
-                Rule::in(['en_operacion', 'baja', 'traslado']),
+                'string',
+                'max:20',
+                Rule::exists('estatus_operativos', 'clave')->where(
+                    static fn ($query) => $query->where('estatus', 'activo')
+                ),
             ],
             'filtros.fecha_desde' => ['nullable', 'date_format:Y-m-d'],
             'filtros.fecha_hasta' => ['nullable', 'date_format:Y-m-d'],

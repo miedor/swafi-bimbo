@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Models\ReporteGuardado;
+use App\Services\AssetStatusCatalogService;
 use App\Services\SimplePdfTableExporter;
 use App\Services\SimpleXlsxExporter;
 use Illuminate\Database\Query\Builder;
@@ -12,9 +13,14 @@ use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
+use Illuminate\Validation\Rule;
 
 class ReportesController extends Controller
 {
+    public function __construct(private readonly AssetStatusCatalogService $statusCatalogs)
+    {
+    }
+
     private const EXPORT_LIMIT = 5000;
 
     public function index(
@@ -22,6 +28,26 @@ class ReportesController extends Controller
         SimpleXlsxExporter $xlsxExporter,
         SimplePdfTableExporter $pdfExporter
     ): Response|BinaryFileResponse {
+        $request->validate([
+            'estatus_documental' => [
+                'nullable',
+                'string',
+                'max:20',
+                Rule::exists('estatus_documentales', 'clave')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
+            'estatus_operativo' => [
+                'nullable',
+                'string',
+                'max:20',
+                Rule::exists('estatus_operativos', 'clave')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
+        ], [
+            'estatus_documental.exists' => 'El estatus documental seleccionado no existe o está inactivo.',
+            'estatus_operativo.exists' => 'El estatus operativo seleccionado no existe o está inactivo.',
+        ]);
+
         $availableReportTypes = $this->availableReportTypes();
 
         abort_if(empty($availableReportTypes), 403, 'Tu usuario no tiene reportes autorizados.');
@@ -1158,6 +1184,9 @@ class ReportesController extends Controller
                 ->where('estatus', 'activo')
                 ->orderBy('name')
                 ->get(['id', 'name', 'email']),
+
+            'estatusDocumentales' => $this->statusCatalogs->documentaryOptions(),
+            'estatusOperativos' => $this->statusCatalogs->operationalOptions(),
         ];
     }
 

@@ -422,6 +422,12 @@ class CatalogosController extends Controller
                         ->orWhere('ca.nombre', 'like', $buscar);
                 }),
 
+                'estatus_documentales', 'estatus_operativos' => $query->where(function ($where) use ($buscar) {
+                    $where->where('clave', 'like', $buscar)
+                        ->orWhere('nombre', 'like', $buscar)
+                        ->orWhere('descripcion', 'like', $buscar);
+                }),
+
                 'areas' => $query->where(function ($where) use ($buscar) {
                     $where->where('a.clave', 'like', $buscar)
                         ->orWhere('a.nombre', 'like', $buscar)
@@ -492,6 +498,7 @@ class CatalogosController extends Controller
             'centros_costo' => $query->orderBy('p.nombre')->orderBy('cc.clave'),
             'categorias_activo' => $query->orderBy('nombre'),
             'tipos_activo' => $query->orderBy('ca.nombre')->orderBy('ta.descripcion'),
+            'estatus_documentales', 'estatus_operativos' => $query->orderBy('orden')->orderBy('nombre'),
             'areas' => $query->orderBy('p.nombre')->orderBy('a.clave')->orderBy('a.nombre'),
             'ubicaciones' => $query->orderBy('p.nombre')->orderBy('a.nombre')->orderBy('u.codigo_interno'),
             'responsables' => $query->orderBy('nombre'),
@@ -538,6 +545,15 @@ class CatalogosController extends Controller
                 'clave' => 'Clave',
                 'descripcion' => 'Tipo de activo',
                 'vida_util_meses' => 'Vida útil meses',
+                'estatus' => 'Estatus',
+            ],
+
+            'estatus_documentales', 'estatus_operativos' => [
+                'clave' => 'Clave técnica',
+                'nombre' => 'Nombre visible',
+                'descripcion' => 'Descripción',
+                'orden' => 'Orden',
+                'es_sistema' => 'Protegido',
                 'estatus' => 'Estatus',
             ],
 
@@ -620,6 +636,7 @@ class CatalogosController extends Controller
             'centros_costo' => ['planta_clave', 'clave', 'descripcion', 'estatus'],
             'categorias_activo' => ['clave', 'nombre', 'descripcion', 'estatus'],
             'tipos_activo' => ['categoria_clave', 'clave', 'descripcion', 'vida_util_meses', 'estatus'],
+            'estatus_documentales', 'estatus_operativos' => ['clave', 'nombre', 'descripcion', 'orden', 'estatus'],
             'areas' => ['planta_clave', 'clave', 'nombre', 'estatus'],
             'ubicaciones' => ['planta_clave', 'area_nombre', 'codigo_interno', 'edificio', 'piso', 'pasillo', 'descripcion', 'estatus'],
             'responsables' => ['nombre', 'correo', 'telefono', 'estatus'],
@@ -635,6 +652,7 @@ class CatalogosController extends Controller
             'centros_costo' => ['planta_clave', 'clave', 'descripcion'],
             'categorias_activo' => ['clave', 'nombre'],
             'tipos_activo' => ['categoria_clave', 'clave', 'descripcion'],
+            'estatus_documentales', 'estatus_operativos' => ['clave', 'nombre', 'orden'],
             'areas' => ['planta_clave', 'clave', 'nombre'],
             'ubicaciones' => ['planta_clave', 'codigo_interno'],
             'responsables' => ['nombre'],
@@ -650,6 +668,8 @@ class CatalogosController extends Controller
             'centros_costo' => ['PLT-SM', 'CC-PLA-200', 'Producción línea 2', 'activo'],
             'categorias_activo' => ['ME', 'Maquinaria y equipo', 'Bienes productivos e instalaciones técnicas', 'activo'],
             'tipos_activo' => ['ME', 'EQP', 'Equipo de producción', '120', 'activo'],
+            'estatus_documentales' => ['pendiente_revision', 'Pendiente de revisión', 'Expediente enviado a revisión documental especializada', '100', 'activo'],
+            'estatus_operativos' => ['en_mantenimiento', 'En mantenimiento', 'Activo temporalmente fuera de operación por mantenimiento', '100', 'activo'],
             'areas' => ['PLT-SM', 'PROD', 'Producción', 'activo'],
             'ubicaciones' => ['PLT-SM', 'Producción', 'UBI-SM-PRO-L3-PB', 'Edificio B', 'PB', 'Línea 3', 'Producción línea 3 planta baja', 'activo'],
             'responsables' => ['Jorge Méndez', 'jorge.mendez@bimbo.local', '5555555555', 'activo'],
@@ -672,6 +692,7 @@ class CatalogosController extends Controller
             'centros_costo' => $this->prepareCentroCosto($data, $lineNumber, $summary, $estatus),
             'categorias_activo' => $this->prepareCategoriaActivo($data, $lineNumber, $summary, $estatus),
             'tipos_activo' => $this->prepareTipoActivo($data, $lineNumber, $summary, $estatus),
+            'estatus_documentales', 'estatus_operativos' => $this->prepareAssetStatus($data, $lineNumber, $summary, $estatus),
             'areas' => $this->prepareArea($data, $lineNumber, $summary, $estatus),
             'ubicaciones' => $this->prepareUbicacion($data, $lineNumber, $summary, $estatus),
             'responsables' => $this->prepareResponsable($data, $lineNumber, $summary, $estatus),
@@ -850,6 +871,42 @@ class CatalogosController extends Controller
         ];
     }
 
+    private function prepareAssetStatus(array $data, int $lineNumber, array &$summary, string $estatus): ?array
+    {
+        $clave = mb_strtolower($this->normalizeCell($data['clave'] ?? ''));
+        $clave = preg_replace('/[^a-z0-9]+/', '_', $clave) ?? '';
+        $clave = trim($clave, '_');
+        $nombre = $this->normalizeCell($data['nombre'] ?? '');
+        $orden = $this->normalizeCell($data['orden'] ?? '');
+
+        if ($clave === '' || mb_strlen($clave) > 20 || preg_match('/^[a-z][a-z0-9_]*$/', $clave) !== 1) {
+            $this->rejectRow(
+                $summary,
+                $lineNumber,
+                'la clave técnica debe iniciar con una letra minúscula y contener solo letras minúsculas, números y guion bajo.'
+            );
+            return null;
+        }
+
+        if ($nombre === '' || mb_strlen($nombre) > 80) {
+            $this->rejectRow($summary, $lineNumber, 'el nombre visible es obligatorio y no debe superar 80 caracteres.');
+            return null;
+        }
+
+        if ($orden === '' || !ctype_digit($orden) || (int) $orden < 1 || (int) $orden > 999) {
+            $this->rejectRow($summary, $lineNumber, 'el orden debe ser un número entero entre 1 y 999.');
+            return null;
+        }
+
+        return [
+            'clave' => $clave,
+            'nombre' => $nombre,
+            'descripcion' => $this->nullableString($data['descripcion'] ?? null, 255),
+            'orden' => (int) $orden,
+            'estatus' => $estatus,
+        ];
+    }
+
     private function prepareArea(array $data, int $lineNumber, array &$summary, string $estatus): ?array
     {
         $plantaClave = strtoupper($this->normalizeCell($data['planta_clave'] ?? ''));
@@ -967,6 +1024,8 @@ class CatalogosController extends Controller
             'centros_costo' => DB::table('centros_costo')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
             'categorias_activo' => DB::table('categorias_activo')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
             'tipos_activo' => DB::table('tipos_activo')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
+            'estatus_documentales' => DB::table('estatus_documentales')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
+            'estatus_operativos' => DB::table('estatus_operativos')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
             'areas' => DB::table('areas')
                 ->where('planta_id', $prepared['planta_id'])
                 ->where(function ($query) use ($prepared): void {

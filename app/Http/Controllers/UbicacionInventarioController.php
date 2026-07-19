@@ -9,6 +9,7 @@ use App\Models\Activo;
 use App\Models\InventarioActivo;
 use App\Models\InventarioEvidencia;
 use App\Models\MovimientoUbicacion;
+use App\Services\AssetStatusCatalogService;
 use App\Services\InventoryPeriodService;
 use App\Services\SwafiAuthorizationService;
 use App\Services\SwafiStorageService;
@@ -19,6 +20,7 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Str;
+use Illuminate\Validation\Rule;
 use Illuminate\Validation\ValidationException;
 
 class UbicacionInventarioController extends Controller
@@ -28,7 +30,8 @@ class UbicacionInventarioController extends Controller
         private readonly TransferWorkflowService $transferWorkflow,
         private readonly InventoryPeriodService $inventoryPeriods,
         private readonly SwafiAuthorizationService $authorization,
-        private readonly TransferNotificationService $transferNotifications
+        private readonly TransferNotificationService $transferNotifications,
+        private readonly AssetStatusCatalogService $statusCatalogs
     ) {
     }
 
@@ -40,6 +43,18 @@ class UbicacionInventarioController extends Controller
 
     public function index(Request $request)
     {
+        $request->validate([
+            'estatus_operativo' => [
+                'nullable',
+                'string',
+                'max:20',
+                Rule::exists('estatus_operativos', 'clave')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
+        ], [
+            'estatus_operativo.exists' => 'El estatus operativo seleccionado no existe o está inactivo.',
+        ]);
+
         $query = $this->baseQuery();
 
         $this->applyFilters($query, $request);
@@ -454,6 +469,7 @@ class UbicacionInventarioController extends Controller
 
             'usuariosContabilidad' => $this->auditRecipients(),
             'usuariosAprobadoresTraslado' => $this->transferApprovers(),
+            'estatusOperativos' => $this->statusCatalogs->operationalOptions(),
         ];
     }
 

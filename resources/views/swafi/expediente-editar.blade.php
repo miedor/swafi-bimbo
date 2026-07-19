@@ -282,10 +282,16 @@
 
             <label class="edit-field">
               <span>Estatus <b>*</b></span>
-              <select name="estatus_operativo">
-                <option value="en_operacion" {{ old('estatus_operativo', $expediente->estatus_operativo) == 'en_operacion' ? 'selected' : '' }}>En operación</option>
-                <option value="baja" {{ old('estatus_operativo', $expediente->estatus_operativo) == 'baja' ? 'selected' : '' }}>Baja</option>
-                <option value="traslado" {{ old('estatus_operativo', $expediente->estatus_operativo) == 'traslado' ? 'selected' : '' }}>Traslado</option>
+              <select name="estatus_operativo" required>
+                <option value="">Seleccione...</option>
+                @foreach ($estatusOperativos as $estatusOperativo)
+                  <option
+                    value="{{ $estatusOperativo->clave }}"
+                    {{ old('estatus_operativo', $expediente->estatus_operativo) === $estatusOperativo->clave ? 'selected' : '' }}
+                  >
+                    {{ $estatusOperativo->nombre }}
+                  </option>
+                @endforeach
               </select>
             </label>
           </div>

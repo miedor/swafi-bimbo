@@ -3,15 +3,21 @@
 namespace App\Http\Controllers;
 
 use App\Models\BusquedaGuardada;
+use App\Services\AssetStatusCatalogService;
 use App\Services\SimplePdfTableExporter;
 use App\Services\SimpleXlsxExporter;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
+use Illuminate\Validation\Rule;
 
 class BusquedaController extends Controller
 {
+    public function __construct(private readonly AssetStatusCatalogService $statusCatalogs)
+    {
+    }
+
     private const CAMPOS_GUARDABLES = [
         'folio_factura',
         'uuid_cfdi',
@@ -38,6 +44,26 @@ class BusquedaController extends Controller
         SimpleXlsxExporter $xlsxExporter,
         SimplePdfTableExporter $pdfExporter
     ) {
+        $request->validate([
+            'estatus' => [
+                'nullable',
+                'string',
+                'max:20',
+                Rule::exists('estatus_documentales', 'clave')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
+            'estatus_operativo' => [
+                'nullable',
+                'string',
+                'max:20',
+                Rule::exists('estatus_operativos', 'clave')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
+        ], [
+            'estatus.exists' => 'El estatus documental seleccionado no existe o está inactivo.',
+            'estatus_operativo.exists' => 'El estatus operativo seleccionado no existe o está inactivo.',
+        ]);
+
         $query = $this->baseQuery();
 
         $this->applyFilters($query, $request);
@@ -741,6 +767,9 @@ class BusquedaController extends Controller
                 ->orderBy('ar.nombre')
                 ->orderBy('u.codigo_interno')
                 ->get(),
+
+            'estatusDocumentales' => $this->statusCatalogs->documentaryOptions(),
+            'estatusOperativos' => $this->statusCatalogs->operationalOptions(),
         ];
     }
 

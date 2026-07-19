@@ -6,6 +6,7 @@ use App\Http\Requests\StoreRegistroIndividualRequest;
 use App\Models\Activo;
 use App\Models\DocumentoExpediente;
 use App\Models\Expediente;
+use App\Services\AssetStatusCatalogService;
 use App\Services\SwafiStorageService;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -13,8 +14,10 @@ use Illuminate\Support\Str;
 
 class RegistroIndividualController extends Controller
 {
-    public function __construct(private readonly SwafiStorageService $storage)
-    {
+    public function __construct(
+        private readonly SwafiStorageService $storage,
+        private readonly AssetStatusCatalogService $statusCatalogs
+    ) {
     }
 
     public function create()
@@ -26,6 +29,7 @@ class RegistroIndividualController extends Controller
             'plantas' => $this->catalogOptions('plantas'),
             'ubicaciones' => $this->catalogOptions('ubicaciones'),
             'responsables' => $this->catalogOptions('responsables'),
+            'estatusOperativos' => $this->statusCatalogs->operationalOptions(),
         ]);
     }
 
@@ -179,7 +183,11 @@ class RegistroIndividualController extends Controller
             return collect();
         }
 
-        $rows = DB::table($table)->get();
+        $rows = DB::table($table)
+            ->when(Schema::hasColumn($table, 'estatus'), function ($query) {
+                $query->where('estatus', 'activo');
+            })
+            ->get();
 
         return $rows->map(function ($row) {
             $data = (array) $row;

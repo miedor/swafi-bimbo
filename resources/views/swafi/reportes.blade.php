@@ -489,9 +489,11 @@
                                 <span>Estatus documental</span>
                                 <select name="estatus_documental">
                                     <option value="">Todos</option>
-                                    <option value="completo" {{ ($filtros['estatus_documental'] ?? '') === 'completo' ? 'selected' : '' }}>Completo</option>
-                                    <option value="incompleto" {{ ($filtros['estatus_documental'] ?? '') === 'incompleto' ? 'selected' : '' }}>Incompleto</option>
-                                    <option value="observado" {{ ($filtros['estatus_documental'] ?? '') === 'observado' ? 'selected' : '' }}>Observado</option>
+                                    @foreach($catalogos['estatusDocumentales'] as $estatusDocumental)
+                                        <option value="{{ $estatusDocumental->clave }}" {{ ($filtros['estatus_documental'] ?? '') === $estatusDocumental->clave ? 'selected' : '' }}>
+                                            {{ $estatusDocumental->nombre }}
+                                        </option>
+                                    @endforeach
                                 </select>
                             </label>
 
@@ -509,9 +511,11 @@
                                 <span>Estatus operativo</span>
                                 <select name="estatus_operativo">
                                     <option value="">Todos</option>
-                                    <option value="en_operacion" {{ ($filtros['estatus_operativo'] ?? '') === 'en_operacion' ? 'selected' : '' }}>En operación</option>
-                                    <option value="traslado" {{ ($filtros['estatus_operativo'] ?? '') === 'traslado' ? 'selected' : '' }}>Traslado</option>
-                                    <option value="baja" {{ ($filtros['estatus_operativo'] ?? '') === 'baja' ? 'selected' : '' }}>Baja</option>
+                                    @foreach($catalogos['estatusOperativos'] as $estatusOperativo)
+                                        <option value="{{ $estatusOperativo->clave }}" {{ ($filtros['estatus_operativo'] ?? '') === $estatusOperativo->clave ? 'selected' : '' }}>
+                                            {{ $estatusOperativo->nombre }}
+                                        </option>
+                                    @endforeach
                                 </select>
                             </label>
 

@@ -36,6 +36,16 @@ class CatalogManagementService
             'table' => 'tipos_activo',
             'fields' => ['categoria_activo_id', 'clave', 'descripcion', 'vida_util_meses', 'estatus'],
         ],
+        'estatus_documentales' => [
+            'label' => 'Estatus documentales',
+            'table' => 'estatus_documentales',
+            'fields' => ['clave', 'nombre', 'descripcion', 'orden', 'estatus'],
+        ],
+        'estatus_operativos' => [
+            'label' => 'Estatus operativos',
+            'table' => 'estatus_operativos',
+            'fields' => ['clave', 'nombre', 'descripcion', 'orden', 'estatus'],
+        ],
         'areas' => [
             'label' => 'Áreas',
             'table' => 'areas',
@@ -188,6 +198,27 @@ class CatalogManagementService
 
     public function assertUpdateAllowed(string $catalog, object $before, array $data): void
     {
+        if (in_array($catalog, ['estatus_documentales', 'estatus_operativos'], true)) {
+            $newKey = (string) ($data['clave'] ?? $before->clave ?? '');
+            $currentKey = (string) ($before->clave ?? '');
+
+            if ($newKey !== $currentKey) {
+                throw new DomainException(
+                    'La clave técnica del estatus no puede modificarse después de su creación. '
+                    . 'Puedes actualizar el nombre, la descripción y el orden de presentación.'
+                );
+            }
+
+            if (
+                (bool) ($before->es_sistema ?? false)
+                && (string) ($data['estatus'] ?? $before->estatus ?? 'activo') !== 'activo'
+            ) {
+                throw new DomainException(
+                    'Los estatus base de SWAFI no pueden desactivarse porque son utilizados por reglas automáticas del sistema.'
+                );
+            }
+        }
+
         if ($catalog === 'centros_costo' && array_key_exists('planta_id', $data)) {
             $newPlantId = (int) ($data['planta_id'] ?? 0);
             $oldPlantId = (int) ($before->planta_id ?? 0);
@@ -292,6 +323,8 @@ class CatalogManagementService
             'centros_costo' => $this->costCenterDependencies($recordId),
             'categorias_activo' => $this->assetCategoryDependencies($recordId),
             'tipos_activo' => $this->assetTypeDependencies($recordId),
+            'estatus_documentales' => $this->documentaryStatusDependencies($recordId),
+            'estatus_operativos' => $this->operationalStatusDependencies($recordId),
             'areas' => $this->areaDependencies($recordId),
             default => [],
         };
@@ -381,6 +414,57 @@ class CatalogManagementService
             'activo(s) vigente(s) asociado(s)' => DB::table('activos')
                 ->where('tipo_activo_id', $typeId)
                 ->where('activo', true)
+                ->count(),
+        ];
+
+        return array_filter(
+            $dependencies,
+            fn (int $count) => $count > 0
+        );
+    }
+
+    public function documentaryStatusDependencies(int $statusId): array
+    {
+        $status = DB::table('estatus_documentales')->where('id', $statusId)->first();
+
+        if ($status === null) {
+            return [];
+        }
+
+        if ((bool) ($status->es_sistema ?? false)) {
+            return ['estatus base protegido por reglas automáticas de SWAFI' => 1];
+        }
+
+        $dependencies = [
+            'activo(s) con este estatus documental' => DB::table('activos')
+                ->where('estatus_documental', $status->clave)
+                ->count(),
+            'expediente(s) con este estatus documental' => DB::table('expedientes')
+                ->where('estatus', $status->clave)
+                ->count(),
+        ];
+
+        return array_filter(
+            $dependencies,
+            fn (int $count) => $count > 0
+        );
+    }
+
+    public function operationalStatusDependencies(int $statusId): array
+    {
+        $status = DB::table('estatus_operativos')->where('id', $statusId)->first();
+
+        if ($status === null) {
+            return [];
+        }
+
+        if ((bool) ($status->es_sistema ?? false)) {
+            return ['estatus base protegido por reglas automáticas de SWAFI' => 1];
+        }
+
+        $dependencies = [
+            'activo(s) con este estatus operativo' => DB::table('activos')
+                ->where('estatus_operativo', $status->clave)
                 ->count(),
         ];
 
