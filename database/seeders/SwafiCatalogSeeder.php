@@ -53,6 +53,7 @@ class SwafiCatalogSeeder extends Seeder
             ['clave' => 'valores.administrar', 'descripcion' => 'Administrar valores fiscales y financieros.'],
             ['clave' => 'ubicaciones.administrar', 'descripcion' => 'Administrar ubicación física e inventarios.'],
             ['clave' => 'reportes.exportar', 'descripcion' => 'Exportar consultas y reportes.'],
+            ['clave' => 'catalogos.ver', 'descripcion' => 'Consultar catálogos base.'],
             ['clave' => 'catalogos.administrar', 'descripcion' => 'Administrar catálogos base.'],
             ['clave' => 'seguridad.administrar', 'descripcion' => 'Administrar usuarios, roles y permisos.'],
             ['clave' => 'bitacora.ver', 'descripcion' => 'Consultar bitácora de auditoría.'],
@@ -98,6 +99,7 @@ class SwafiCatalogSeeder extends Seeder
             'expedientes.editar',
             'documentos.cargar',
             'valores.administrar',
+            'catalogos.ver',
         ];
 
         $consultaPermisos = [
@@ -105,12 +107,14 @@ class SwafiCatalogSeeder extends Seeder
             'expedientes.ver',
             'reportes.exportar',
             'bitacora.ver',
+            'catalogos.ver',
         ];
 
         $plantaPermisos = [
             'dashboard.ver',
             'expedientes.ver',
             'ubicaciones.administrar',
+            'catalogos.ver',
         ];
 
         $this->attachPermissions($capturaRoleId, $capturaPermisos);
