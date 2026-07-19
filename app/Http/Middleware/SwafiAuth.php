@@ -3,6 +3,7 @@
 namespace App\Http\Middleware;
 
 use App\Services\SwafiAuthorizationService;
+use App\Services\SafeExceptionReporter;
 use Closure;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -13,7 +14,8 @@ use Symfony\Component\HttpFoundation\Response;
 class SwafiAuth
 {
     public function __construct(
-        private readonly SwafiAuthorizationService $authorization
+        private readonly SwafiAuthorizationService $authorization,
+        private readonly SafeExceptionReporter $safeExceptions
     ) {
     }
 
@@ -390,7 +392,11 @@ class SwafiAuth
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // La bitácora no debe impedir el cierre de una sesión inválida.
+            $this->safeExceptions->warning($exception, 'session_security_audit_write', [
+                'user_id' => $request->session()->get('swafi_user_id'),
+                'action' => $action,
+                'route_name' => $request->route()?->getName(),
+            ]);
         }
     }
 
@@ -419,7 +425,11 @@ class SwafiAuth
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // La bitácora no debe bloquear la navegación.
+            $this->safeExceptions->warning($exception, 'access_denied_audit_write', [
+                'user_id' => $request->session()->get('swafi_user_id'),
+                'required_permission' => $permission,
+                'route_name' => $routeName,
+            ]);
         }
     }
 }

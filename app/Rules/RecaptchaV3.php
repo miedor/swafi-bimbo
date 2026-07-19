@@ -2,6 +2,7 @@
 
 namespace App\Rules;
 
+use App\Services\SafeExceptionReporter;
 use Closure;
 use Illuminate\Contracts\Validation\ValidationRule;
 use Illuminate\Support\Facades\Http;
@@ -65,6 +66,11 @@ class RecaptchaV3 implements ValidationRule
                 return;
             }
         } catch (\Throwable $exception) {
+            app(SafeExceptionReporter::class)->warning($exception, 'recaptcha_validation', [
+                'expected_action' => $this->expectedAction,
+                'route_name' => request()->route()?->getName(),
+            ]);
+
             $fail('Ocurrió un error al validar reCAPTCHA.');
         }
     }

@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\User;
 use App\Rules\RecaptchaV3;
+use App\Services\SafeExceptionReporter;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
@@ -13,6 +14,11 @@ use Illuminate\Support\Facades\Schema;
 class AuthController extends Controller
 {
     private int $maxFailedAttempts = 5;
+
+    public function __construct(
+        private readonly SafeExceptionReporter $safeExceptions
+    ) {
+    }
 
     public function showLogin(Request $request)
     {
@@ -456,7 +462,11 @@ class AuthController extends Controller
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // El inicio o cierre de sesión no debe bloquearse por un error de bitácora.
+            $this->safeExceptions->warning($exception, 'auth_audit_write', [
+                'user_id' => $userId,
+                'action' => $accion,
+                'route_name' => request()->route()?->getName(),
+            ]);
         }
     }
 }

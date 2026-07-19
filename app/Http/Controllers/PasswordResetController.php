@@ -6,6 +6,7 @@ use App\Mail\SwafiPasswordResetMail;
 use App\Models\User;
 use App\Rules\RecaptchaV3;
 use App\Rules\SwafiPasswordPolicy;
+use App\Services\SafeExceptionReporter;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -17,6 +18,11 @@ use Illuminate\Support\Str;
 class PasswordResetController extends Controller
 {
     private int $tokenMinutes = 60;
+
+    public function __construct(
+        private readonly SafeExceptionReporter $safeExceptions
+    ) {
+    }
 
     public function showForgotForm(Request $request)
     {
@@ -94,12 +100,18 @@ class PasswordResetController extends Controller
                 ]
             );
         } catch (\Throwable $exception) {
+            $this->safeExceptions->warning($exception, 'password_reset_mail_send', [
+                'user_id' => $user->id,
+                'route_name' => $request->route()?->getName(),
+            ]);
+
             $this->registrarBitacoraPassword(
                 userId: $user->id,
                 accion: 'RECUPERACION_ERROR_ENVIO',
                 detalle: [
                     'email' => $user->email,
-                    'error' => $exception->getMessage(),
+                    'tipo_error' => $exception::class,
+                    'swafi_request_id' => $request->attributes->get('swafi_request_id'),
                 ]
             );
 
@@ -270,7 +282,11 @@ class PasswordResetController extends Controller
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // La recuperación de contraseña no debe bloquearse por error de bitácora.
+            $this->safeExceptions->warning($exception, 'password_reset_audit_write', [
+                'user_id' => $userId,
+                'action' => $accion,
+                'route_name' => request()->route()?->getName(),
+            ]);
         }
     }
 }
