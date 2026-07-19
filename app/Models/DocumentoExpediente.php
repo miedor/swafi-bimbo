@@ -89,7 +89,16 @@ class DocumentoExpediente extends Model
                     $userId
                 );
             } catch (\Throwable $exception) {
-                report($exception);
+                app(\App\Services\SafeExceptionReporter::class)->warning(
+                    $exception,
+                    'document_post_commit_validation',
+                    [
+                        'document_id' => $documentId,
+                        'record_id' => $expedienteId,
+                        'document_type' => $tipo,
+                        'user_id' => $userId,
+                    ]
+                );
             }
         });
     }

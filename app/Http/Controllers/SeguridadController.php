@@ -737,13 +737,19 @@ class SeguridadController extends Controller
                 ->route('seguridad', $redirectFilters)
                 ->withErrors(['bitacora' => $exception->getMessage()]);
         } catch (Throwable $exception) {
-            report($exception);
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'audit_log_export',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
 
             return redirect()
                 ->route('seguridad', $redirectFilters)
                 ->withErrors([
-                    'bitacora' => 'No fue posible generar la exportación solicitada. '
-                        . 'Prueba con un rango de fechas menor o utiliza otro formato.',
+                    'bitacora' => "No fue posible generar la exportación solicitada. Referencia: {$reference}.",
                 ]);
         }
     }

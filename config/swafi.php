@@ -81,6 +81,15 @@ return [
         ),
     ],
 
+    'security_headers' => [
+        /*
+         * La política CSP utiliza nonces por solicitud. El modo report-only
+         * permite observar incompatibilidades antes de hacerla obligatoria.
+         */
+        'csp_enabled' => env('SWAFI_CSP_ENABLED', true),
+        'csp_report_only' => env('SWAFI_CSP_REPORT_ONLY', false),
+    ],
+
     'administrador_inicial' => [
         /*
          * Identidad no secreta utilizada únicamente por el comando

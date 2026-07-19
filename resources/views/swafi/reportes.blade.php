@@ -6,7 +6,7 @@
 @section('breadcrumb', 'Reportes')
 
 @section('page_styles')
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
     .rp-shell {
         display: grid;
         gap: 14px;
@@ -798,7 +798,7 @@
                         <div class="rp-saved-actions">
                             <a class="rp-link-button" href="{{ route('reportes-guardados.apply', $savedReport->id) }}">Aplicar</a>
 
-                            <form method="POST" action="{{ route('reportes-guardados.destroy', $savedReport->id) }}" onsubmit="return confirm('¿Deseas dar de baja lógicamente este reporte guardado? La configuración se conservará para trazabilidad.');">
+                            <form method="POST" action="{{ route('reportes-guardados.destroy', $savedReport->id) }}" data-confirm="¿Deseas dar de baja lógicamente este reporte guardado? La configuración se conservará para trazabilidad.">
                                 @csrf
                                 @method('DELETE')
                                 <input type="hidden" name="motivo_baja" value="Baja lógica solicitada por la persona propietaria del reporte.">
@@ -912,7 +912,7 @@
                                             </button>
                                         </form>
 
-                                        <form method="POST" action="{{ route('reportes-programados.destroy', $schedule->id) }}" onsubmit="return confirm('¿Deseas dar de baja lógicamente esta programación?');">
+                                        <form method="POST" action="{{ route('reportes-programados.destroy', $schedule->id) }}" data-confirm="¿Deseas dar de baja lógicamente esta programación?">
                                             @csrf
                                             @method('DELETE')
                                             <input type="hidden" name="motivo_baja" value="Baja lógica solicitada por la persona propietaria de la programación.">
@@ -1031,7 +1031,7 @@
 @endsection
 
 @section('page_scripts')
-<script>
+<script nonce="{{ request()->attributes->get('csp_nonce') }}">
     document.addEventListener('DOMContentLoaded', function () {
         const reportType = document.getElementById('tipoReporte');
         const groups = document.querySelectorAll('[data-report-group]');

@@ -294,7 +294,10 @@ class AuditLogService
                 'updated_at' => now(),
             ]);
         } catch (Throwable $exception) {
-            report($exception);
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'services_auditlogservice_exception_1'
+            );
         }
     }
 
@@ -316,7 +319,13 @@ class AuditLogService
             $decoded = json_decode($value, true, 512, JSON_THROW_ON_ERROR);
 
             return is_array($decoded) ? $decoded : ['valor' => $decoded];
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'audit_snapshot_decode',
+                ['value_length' => strlen($value)]
+            );
+
             return ['estado' => 'Contenido histórico no interpretable.'];
         }
     }

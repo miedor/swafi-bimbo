@@ -6,7 +6,7 @@
 @section('breadcrumb', 'Seguridad y acceso')
 
 @section('page_styles')
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
     .sec-tabs {
         display: flex;
         flex-wrap: wrap;
@@ -739,7 +739,7 @@
                                     </a>
 
                                     @if ($usuario->estatus === 'activo')
-                                        <form method="POST" action="{{ route('seguridad.usuarios.destroy', $usuario->id) }}" style="display:inline" onsubmit="return confirm('¿Deseas desactivar este usuario? Sus sesiones activas serán revocadas.');">
+                                        <form method="POST" action="{{ route('seguridad.usuarios.destroy', $usuario->id) }}" style="display:inline" data-confirm="¿Deseas desactivar este usuario? Sus sesiones activas serán revocadas.">
                                             @csrf
                                             @method('DELETE')
                                             <input type="hidden" name="estatus" value="inactivo">
@@ -749,7 +749,7 @@
                                             </button>
                                         </form>
                                     @elseif ($usuario->estatus === 'inactivo')
-                                        <form method="POST" action="{{ route('seguridad.usuarios.activate', $usuario->id) }}" style="display:inline" onsubmit="return confirm('¿Deseas activar este usuario?');">
+                                        <form method="POST" action="{{ route('seguridad.usuarios.activate', $usuario->id) }}" style="display:inline" data-confirm="¿Deseas activar este usuario?">
                                             @csrf
                                             @method('PATCH')
                                             <input type="hidden" name="estatus" value="activo">
@@ -1075,7 +1075,7 @@
                                             class="sec-inline-form"
                                             method="POST"
                                             action="{{ route('seguridad.roles.destroy', $rol->id) }}"
-                                            onsubmit="return confirm('¿Deseas desactivar este rol personalizado?');"
+                                            data-confirm="¿Deseas desactivar este rol personalizado?"
                                         >
                                             @csrf
                                             @method('DELETE')
@@ -1088,7 +1088,7 @@
                                             class="sec-inline-form"
                                             method="POST"
                                             action="{{ route('seguridad.roles.activate', $rol->id) }}"
-                                            onsubmit="return confirm('¿Deseas activar este rol personalizado?');"
+                                            data-confirm="¿Deseas activar este rol personalizado?"
                                         >
                                             @csrf
                                             @method('PATCH')
@@ -1166,7 +1166,7 @@
                                             class="sec-inline-form"
                                             method="POST"
                                             action="{{ route('seguridad.permisos.destroy', $permission->id) }}"
-                                            onsubmit="return confirm('¿Deseas desactivar este permiso personalizado?');"
+                                            data-confirm="¿Deseas desactivar este permiso personalizado?"
                                         >
                                             @csrf
                                             @method('DELETE')
@@ -1179,7 +1179,7 @@
                                             class="sec-inline-form"
                                             method="POST"
                                             action="{{ route('seguridad.permisos.activate', $permission->id) }}"
-                                            onsubmit="return confirm('¿Deseas activar este permiso personalizado?');"
+                                            data-confirm="¿Deseas activar este permiso personalizado?"
                                         >
                                             @csrf
                                             @method('PATCH')

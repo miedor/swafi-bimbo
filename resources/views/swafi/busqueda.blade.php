@@ -6,7 +6,7 @@
 @section('breadcrumb', 'Búsqueda avanzada')
 
 @section('page_styles')
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
   .search-shell {
     display: grid;
     gap: 16px;
@@ -480,7 +480,7 @@
               <form
                 method="POST"
                 action="{{ route('busquedas-guardadas.destroy', $busquedaGuardada->id) }}"
-                onsubmit="return confirm('¿Deseas dar de baja lógicamente esta búsqueda guardada? La configuración se conservará para trazabilidad.');"
+                data-confirm="¿Deseas dar de baja lógicamente esta búsqueda guardada? La configuración se conservará para trazabilidad."
               >
                 @csrf
                 @method('DELETE')
@@ -580,7 +580,7 @@
                       method="POST"
                       action="{{ route('expedientes.eliminar', $row->expediente_id) }}"
                       style="display:inline"
-                      onsubmit="return confirm('¿Deseas dar de baja lógicamente este expediente? El activo, los documentos y la trazabilidad permanecerán almacenados.');"
+                      data-confirm="¿Deseas dar de baja lógicamente este expediente? El activo, los documentos y la trazabilidad permanecerán almacenados."
                     >
                       @csrf
                       @method('DELETE')
@@ -638,7 +638,7 @@
 @endsection
 
 @section('page_scripts')
-<script>
+<script nonce="{{ request()->attributes->get('csp_nonce') }}">
   document.addEventListener('DOMContentLoaded', function () {
     const filtersForm = document.getElementById('swafiSearchFiltersForm');
     const savedSearchForm = document.getElementById('swafiSaveSearchForm');

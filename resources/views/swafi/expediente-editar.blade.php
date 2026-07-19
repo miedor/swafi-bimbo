@@ -6,7 +6,7 @@
 @section('breadcrumb', 'Editar expediente')
 
 @section('page_styles')
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
   .edit-shell {
     background:#fff;
     border:1px solid #dce7f5;

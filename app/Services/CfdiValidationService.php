@@ -869,7 +869,13 @@ class CfdiValidationService
 
         try {
             return Carbon::parse($value)->format('Y-m-d H:i:s');
-        } catch (\Throwable) {
+        } catch (\Throwable $exception) {
+            app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'cfdi_date_normalization',
+                ['value_length' => mb_strlen((string) $value)]
+            );
+
             return null;
         }
     }

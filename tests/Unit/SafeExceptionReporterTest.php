@@ -17,7 +17,7 @@ class SafeExceptionReporterTest extends TestCase
             'Detalle que podría contener password=NoDebeRegistrarse token=NoDebeRegistrarse'
         );
 
-        app(SafeExceptionReporter::class)->warning(
+        $reference = app(SafeExceptionReporter::class)->warning(
             $exception,
             'password_reset_mail_send',
             [
@@ -31,6 +31,8 @@ class SafeExceptionReporterTest extends TestCase
                 'documento' => '<xml>ContenidoNoDebeRegistrarse</xml>',
             ]
         );
+
+        self::assertMatchesRegularExpression('/^[a-f0-9]{16}$/', $reference);
 
         Log::shouldHaveReceived('warning')
             ->once()

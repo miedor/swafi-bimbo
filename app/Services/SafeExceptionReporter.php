@@ -37,14 +37,14 @@ final class SafeExceptionReporter
      *
      * @param array<string, mixed> $context
      */
-    public function warning(Throwable $exception, string $operation, array $context = []): void
+    public function warning(Throwable $exception, string $operation, array $context = []): string
     {
         $safeContext = $this->sanitizeContext($context);
         $safeContext['exception_type'] = $exception::class;
         $safeContext['exception_code'] = (string) $exception->getCode();
         $safeContext['exception_file'] = basename($exception->getFile());
         $safeContext['exception_line'] = $exception->getLine();
-        $safeContext['exception_fingerprint'] = hash(
+        $fingerprint = hash(
             'sha256',
             implode('|', [
                 $exception::class,
@@ -53,6 +53,7 @@ final class SafeExceptionReporter
                 (string) $exception->getCode(),
             ])
         );
+        $safeContext['exception_fingerprint'] = $fingerprint;
 
         if (app()->bound('request')) {
             $requestId = request()->attributes->get('swafi_request_id');
@@ -76,6 +77,8 @@ final class SafeExceptionReporter
                 $loggingException::class
             ));
         }
+
+        return substr($fingerprint, 0, 16);
     }
 
     /**

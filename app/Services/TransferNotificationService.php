@@ -8,7 +8,6 @@ use App\Models\User;
 use Carbon\Carbon;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use RuntimeException;
 use Throwable;
@@ -83,10 +82,19 @@ class TransferNotificationService
                 'recipient_email' => (string) $recipient->email,
             ];
         } catch (Throwable $exception) {
-            $error = Str::limit($exception->getMessage(), 1500);
+            $reference = app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'transfer_approver_notification_send',
+                [
+                    'transfer_request_id' => $request->id,
+                    'approver_user_id' => $recipient->id,
+                    'triggered_by' => $triggeredBy,
+                ]
+            );
+            $safeError = "No fue posible enviar la notificación. Referencia: {$reference}.";
 
             $request->update([
-                'notificacion_aprobador_error' => $error,
+                'notificacion_aprobador_error' => $safeError,
             ]);
 
             $this->safeAudit(
@@ -95,17 +103,15 @@ class TransferNotificationService
                 action: 'NOTIF_TRASLADO_FALLIDA',
                 after: [
                     'aprobador_asignado_id' => $recipient->id,
-                    'destinatario' => $recipient->email,
-                    'error' => $error,
+                    'referencia' => $reference,
                     'intento' => (int) $request->fresh()->notificacion_aprobador_intentos,
                 ]
             );
 
-            report($exception);
-
             return [
                 'sent' => false,
-                'message' => 'La solicitud se guardó y quedó asignada a '.$recipient->name.', pero el correo no pudo enviarse. Puedes reenviar la notificación desde la bandeja de traslados.',
+                'message' => 'La solicitud se guardó y quedó asignada a '.$recipient->name
+                    .", pero el correo no pudo enviarse. Referencia: {$reference}.",
                 'recipient_name' => (string) $recipient->name,
                 'recipient_email' => (string) $recipient->email,
             ];
@@ -245,7 +251,15 @@ class TransferNotificationService
                 'updated_at' => now(),
             ]);
         } catch (Throwable $exception) {
-            report($exception);
+            app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'transfer_notification_audit_write',
+                [
+                    'transfer_request_id' => $request->id,
+                    'user_id' => $userId,
+                    'action' => $action,
+                ]
+            );
         }
     }
 }

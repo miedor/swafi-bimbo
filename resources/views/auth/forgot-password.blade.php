@@ -23,12 +23,13 @@
 
     <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi.css') }}?v={{ filemtime(public_path('assets/swafi/css/swafi.css')) }}">
     <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-icons.css') }}?v={{ file_exists(public_path('assets/swafi/css/swafi-icons.css')) ? filemtime(public_path('assets/swafi/css/swafi-icons.css')) : time() }}">
+    <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-ptii.css') }}?v={{ filemtime(public_path('assets/swafi/css/swafi-ptii.css')) }}">
 
     @if(config('services.recaptcha.site_key'))
-        <script src="https://www.google.com/recaptcha/api.js?render={{ config('services.recaptcha.site_key') }}"></script>
+        <script nonce="{{ request()->attributes->get('csp_nonce') }}" src="https://www.google.com/recaptcha/api.js?render={{ config('services.recaptcha.site_key') }}"></script>
     @endif
 
-    <style>
+    <style nonce="{{ request()->attributes->get('csp_nonce') }}">
         .login-alert-v1 {
             margin-bottom: 16px;
             padding: 12px 14px;
@@ -70,6 +71,8 @@
 </head>
 
 <body class="login-page-v1 swafi-login-executive">
+    <a class="swafi-skip-link" href="#swafi-main-content">Saltar al formulario principal</a>
+    <main id="swafi-main-content" tabindex="-1">
     <div class="login-shell-v1">
         <section class="login-card-v1 login-card-executive">
             <header class="login-hero-v1 login-hero-executive">
@@ -178,9 +181,10 @@
             </div>
         </section>
     </div>
+    </main>
 
     @if(config('services.recaptcha.site_key'))
-        <script>
+        <script nonce="{{ request()->attributes->get('csp_nonce') }}">
             document.addEventListener('DOMContentLoaded', function () {
                 const form = document.getElementById('forgotPasswordForm');
                 const recaptchaInput = document.getElementById('g-recaptcha-response');

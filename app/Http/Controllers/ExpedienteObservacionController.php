@@ -422,8 +422,20 @@ class ExpedienteObservacionController extends Controller
 
             return 'Se envió correo de notificación al usuario asignado.';
         } catch (\Throwable $exception) {
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'observation_notification_send',
+                [
+                    'observation_id' => $observacion->id,
+                    'user_id' => auth()->id(),
+                    'assigned_user_id' => $assignedUser->id,
+                    'route_name' => $request->route()?->getName(),
+                ]
+            );
+            $safeError = "No fue posible enviar la notificación. Referencia: {$reference}.";
+
             $observacion->update([
-                'notificacion_error' => $exception->getMessage(),
+                'notificacion_error' => $safeError,
             ]);
 
             $this->registrarBitacora(
@@ -434,13 +446,12 @@ class ExpedienteObservacionController extends Controller
                 antes: null,
                 despues: [
                     'asignado_a' => $assignedUser->id,
-                    'email' => $assignedUser->email,
-                    'error' => $exception->getMessage(),
+                    'referencia' => $reference,
                 ],
                 ip: $request->ip()
             );
 
-            return 'La observación quedó registrada, pero no fue posible enviar el correo. Revisa la configuración SMTP.';
+            return "La observación quedó registrada, pero no fue posible enviar el correo. Referencia: {$reference}.";
         }
     }
 
@@ -660,7 +671,14 @@ class ExpedienteObservacionController extends Controller
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // El flujo de observaciones no debe bloquearse por error de bitácora.
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'observation_audit_write',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
         }
     }
 }

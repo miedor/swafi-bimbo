@@ -286,7 +286,13 @@ class ValorActivoFichaService
 
         try {
             return \Illuminate\Support\Carbon::parse($value)->format('d/m/Y');
-        } catch (\Throwable) {
+        } catch (\Throwable $exception) {
+            app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'asset_value_sheet_date_format',
+                ['value_length' => mb_strlen((string) $value)]
+            );
+
             return $value;
         }
     }
@@ -301,7 +307,13 @@ class ValorActivoFichaService
 
         try {
             return \Illuminate\Support\Carbon::parse($value)->format('d/m/Y H:i:s');
-        } catch (\Throwable) {
+        } catch (\Throwable $exception) {
+            app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'asset_value_sheet_datetime_format',
+                ['value_length' => mb_strlen((string) $value)]
+            );
+
             return $value;
         }
     }

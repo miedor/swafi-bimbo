@@ -6,7 +6,7 @@
 @section('breadcrumb', 'Dashboard')
 
 @section('page_styles')
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
   .dash-exec-shell {
     display: grid;
     gap: 12px;
@@ -1125,7 +1125,7 @@
 @endsection
 
 @section('page_scripts')
-<script>
+<script nonce="{{ request()->attributes->get('csp_nonce') }}">
   document.addEventListener('DOMContentLoaded', function () {
     const buttons = document.querySelectorAll('[data-dashboard-tab]');
     const panels = document.querySelectorAll('[data-dashboard-panel]');

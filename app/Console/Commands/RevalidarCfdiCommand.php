@@ -53,7 +53,10 @@ class RevalidarCfdiCommand extends Command
                     };
                     $summary[$key]++;
                 } catch (\Throwable $exception) {
-                    report($exception);
+                    app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'console_commands_revalidarcfdicommand_exception_1'
+            );
                     $summary['errores']++;
                 }
 

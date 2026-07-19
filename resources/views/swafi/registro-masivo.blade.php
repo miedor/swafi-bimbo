@@ -6,7 +6,7 @@
 @section('breadcrumb', 'Registro masivo')
 
 @section('page_styles')
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
     .rm-grid {
         display: grid;
         grid-template-columns: 0.9fr 1.1fr;
@@ -544,7 +544,7 @@
             <input type="hidden" name="lote" value="{{ $lote->uuid }}">
             <label>
                 <span>Filtrar previsualización</span>
-                <select name="preview_status" onchange="this.form.submit()">
+                <select name="preview_status" data-auto-submit="true">
                     <option value="">Todas las filas</option>
                     <option value="aceptada" {{ $previewStatus === 'aceptada' ? 'selected' : '' }}>Aceptadas</option>
                     <option value="observada" {{ $previewStatus === 'observada' ? 'selected' : '' }}>Observadas</option>
@@ -573,7 +573,7 @@
                     <button class="tab" type="submit" style="margin-top:8px">Aplicar carga</button>
                 </form>
 
-                <form method="POST" action="{{ route('registro-masivo.cancelar', $lote->uuid) }}" onsubmit="return confirm('¿Cancelar esta previsualización sin aplicar cambios?');">
+                <form method="POST" action="{{ route('registro-masivo.cancelar', $lote->uuid) }}" data-confirm="¿Cancelar esta previsualización sin aplicar cambios?">
                     @csrf
                     @method('DELETE')
                     <button class="tab" type="submit">Cancelar lote</button>
@@ -601,7 +601,7 @@
                 <form
                     method="POST"
                     action="{{ route('registro-masivo.revertir', $lote->uuid) }}"
-                    onsubmit="return confirm('¿Confirmas la reversión completa de este lote? SWAFI volverá a validar dependencias antes de modificar información.');"
+                    data-confirm="¿Confirmas la reversión completa de este lote? SWAFI volverá a validar dependencias antes de modificar información."
                 >
                     @csrf
                     @method('PATCH')

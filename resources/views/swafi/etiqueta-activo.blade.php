@@ -8,7 +8,7 @@
 
     @vite('resources/js/swafi-qr.js')
 
-    <style>
+    <style nonce="{{ request()->attributes->get('csp_nonce') }}">
         :root {
             font-family: Arial, Helvetica, sans-serif;
             color: #13243a;

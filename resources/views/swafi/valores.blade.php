@@ -26,7 +26,7 @@
 @endphp
 
 @section('page_styles')
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
   .vf-shell,
   .vf-card,
   .vf-panel,
@@ -867,7 +867,7 @@
                       <form
                         method="POST"
                         action="{{ route('valores.destroy', $row->valor_id) }}"
-                        onsubmit="return confirm('¿Dar de baja lógicamente los valores del activo? El registro se conservará para auditoría y el Dashboard lo marcará como pendiente.');"
+                        data-confirm="¿Dar de baja lógicamente los valores del activo? El registro se conservará para auditoría y el Dashboard lo marcará como pendiente."
                       >
                         @csrf
                         @method('DELETE')
@@ -1091,7 +1091,7 @@
 @endsection
 
 @section('page_scripts')
-<script>
+<script nonce="{{ request()->attributes->get('csp_nonce') }}">
   document.addEventListener('DOMContentLoaded', function () {
     const page = document.querySelector('[data-values-page]');
 

@@ -187,8 +187,15 @@ class InventarioEvidenciaController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-        } catch (\Throwable) {
-            // La entrega del archivo no debe fallar por una incidencia secundaria de bitácora.
+        } catch (\Throwable $exception) {
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'inventory_evidence_audit_write',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
         }
     }
 

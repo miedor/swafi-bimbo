@@ -138,7 +138,13 @@ class ValorActivoHistoryService
             $decoded = json_decode($payload, true, 512, JSON_THROW_ON_ERROR);
 
             return is_array($decoded) ? $decoded : [];
-        } catch (JsonException) {
+        } catch (JsonException $exception) {
+            app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'asset_value_history_snapshot_decode',
+                ['payload_length' => strlen($payload)]
+            );
+
             return [];
         }
     }
@@ -312,7 +318,13 @@ class ValorActivoHistoryService
                     return Carbon::parse($normalized)->format(
                         $field === 'deleted_at' ? 'd/m/Y H:i' : 'd/m/Y'
                     );
-                } catch (Throwable) {
+                } catch (Throwable $exception) {
+                    app(SafeExceptionReporter::class)->warning(
+                        $exception,
+                        'asset_value_history_date_format',
+                        ['field' => $field]
+                    );
+
                     return (string) $value;
                 }
             }
@@ -341,7 +353,13 @@ class ValorActivoHistoryService
 
         try {
             return Carbon::parse((string) $value)->format('Y-m-d H:i:s');
-        } catch (Throwable) {
+        } catch (Throwable $exception) {
+            app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'asset_value_history_datetime_normalization',
+                ['value_length' => mb_strlen((string) $value)]
+            );
+
             return trim((string) $value);
         }
     }
@@ -353,7 +371,13 @@ class ValorActivoHistoryService
                 $value,
                 JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_THROW_ON_ERROR
             );
-        } catch (JsonException) {
+        } catch (JsonException $exception) {
+            app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'asset_value_history_value_encode',
+                ['value_type' => get_debug_type($value)]
+            );
+
             return '[Contenido no disponible]';
         }
     }

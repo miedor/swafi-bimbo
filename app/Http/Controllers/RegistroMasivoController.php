@@ -120,12 +120,19 @@ class RegistroMasivoController extends Controller
         } catch (ValidationException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
-            report($exception);
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'bulk_import_preview',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
 
             return back()
                 ->withInput()
                 ->withErrors([
-                    'archivo_csv' => 'No fue posible generar la previsualización. Verifica los archivos y vuelve a intentarlo.',
+                    'archivo_csv' => "No fue posible generar la previsualización. Referencia: {$reference}.",
                 ]);
         }
     }
@@ -153,12 +160,19 @@ class RegistroMasivoController extends Controller
         } catch (ValidationException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
-            report($exception);
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'bulk_import_apply',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
 
             return redirect()
                 ->route('registro-masivo', ['lote' => $batch->uuid])
                 ->withErrors([
-                    'lote' => 'La carga no fue aplicada. No se confirmó ningún cambio del lote.',
+                    'lote' => "La carga no fue aplicada. No se confirmó ningún cambio. Referencia: {$reference}.",
                 ]);
         }
     }
@@ -197,13 +211,20 @@ class RegistroMasivoController extends Controller
         } catch (ValidationException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
-            report($exception);
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'bulk_import_rollback',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
 
             return redirect()
                 ->route('registro-masivo', ['lote' => $batch->uuid])
                 ->withInput()
                 ->withErrors([
-                    'lote' => 'No fue posible revertir el lote. No se confirmó ningún cambio parcial.',
+                    'lote' => "No fue posible revertir el lote. No se confirmó ningún cambio. Referencia: {$reference}.",
                 ]);
         }
     }
@@ -233,12 +254,20 @@ class RegistroMasivoController extends Controller
                 $dataRows
             );
         } catch (\Throwable $exception) {
-            report($exception);
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'bulk_import_incidents_excel',
+                [
+                    'batch_id' => $batch->id,
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
 
             return redirect()
                 ->route('registro-masivo', ['lote' => $batch->uuid])
                 ->withErrors([
-                    'incidencias' => 'No fue posible generar el Excel de incidencias. Usa la descarga CSV disponible y comparte la referencia técnica si el problema continúa.',
+                    'incidencias' => "No fue posible generar el Excel de incidencias. Referencia: {$reference}.",
                 ]);
         }
 
@@ -250,7 +279,10 @@ class RegistroMasivoController extends Controller
                 rowCount: $rows->count()
             );
         } catch (\Throwable $exception) {
-            report($exception);
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'http_controllers_registromasivocontroller_exception_5'
+            );
         }
 
         $filename = 'incidencias_importacion_' . $batch->uuid . '.xlsx';
@@ -295,7 +327,10 @@ class RegistroMasivoController extends Controller
                 rowCount: $rows->count()
             );
         } catch (\Throwable $exception) {
-            report($exception);
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'http_controllers_registromasivocontroller_exception_6'
+            );
         }
 
         return response()->streamDownload(

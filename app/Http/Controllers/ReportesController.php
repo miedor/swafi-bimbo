@@ -1146,12 +1146,19 @@ class ReportesController extends Controller
                     $dataRows
                 );
             } catch (\Throwable $exception) {
-                report($exception);
+                $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'report_center_excel_export',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => $request->route()?->getName(),
+                ]
+            );
 
                 return redirect()
                     ->route('reportes', $request->except(['export']))
                     ->withErrors([
-                        'exportacion' => 'No fue posible generar el archivo Excel. Intenta la exportación CSV o vuelve a intentarlo.',
+                        'exportacion' => "No fue posible generar el archivo Excel. Referencia: {$reference}.",
                     ]);
             }
 
@@ -1269,7 +1276,14 @@ class ReportesController extends Controller
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // La exportación no debe fallar por un error de bitácora.
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'report_audit_write',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
         }
     }
 

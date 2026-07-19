@@ -217,7 +217,16 @@ class SwafiStorageService
             )->exists(
                 $this->normalizePath($path)
             );
-        } catch (\Throwable) {
+        } catch (\Throwable $exception) {
+            app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'storage_exists_check',
+                [
+                    'disk_name' => trim((string) $disk) ?: null,
+                    'path_length' => mb_strlen($path),
+                ]
+            );
+
             return false;
         }
     }
@@ -284,6 +293,16 @@ class SwafiStorageService
                 'message' => null,
             ];
         } catch (\Throwable $exception) {
+            $reference = app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'storage_integrity_validation',
+                [
+                    'disk_name' => trim((string) $disk) ?: null,
+                    'path_length' => mb_strlen($path),
+                    'expected_hash_present' => $expectedHash !== null && trim($expectedHash) !== '',
+                ]
+            );
+
             return [
                 'ok' => false,
                 'disk' => trim((string) $disk) ?: 'desconocido',
@@ -291,7 +310,7 @@ class SwafiStorageService
                 'hash_sha256' => null,
                 'mime_type' => null,
                 'tamano_bytes' => null,
-                'message' => $exception->getMessage(),
+                'message' => "No fue posible verificar la integridad del archivo. Referencia: {$reference}.",
             ];
         }
     }
@@ -683,7 +702,16 @@ class SwafiStorageService
             )->delete(
                 $this->normalizePath($path)
             );
-        } catch (\Throwable) {
+        } catch (\Throwable $exception) {
+            app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'storage_delete',
+                [
+                    'disk_name' => trim((string) $disk) ?: null,
+                    'path_length' => mb_strlen($path),
+                ]
+            );
+
             return false;
         }
     }
@@ -696,7 +724,16 @@ class SwafiStorageService
             )->mimeType(
                 $this->normalizePath($path)
             ) ?: 'application/octet-stream';
-        } catch (\Throwable) {
+        } catch (\Throwable $exception) {
+            app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'storage_mime_type',
+                [
+                    'disk_name' => trim((string) $disk) ?: null,
+                    'path_length' => mb_strlen($path),
+                ]
+            );
+
             return 'application/octet-stream';
         }
     }
@@ -709,7 +746,16 @@ class SwafiStorageService
             )->size(
                 $this->normalizePath($path)
             );
-        } catch (\Throwable) {
+        } catch (\Throwable $exception) {
+            app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'storage_file_size',
+                [
+                    'disk_name' => trim((string) $disk) ?: null,
+                    'path_length' => mb_strlen($path),
+                ]
+            );
+
             return null;
         }
     }

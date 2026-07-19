@@ -17,7 +17,8 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <meta name="robots" content="noindex,nofollow,noarchive">
   <title>{{ $errorTitle }} | SWAFI</title>
-  <style>
+  <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-ptii.css') }}?v={{ filemtime(public_path('assets/swafi/css/swafi-ptii.css')) }}">
+  <style nonce="{{ request()->attributes->get('csp_nonce') }}">
     :root {
       color-scheme: light;
       --swafi-blue: #0f4f98;
@@ -261,7 +262,8 @@
   </style>
 </head>
 <body>
-  <main class="error-shell">
+  <a class="swafi-skip-link" href="#swafi-main-content">Saltar al mensaje principal</a>
+  <main id="swafi-main-content" class="error-shell" tabindex="-1">
     <section class="error-card" aria-labelledby="swafi-error-title">
       <div class="brand">
         <div class="brand-logo">

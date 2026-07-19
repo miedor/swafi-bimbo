@@ -6,7 +6,7 @@
 @section('breadcrumb', 'Registro individual')
 
 @section('page_styles')
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
 /* =========================================================
    SWAFI - Registro individual compacto profesional
    Objetivo: reducir scroll sin sacrificar diseño visual

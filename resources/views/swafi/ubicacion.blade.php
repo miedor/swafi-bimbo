@@ -7,7 +7,7 @@
 
 @section('page_styles')
 <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-inventory-workflow.css') }}">
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
   .ui-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
@@ -662,7 +662,7 @@
 @endsection
 
 @section('page_scripts')
-<script>
+<script nonce="{{ request()->attributes->get('csp_nonce') }}">
   document.addEventListener('DOMContentLoaded', function () {
     const movementAsset = document.getElementById('movement-asset');
     const movementDestination = document.getElementById('movement-destination');

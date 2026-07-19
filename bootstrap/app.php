@@ -2,7 +2,9 @@
 
 use App\Http\Middleware\AssignSwafiRequestId;
 use App\Http\Middleware\NoCacheResponse;
+use App\Http\Middleware\SecurityHeaders;
 use App\Http\Middleware\SwafiAuth;
+use App\Services\SecurityHeaderPolicy;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -34,6 +36,7 @@ return Application::configure(basePath: dirname(__DIR__))
         | acceso a las rutas internas de acuerdo con la sesión y los permisos.
         */
         $middleware->web(append: [
+            SecurityHeaders::class,
             NoCacheResponse::class,
         ]);
 
@@ -111,6 +114,27 @@ return Application::configure(basePath: dirname(__DIR__))
             $response->headers->set('X-Frame-Options', 'SAMEORIGIN');
             $response->headers->set('Referrer-Policy', 'strict-origin-when-cross-origin');
             $response->headers->set('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+            $response->headers->set('Cross-Origin-Opener-Policy', 'same-origin');
+            $response->headers->set('Cross-Origin-Resource-Policy', 'same-origin');
+            $response->headers->set('X-Permitted-Cross-Domain-Policies', 'none');
+
+            if ((bool) config('swafi.security_headers.csp_enabled', true)) {
+                $nonce = trim((string) $request->attributes->get('csp_nonce', ''));
+
+                if ($nonce === '') {
+                    $nonce = app(SecurityHeaderPolicy::class)->nonce();
+                    $request->attributes->set('csp_nonce', $nonce);
+                }
+
+                $header = (bool) config('swafi.security_headers.csp_report_only', false)
+                    ? 'Content-Security-Policy-Report-Only'
+                    : 'Content-Security-Policy';
+
+                $response->headers->set(
+                    $header,
+                    app(SecurityHeaderPolicy::class)->contentSecurityPolicy($nonce)
+                );
+            }
 
             return $response;
         });

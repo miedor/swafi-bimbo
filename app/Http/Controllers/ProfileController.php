@@ -238,8 +238,15 @@ class ProfileController extends Controller
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-        } catch (\Throwable) {
-            // La actualización del perfil no debe fallar por bitácora.
+        } catch (\Throwable $exception) {
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'profile_audit_write',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
         }
     }
 }

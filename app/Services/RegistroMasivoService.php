@@ -1772,7 +1772,10 @@ class RegistroMasivoService
                 ]);
             }, 3);
         } catch (\Throwable $exception) {
-            report($exception);
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'services_registromasivoservice_exception_1'
+            );
 
             $freshBatch = $batch->fresh();
 

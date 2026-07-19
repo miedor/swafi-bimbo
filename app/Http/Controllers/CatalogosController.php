@@ -156,12 +156,19 @@ class CatalogosController extends Controller
                 ->withInput()
                 ->withErrors(['archivo_csv' => $exception->getMessage()]);
         } catch (Throwable $exception) {
-            report($exception);
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'catalog_import_preview',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
 
             return back()
                 ->withInput()
                 ->withErrors([
-                    'archivo_csv' => 'No fue posible previsualizar el layout. Revisa el archivo e inténtalo nuevamente.',
+                    'archivo_csv' => "No fue posible previsualizar el layout. Referencia: {$reference}.",
                 ]);
         }
 
@@ -195,12 +202,19 @@ class CatalogosController extends Controller
                 ->withInput()
                 ->withErrors(['importacion' => $exception->getMessage()]);
         } catch (Throwable $exception) {
-            report($exception);
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'catalog_import_apply',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
 
             return redirect()
                 ->route('catalogos', ['catalogo' => $request->validated('catalogo'), 'lote' => $lote])
                 ->withErrors([
-                    'importacion' => 'No fue posible aplicar el lote. No se confirmó ningún cambio parcial.',
+                    'importacion' => "No fue posible aplicar el lote. No se confirmó ningún cambio. Referencia: {$reference}.",
                 ]);
         }
 
@@ -218,10 +232,17 @@ class CatalogosController extends Controller
         } catch (DomainException $exception) {
             return back()->withErrors(['importacion' => $exception->getMessage()]);
         } catch (Throwable $exception) {
-            report($exception);
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'catalog_import_cancel',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
 
             return back()->withErrors([
-                'importacion' => 'No fue posible cancelar la previsualización. Inténtalo nuevamente.',
+                'importacion' => "No fue posible cancelar la previsualización. Referencia: {$reference}.",
             ]);
         }
 
@@ -256,10 +277,17 @@ class CatalogosController extends Controller
         } catch (DomainException $exception) {
             return back()->withErrors(['importacion' => $exception->getMessage()]);
         } catch (Throwable $exception) {
-            report($exception);
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'catalog_import_incidents_excel',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
 
             return back()->withErrors([
-                'importacion' => 'No fue posible generar el Excel de incidencias. Utiliza la descarga CSV disponible.',
+                'importacion' => "No fue posible generar el Excel de incidencias. Referencia: {$reference}.",
             ]);
         }
 
@@ -299,10 +327,17 @@ class CatalogosController extends Controller
         } catch (DomainException $exception) {
             return back()->withErrors(['importacion' => $exception->getMessage()]);
         } catch (Throwable $exception) {
-            report($exception);
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'catalog_import_incidents_csv',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
 
             return back()->withErrors([
-                'importacion' => 'No fue posible preparar el CSV de incidencias.',
+                'importacion' => "No fue posible preparar el CSV de incidencias. Referencia: {$reference}.",
             ]);
         }
 

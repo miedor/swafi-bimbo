@@ -304,7 +304,7 @@ class ValoresActivoController extends Controller
             DB::commit();
         } catch (\Throwable $exception) {
             DB::rollBack();
-            $this->safeExceptions->warning(
+            $reference = $this->safeExceptions->warning(
                 $exception,
                 'asset_values_bulk_import',
                 [
@@ -314,7 +314,7 @@ class ValoresActivoController extends Controller
             );
 
             return back()->withErrors([
-                'archivo_csv' => 'La importación fue revertida porque ocurrió un error inesperado. Verifica el archivo e inténtalo nuevamente.',
+                'archivo_csv' => "La importación fue revertida. Referencia: {$reference}.",
             ]);
         }
 

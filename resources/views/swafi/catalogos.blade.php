@@ -6,7 +6,7 @@
 @section('breadcrumb', 'Catálogos base')
 
 @section('page_styles')
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
     .cat-grid {
         display: grid;
         grid-template-columns: 0.9fr 1.1fr;
@@ -433,7 +433,7 @@
             <div class="cat-form-grid">
                 <label class="cat-field-wide">
                     <span>Tipo de catálogo</span>
-                    <select onchange="window.location='{{ route('catalogos') }}?catalogo=' + this.value">
+                    <select data-navigate-base="{{ route('catalogos') }}?catalogo=">
                         @foreach ($catalogosDisponibles as $key => $label)
                             <option value="{{ $key }}" {{ $catalogoActivo === $key ? 'selected' : '' }}>
                                 {{ $label }}
@@ -774,7 +774,7 @@
 
         <label class="cat-filter" style="display:block;margin-bottom:14px">
             <span>Catálogo a consultar</span>
-            <select onchange="window.location='{{ route('catalogos') }}?catalogo=' + encodeURIComponent(this.value)">
+            <select data-navigate-base="{{ route('catalogos') }}?catalogo=">
                 @foreach ($catalogosDisponibles as $key => $label)
                     <option value="{{ $key }}" {{ $catalogoActivo === $key ? 'selected' : '' }}>
                         {{ $label }}
@@ -1002,7 +1002,7 @@
                     method="POST"
                     action="{{ route('catalogos.importaciones.aplicar', ['lote' => $importBatch->uuid]) }}"
                     class="cat-import-confirm"
-                    onsubmit="return confirm('Se aplicarán únicamente las filas aceptadas y observadas. Las rechazadas permanecerán sin cambios. ¿Deseas continuar?');"
+                    data-confirm="Se aplicarán únicamente las filas aceptadas y observadas. Las rechazadas permanecerán sin cambios. ¿Deseas continuar?"
                 >
                     @csrf
                     <input type="hidden" name="catalogo" value="{{ $importBatch->catalogo }}">
@@ -1022,7 +1022,7 @@
                 <form method="POST" action="{{ route('catalogos.importaciones.cancelar', ['lote' => $importBatch->uuid]) }}">
                     @csrf
                     @method('DELETE')
-                    <button class="tab" type="submit" onclick="return confirm('¿Deseas cancelar esta previsualización sin modificar los catálogos?')">
+                    <button class="tab" type="submit" data-confirm="¿Deseas cancelar esta previsualización sin modificar los catálogos?">
                         Cancelar lote
                     </button>
                 </form>
@@ -1299,7 +1299,7 @@
                                             <form
                                                 method="POST"
                                                 action="{{ route('catalogos.destroy', [$catalogoActivo, $row->id]) }}"
-                                                onsubmit="return confirm('{{ $catalogoActivo === 'plantas' ? 'SWAFI verificará activos, centros de costo, áreas, ubicaciones, inventarios y traslados. ¿Deseas intentar desactivar esta planta?' : (in_array($catalogoActivo, ['centros_costo', 'categorias_activo', 'tipos_activo', 'estatus_documentales', 'estatus_operativos', 'areas'], true) ? 'SWAFI verificará las dependencias operativas y la protección de estatus base antes de desactivar el registro. ¿Deseas continuar?' : '¿Deseas desactivar este registro del catálogo?') }}');"
+                                                data-confirm="{{ $catalogoActivo === 'plantas' ? 'SWAFI verificará activos, centros de costo, áreas, ubicaciones, inventarios y traslados. ¿Deseas intentar desactivar esta planta?' : (in_array($catalogoActivo, ['centros_costo', 'categorias_activo', 'tipos_activo', 'estatus_documentales', 'estatus_operativos', 'areas'], true) ? 'SWAFI verificará las dependencias operativas y la protección de estatus base antes de desactivar el registro. ¿Deseas continuar?' : '¿Deseas desactivar este registro del catálogo?') }}"
                                                 style="display:inline"
                                             >
                                                 @csrf
@@ -1317,7 +1317,7 @@
                                         <form
                                             method="POST"
                                             action="{{ route('catalogos.activate', [$catalogoActivo, $row->id]) }}"
-                                            onsubmit="return confirm('¿Deseas reactivar este registro del catálogo?');"
+                                            data-confirm="¿Deseas reactivar este registro del catálogo?"
                                             style="display:inline"
                                         >
                                             @csrf

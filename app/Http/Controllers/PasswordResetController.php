@@ -100,7 +100,7 @@ class PasswordResetController extends Controller
                 ]
             );
         } catch (\Throwable $exception) {
-            $this->safeExceptions->warning($exception, 'password_reset_mail_send', [
+            $reference = $this->safeExceptions->warning($exception, 'password_reset_mail_send', [
                 'user_id' => $user->id,
                 'route_name' => $request->route()?->getName(),
             ]);
@@ -116,7 +116,7 @@ class PasswordResetController extends Controller
             );
 
             return back()->withErrors([
-                'email' => 'No fue posible enviar el correo de recuperación. Revisa la configuración de correo del servidor.',
+                'email' => "No fue posible enviar el correo de recuperación. Referencia: {$reference}.",
             ]);
         }
 

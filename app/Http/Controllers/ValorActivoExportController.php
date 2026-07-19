@@ -62,7 +62,7 @@ class ValorActivoExportController extends Controller
                 ? $this->xlsxResponse($record)
                 : $this->pdfResponse($record);
         } catch (Throwable $exception) {
-            $this->safeExceptions->warning(
+            $reference = $this->safeExceptions->warning(
                 $exception,
                 'asset_value_sheet_export',
                 [
@@ -79,7 +79,7 @@ class ValorActivoExportController extends Controller
                     'numero_activo' => $numeroActivo,
                 ])
                 ->withErrors([
-                    'exportacion' => 'No fue posible generar la ficha solicitada. Inténtalo nuevamente o utiliza otro formato autorizado.',
+                    'exportacion' => "No fue posible generar la ficha solicitada. Referencia: {$reference}.",
                 ]);
         }
 

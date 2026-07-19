@@ -169,10 +169,14 @@ class AuditSwafiStorageCommand extends Command
                         );
                     } catch (Throwable $exception) {
                         $estadisticas['errores']++;
+                        $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                            $exception,
+                            'storage_audit_user_avatar',
+                            ['user_id' => $usuario->id]
+                        );
 
                         $this->error(
-                            "[ERROR] avatar usuario {$usuario->id}: "
-                            .$exception->getMessage()
+                            "[ERROR] avatar usuario {$usuario->id}: referencia {$reference}."
                         );
                     }
                 }
@@ -267,10 +271,14 @@ class AuditSwafiStorageCommand extends Command
                         }
                     } catch (Throwable $exception) {
                         $estadisticas['errores']++;
+                        $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                            $exception,
+                            'storage_audit_document',
+                            ['document_id' => $documento->id]
+                        );
 
                         $this->error(
-                            "[ERROR] documento {$documento->id}: "
-                            .$exception->getMessage()
+                            "[ERROR] documento {$documento->id}: referencia {$reference}."
                         );
                     }
                 }
@@ -365,10 +373,14 @@ class AuditSwafiStorageCommand extends Command
                         }
                     } catch (Throwable $exception) {
                         $estadisticas['errores']++;
+                        $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                            $exception,
+                            'storage_audit_inventory_evidence',
+                            ['evidence_id' => $evidencia->id]
+                        );
 
                         $this->error(
-                            "[ERROR] evidencia {$evidencia->id}: "
-                            .$exception->getMessage()
+                            "[ERROR] evidencia {$evidencia->id}: referencia {$reference}."
                         );
                     }
                 }

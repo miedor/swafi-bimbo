@@ -276,7 +276,17 @@ class MigrateSwafiStorageCommand extends Command
             $this->line("[MIGRADO] {$label}: {$result['hash_sha256']}");
         } catch (\Throwable $exception) {
             $summary['errores']++;
-            $this->error("[ERROR] {$label}: {$exception->getMessage()}");
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'storage_migration_record',
+                [
+                    'table_name' => $table,
+                    'record_id' => $id,
+                    'source_disk' => $sourceDisk,
+                    'target_disk' => $targetDisk,
+                ]
+            );
+            $this->error("[ERROR] {$label}: referencia {$reference}.");
         }
     }
 
@@ -316,8 +326,15 @@ class MigrateSwafiStorageCommand extends Command
                 'created_at' => now(),
                 'updated_at' => now(),
             ]);
-        } catch (\Throwable) {
-            // La migración no debe fallar por una incidencia secundaria de bitácora.
+        } catch (\Throwable $exception) {
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'storage_migration_audit_write',
+                [
+                    'execution' => 'artisan',
+                    'command' => 'swafi:storage-migrate',
+                ]
+            );
         }
     }
 }

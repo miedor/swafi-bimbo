@@ -6,7 +6,7 @@
 @section('breadcrumb', 'Mi perfil')
 
 @section('page_styles')
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
   .profile-grid {
     display: grid;
     grid-template-columns: 0.85fr 1.15fr;
@@ -184,7 +184,7 @@
     </div>
 
     @if($user->avatar_path)
-      <form method="POST" action="{{ route('perfil.avatar.destroy') }}" onsubmit="return confirm('¿Deseas eliminar la imagen de perfil?');">
+      <form method="POST" action="{{ route('perfil.avatar.destroy') }}" data-confirm="¿Deseas eliminar la imagen de perfil?">
         @csrf
         @method('DELETE')
         <button class="tab" type="submit">Eliminar avatar</button>

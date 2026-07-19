@@ -6,7 +6,7 @@
 @section('breadcrumb', 'Valores fiscales y financieros / Histórico')
 
 @section('page_styles')
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
   .vh-shell,
   .vh-card,
   .vh-table-scroll {

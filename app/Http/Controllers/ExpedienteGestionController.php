@@ -370,7 +370,14 @@ class ExpedienteGestionController extends Controller
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // No se debe bloquear edición/eliminación por error de bitácora.
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'asset_record_audit_write',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
         }
     }
 }

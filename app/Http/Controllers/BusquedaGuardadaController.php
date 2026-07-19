@@ -258,7 +258,14 @@ class BusquedaGuardadaController extends Controller
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // Una falla de bitácora no debe impedir el uso de búsquedas guardadas.
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'saved_search_audit_write',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
         }
     }
 }

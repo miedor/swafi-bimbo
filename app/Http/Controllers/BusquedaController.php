@@ -570,7 +570,14 @@ class BusquedaController extends Controller
 
             $request->session()->put($sessionKey, now()->timestamp);
         } catch (\Throwable $exception) {
-            // La visualización del expediente no debe fallar por una incidencia secundaria de bitácora.
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'asset_detail_audit_write',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
         }
     }
 
@@ -853,12 +860,19 @@ class BusquedaController extends Controller
                     $dataRows
                 );
             } catch (\Throwable $exception) {
-                report($exception);
+                $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                    $exception,
+                    'advanced_search_excel_export',
+                    [
+                        'user_id' => auth()->id(),
+                        'route_name' => $request->route()?->getName(),
+                    ]
+                );
 
                 return redirect()
                     ->route('busqueda', $request->except(['export']))
                     ->withErrors([
-                        'exportacion' => 'No fue posible generar el archivo Excel. Intenta la exportación CSV o vuelve a intentarlo.',
+                        'exportacion' => "No fue posible generar el archivo Excel. Referencia: {$reference}.",
                     ]);
             }
 
@@ -1018,7 +1032,14 @@ class BusquedaController extends Controller
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // La consulta o exportación no debe fallar por un error de bitácora.
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'search_audit_write',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
         }
     }
 

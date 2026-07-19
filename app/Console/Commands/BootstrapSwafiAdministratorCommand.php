@@ -153,12 +153,23 @@ class BootstrapSwafiAdministratorCommand extends Command
             }
 
             return self::FAILURE;
-        } catch (DomainException|RuntimeException $exception) {
+        } catch (DomainException $exception) {
             $this->error($exception->getMessage());
 
             return self::FAILURE;
+        } catch (RuntimeException $exception) {
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'administrator_bootstrap_runtime'
+            );
+            $this->error("No fue posible completar el aprovisionamiento. Referencia: {$reference}.");
+
+            return self::FAILURE;
         } catch (Throwable $exception) {
-            report($exception);
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'console_commands_bootstrapswafiadministratorcommand_exception_1'
+            );
             $this->error(
                 'Ocurrió un error inesperado. Revisa los registros técnicos de Laravel mediante la referencia del despliegue.'
             );

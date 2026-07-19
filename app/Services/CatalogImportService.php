@@ -1183,7 +1183,10 @@ class CatalogImportService
                 'updated_at' => now(),
             ]);
         } catch (Throwable $exception) {
-            report($exception);
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'services_catalogimportservice_exception_1'
+            );
         }
     }
 }

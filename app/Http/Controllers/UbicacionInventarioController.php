@@ -752,10 +752,20 @@ class UbicacionInventarioController extends Controller
 
             return null;
         } catch (\Throwable $exception) {
-            $error = Str::limit($exception->getMessage(), 1500);
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'inventory_discrepancy_notification_send',
+                [
+                    'inventory_id' => $inventario->id,
+                    'user_id' => auth()->id(),
+                    'recipient_user_id' => $recipient->id ?? null,
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
+            $safeError = "No fue posible enviar la notificación. Referencia: {$reference}.";
 
             $inventario->update([
-                'notificacion_error' => $error,
+                'notificacion_error' => $safeError,
             ]);
 
             $this->registrarBitacora(
@@ -765,12 +775,12 @@ class UbicacionInventarioController extends Controller
                 registroClave: (string) $inventario->id,
                 antes: null,
                 despues: [
-                    'destinatario' => $recipient->email,
-                    'error' => $error,
+                    'destinatario_usuario_id' => $recipient->id ?? null,
+                    'referencia' => $reference,
                 ]
             );
 
-            return 'La discrepancia se guardó, pero el correo no pudo enviarse. El error quedó registrado para revisión administrativa.';
+            return "La discrepancia se guardó, pero el correo no pudo enviarse. Referencia: {$reference}.";
         }
     }
 

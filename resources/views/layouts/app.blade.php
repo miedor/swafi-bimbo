@@ -86,8 +86,9 @@
   <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi.css') }}?v={{ filemtime(public_path('assets/swafi/css/swafi.css')) }}">
   <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-icons.css') }}?v={{ file_exists(public_path('assets/swafi/css/swafi-icons.css')) ? filemtime(public_path('assets/swafi/css/swafi-icons.css')) : time() }}">
   <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-query-results.css') }}?v={{ file_exists(public_path('assets/swafi/css/swafi-query-results.css')) ? filemtime(public_path('assets/swafi/css/swafi-query-results.css')) : time() }}">
+  <link rel="stylesheet" href="{{ asset('assets/swafi/css/swafi-ptii.css') }}?v={{ filemtime(public_path('assets/swafi/css/swafi-ptii.css')) }}">
 
-  <style>
+  <style nonce="{{ request()->attributes->get('csp_nonce') }}">
     html,
     body {
       width: 100%;
@@ -624,6 +625,7 @@
   data-swafi-warning-ms="{{ (int) config('session.swafi_warning_seconds', 60) * 1000 }}"
   data-swafi-heartbeat-ms="{{ (int) config('session.swafi_heartbeat_seconds', 60) * 1000 }}"
 >
+<a class="swafi-skip-link" href="#swafi-main-content">Saltar al contenido principal</a>
 <div class="app-shell">
   <aside class="sidebar">
     <div class="brand-panel">
@@ -638,7 +640,7 @@
 
     <nav class="nav-group">
       @if ($swafiCan('dashboard.ver'))
-        <a class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}">
+        <a class="nav-item {{ request()->routeIs('dashboard') ? 'active' : '' }}" href="{{ route('dashboard') }}" @if(request()->routeIs('dashboard')) aria-current="page" @endif>
           {!! $swafiIcon('dashboard', 'nav-icon') !!}
           <span>Dashboard</span>
         </a>
@@ -649,6 +651,7 @@
           type="button"
           class="nav-module-button {{ $m01Open ? 'is-open' : '' }}"
           data-nav-toggle="m01"
+          aria-controls="swafi-nav-m01"
           aria-expanded="{{ $m01Open ? 'true' : 'false' }}"
         >
           <span class="nav-module-label">
@@ -658,21 +661,21 @@
           {!! $swafiIcon('chevron', 'nav-module-arrow-icon') !!}
         </button>
 
-        <div class="nav-submenu {{ $m01Open ? 'is-open' : '' }}" data-nav-group="m01">
+        <div id="swafi-nav-m01" class="nav-submenu {{ $m01Open ? 'is-open' : '' }}" data-nav-group="m01">
           @if ($swafiCan('expedientes.crear'))
-            <a class="nav-item {{ request()->routeIs('registro-individual') ? 'active' : '' }}" href="{{ route('registro-individual') }}">
+            <a class="nav-item {{ request()->routeIs('registro-individual') ? 'active' : '' }}" href="{{ route('registro-individual') }}" @if(request()->routeIs('registro-individual')) aria-current="page" @endif>
               {!! $swafiIcon('file-plus', 'nav-icon') !!}
               <span>Registro individual</span>
             </a>
 
-            <a class="nav-item {{ request()->routeIs('registro-masivo') ? 'active' : '' }}" href="{{ route('registro-masivo') }}">
+            <a class="nav-item {{ request()->routeIs('registro-masivo') ? 'active' : '' }}" href="{{ route('registro-masivo') }}" @if(request()->routeIs('registro-masivo')) aria-current="page" @endif>
               {!! $swafiIcon('upload', 'nav-icon') !!}
               <span>Registro masivo</span>
             </a>
           @endif
 
           @if ($swafiCan('expedientes.ver'))
-            <a class="nav-item {{ request()->routeIs('expediente') ? 'active' : '' }}" href="{{ route('expediente') }}">
+            <a class="nav-item {{ request()->routeIs('expediente') ? 'active' : '' }}" href="{{ route('expediente') }}" @if(request()->routeIs('expediente')) aria-current="page" @endif>
               {!! $swafiIcon('file-search', 'nav-icon') !!}
               <span>Detalle de expediente</span>
             </a>
@@ -685,6 +688,7 @@
           type="button"
           class="nav-module-button {{ $m02Open ? 'is-open' : '' }}"
           data-nav-toggle="m02"
+          aria-controls="swafi-nav-m02"
           aria-expanded="{{ $m02Open ? 'true' : 'false' }}"
         >
           <span class="nav-module-label">
@@ -694,16 +698,16 @@
           {!! $swafiIcon('chevron', 'nav-module-arrow-icon') !!}
         </button>
 
-        <div class="nav-submenu {{ $m02Open ? 'is-open' : '' }}" data-nav-group="m02">
+        <div id="swafi-nav-m02" class="nav-submenu {{ $m02Open ? 'is-open' : '' }}" data-nav-group="m02">
           @if ($swafiCan('valores.ver') || $swafiCan('valores.administrar'))
-            <a class="nav-item {{ request()->routeIs('valores*') ? 'active' : '' }}" href="{{ route('valores') }}">
+            <a class="nav-item {{ request()->routeIs('valores*') ? 'active' : '' }}" href="{{ route('valores') }}" @if(request()->routeIs('valores*')) aria-current="page" @endif>
               {!! $swafiIcon('coins', 'nav-icon') !!}
               <span>Valores fiscales y financieros</span>
             </a>
           @endif
 
           @if ($swafiCan('ubicaciones.ver') || $swafiCan('ubicaciones.administrar') || $swafiCan('ubicaciones.aprobar_traslados') || $swafiCan('ubicaciones.cerrar_inventario'))
-            <a class="nav-item {{ request()->routeIs('ubicacion') ? 'active' : '' }}" href="{{ route('ubicacion') }}">
+            <a class="nav-item {{ request()->routeIs('ubicacion') ? 'active' : '' }}" href="{{ route('ubicacion') }}" @if(request()->routeIs('ubicacion')) aria-current="page" @endif>
               {!! $swafiIcon('map-pin', 'nav-icon') !!}
               <span>Ubicación e inventario</span>
             </a>
@@ -716,6 +720,7 @@
           type="button"
           class="nav-module-button {{ $m03Open ? 'is-open' : '' }}"
           data-nav-toggle="m03"
+          aria-controls="swafi-nav-m03"
           aria-expanded="{{ $m03Open ? 'true' : 'false' }}"
         >
           <span class="nav-module-label">
@@ -725,16 +730,16 @@
           {!! $swafiIcon('chevron', 'nav-module-arrow-icon') !!}
         </button>
 
-        <div class="nav-submenu {{ $m03Open ? 'is-open' : '' }}" data-nav-group="m03">
+        <div id="swafi-nav-m03" class="nav-submenu {{ $m03Open ? 'is-open' : '' }}" data-nav-group="m03">
           @if ($swafiCan('expedientes.ver'))
-            <a class="nav-item {{ request()->routeIs('busqueda') ? 'active' : '' }}" href="{{ route('busqueda') }}">
+            <a class="nav-item {{ request()->routeIs('busqueda') ? 'active' : '' }}" href="{{ route('busqueda') }}" @if(request()->routeIs('busqueda')) aria-current="page" @endif>
               {!! $swafiIcon('search', 'nav-icon') !!}
               <span>Búsqueda avanzada</span>
             </a>
           @endif
 
           @if ($swafiCan('reportes.exportar'))
-            <a class="nav-item {{ request()->routeIs('reportes') ? 'active' : '' }}" href="{{ route('reportes') }}">
+            <a class="nav-item {{ request()->routeIs('reportes') ? 'active' : '' }}" href="{{ route('reportes') }}" @if(request()->routeIs('reportes')) aria-current="page" @endif>
               {!! $swafiIcon('chart', 'nav-icon') !!}
               <span>Reportes ad hoc</span>
             </a>
@@ -747,6 +752,7 @@
           type="button"
           class="nav-module-button {{ $m04Open ? 'is-open' : '' }}"
           data-nav-toggle="m04"
+          aria-controls="swafi-nav-m04"
           aria-expanded="{{ $m04Open ? 'true' : 'false' }}"
         >
           <span class="nav-module-label">
@@ -756,23 +762,23 @@
           {!! $swafiIcon('chevron', 'nav-module-arrow-icon') !!}
         </button>
 
-        <div class="nav-submenu {{ $m04Open ? 'is-open' : '' }}" data-nav-group="m04">
+        <div id="swafi-nav-m04" class="nav-submenu {{ $m04Open ? 'is-open' : '' }}" data-nav-group="m04">
           @if ($swafiCan('catalogos.ver') || $swafiCan('catalogos.administrar'))
-            <a class="nav-item {{ request()->routeIs('catalogos') ? 'active' : '' }}" href="{{ route('catalogos') }}">
+            <a class="nav-item {{ request()->routeIs('catalogos') ? 'active' : '' }}" href="{{ route('catalogos') }}" @if(request()->routeIs('catalogos')) aria-current="page" @endif>
               {!! $swafiIcon('settings', 'nav-icon') !!}
               <span>Catálogos base</span>
             </a>
           @endif
 
           @if ($swafiCan('seguridad.administrar'))
-            <a class="nav-item {{ request()->routeIs('seguridad') && request('tab', 'usuarios') !== 'bitacora' ? 'active' : '' }}" href="{{ route('seguridad', ['tab' => 'usuarios']) }}">
+            <a class="nav-item {{ request()->routeIs('seguridad') && request('tab', 'usuarios') !== 'bitacora' ? 'active' : '' }}" href="{{ route('seguridad', ['tab' => 'usuarios']) }}" @if(request()->routeIs('seguridad') && request('tab', 'usuarios') !== 'bitacora') aria-current="page" @endif>
               {!! $swafiIcon('shield', 'nav-icon') !!}
               <span>Seguridad y acceso</span>
             </a>
           @endif
 
           @if ($swafiCan('bitacora.ver'))
-            <a class="nav-item {{ request()->routeIs('seguridad') && request('tab') === 'bitacora' ? 'active' : '' }}" href="{{ route('seguridad', ['tab' => 'bitacora']) }}">
+            <a class="nav-item {{ request()->routeIs('seguridad') && request('tab') === 'bitacora' ? 'active' : '' }}" href="{{ route('seguridad', ['tab' => 'bitacora']) }}" @if(request()->routeIs('seguridad') && request('tab') === 'bitacora') aria-current="page" @endif>
               {!! $swafiIcon('file-search', 'nav-icon') !!}
               <span>Bitácora</span>
             </a>
@@ -791,7 +797,7 @@
     </nav>
   </aside>
 
-  <main class="main">
+  <main id="swafi-main-content" class="main" tabindex="-1">
     <header class="swafi-page-header">
       <div class="topbar">
         <div class="title-wrap title-wrap-with-icon">
@@ -806,7 +812,7 @@
 
         <div class="swafi-dashboard-slot">
           @if ($swafiCan('dashboard.ver'))
-            <a class="global-dashboard-btn" href="{{ route('dashboard') }}">
+            <a class="global-dashboard-btn" href="{{ route('dashboard') }}" @if(request()->routeIs('dashboard')) aria-current="page" @endif>
               {!! $swafiIcon('home', 'button-icon') !!}
               <span>Dashboard</span>
             </a>
@@ -815,7 +821,7 @@
 
         <div class="swafi-user-slot">
           <div class="swafi-profile-menu" data-profile-menu>
-            <button type="button" class="swafi-profile-toggle" data-profile-toggle aria-label="Perfil de usuario" aria-expanded="false">
+            <button type="button" class="swafi-profile-toggle" data-profile-toggle aria-label="Perfil de usuario" aria-controls="swafi-profile-dropdown" aria-expanded="false">
               @if ($swafiAvatarPath)
                 <img src="{{ route('perfil.avatar', ['v' => $swafiAvatarVersion]) }}" alt="Avatar de {{ $swafiNombre }}">
               @else
@@ -823,7 +829,7 @@
               @endif
             </button>
 
-            <div class="swafi-profile-dropdown" data-profile-dropdown>
+            <div id="swafi-profile-dropdown" class="swafi-profile-dropdown" data-profile-dropdown>
               <div class="swafi-profile-head">
                 <div class="swafi-profile-avatar">
                   @if ($swafiAvatarPath)
@@ -873,16 +879,19 @@
   </main>
 </div>
 
+<div id="swafiAccessibilityStatus" class="swafi-sr-only" role="status" aria-live="polite"></div>
+
 <div id="swafiSessionWarning" class="swafi-session-warning" role="status" aria-live="polite">
   <strong>La sesión está por finalizar</strong>
   <span id="swafiSessionWarningText">La sesión se cerrará por inactividad.</span>
 </div>
 
-<script src="{{ asset('assets/swafi/js/swafi.js') }}?v={{ filemtime(public_path('assets/swafi/js/swafi.js')) }}"></script>
-<script src="{{ asset('assets/swafi/js/swafi-session.js') }}?v={{ filemtime(public_path('assets/swafi/js/swafi-session.js')) }}"></script>
-<script src="{{ asset('assets/swafi/js/swafi-query-results.js') }}?v={{ file_exists(public_path('assets/swafi/js/swafi-query-results.js')) ? filemtime(public_path('assets/swafi/js/swafi-query-results.js')) : time() }}"></script>
+<script nonce="{{ request()->attributes->get('csp_nonce') }}" src="{{ asset('assets/swafi/js/swafi.js') }}?v={{ filemtime(public_path('assets/swafi/js/swafi.js')) }}"></script>
+<script nonce="{{ request()->attributes->get('csp_nonce') }}" src="{{ asset('assets/swafi/js/swafi-session.js') }}?v={{ filemtime(public_path('assets/swafi/js/swafi-session.js')) }}"></script>
+<script nonce="{{ request()->attributes->get('csp_nonce') }}" src="{{ asset('assets/swafi/js/swafi-query-results.js') }}?v={{ file_exists(public_path('assets/swafi/js/swafi-query-results.js')) ? filemtime(public_path('assets/swafi/js/swafi-query-results.js')) : time() }}"></script>
+<script nonce="{{ request()->attributes->get('csp_nonce') }}" src="{{ asset('assets/swafi/js/swafi-ptii.js') }}?v={{ filemtime(public_path('assets/swafi/js/swafi-ptii.js')) }}"></script>
 
-<script>
+<script nonce="{{ request()->attributes->get('csp_nonce') }}">
   document.addEventListener('DOMContentLoaded', function () {
     const profileMenu = document.querySelector('[data-profile-menu]');
     const profileToggle = document.querySelector('[data-profile-toggle]');

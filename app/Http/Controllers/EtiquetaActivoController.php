@@ -146,7 +146,14 @@ class EtiquetaActivoController extends Controller
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // La generación de la etiqueta no debe fallar por un error de bitácora.
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'asset_label_audit_write',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
         }
     }
 

@@ -6,7 +6,7 @@
 @section('breadcrumb', 'Detalle de expediente')
 
 @section('page_styles')
-<style>
+<style nonce="{{ request()->attributes->get('csp_nonce') }}">
   .detail-shell {
     display: grid;
     gap: 12px;
@@ -962,7 +962,7 @@
                         <a href="{{ route('inventario-evidencias.ver', $evidencia->id) }}" target="_blank" rel="noopener">{{ $evidencia->nombre_archivo }}</a>
                         <a href="{{ route('inventario-evidencias.descargar', $evidencia->id) }}">Descargar</a>
                         @if($canManageLocation)
-                          <form method="POST" action="{{ route('inventario-evidencias.eliminar', $evidencia->id) }}" onsubmit="return confirm('¿Deseas dar de baja esta evidencia? El archivo físico se conservará para trazabilidad.');">
+                          <form method="POST" action="{{ route('inventario-evidencias.eliminar', $evidencia->id) }}" data-confirm="¿Deseas dar de baja esta evidencia? El archivo físico se conservará para trazabilidad.">
                             @csrf
                             @method('DELETE')
                             <button type="submit" style="border:0;background:none;color:#b42318;font-weight:900;cursor:pointer;padding:0;">Dar de baja</button>
@@ -1142,7 +1142,7 @@
                         <a href="{{ route('documentos.ver', $documento->id) }}" target="_blank" rel="noopener">Ver</a>
                         <a href="{{ route('documentos.descargar', $documento->id) }}">Descargar</a>
                         @if($canManageDocuments)
-                          <form method="POST" action="{{ route('documentos.eliminar', $documento->id) }}" style="display:inline" onsubmit="return confirm('¿Deseas dar de baja lógicamente este documento? El archivo físico y la trazabilidad se conservarán.');">
+                          <form method="POST" action="{{ route('documentos.eliminar', $documento->id) }}" style="display:inline" data-confirm="¿Deseas dar de baja lógicamente este documento? El archivo físico y la trazabilidad se conservarán.">
                             @csrf
                             @method('DELETE')
                             <button type="submit" style="border:0;background:none;color:#b42318;font-weight:900;cursor:pointer;padding:0;">Dar de baja</button>
@@ -1323,7 +1323,7 @@
                     @endif
 
                     @if($canCancelThis)
-                      <form method="POST" action="{{ route('observaciones.cancelar', $observacion->id) }}" onsubmit="return confirm('¿Deseas cancelar esta observación?');">
+                      <form method="POST" action="{{ route('observaciones.cancelar', $observacion->id) }}" data-confirm="¿Deseas cancelar esta observación?">
                         @csrf
                         @method('DELETE')
                         <input type="hidden" name="comentario_validacion" value="Observación cancelada por Consulta/Auditoría.">
@@ -1395,7 +1395,7 @@
 @endsection
 
 @section('page_scripts')
-<script>
+<script nonce="{{ request()->attributes->get('csp_nonce') }}">
   document.addEventListener('DOMContentLoaded', function () {
     const buttons = document.querySelectorAll('[data-detail-tab]');
     const panels = document.querySelectorAll('[data-detail-panel]');
