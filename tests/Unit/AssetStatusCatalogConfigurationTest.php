@@ -93,7 +93,8 @@ class AssetStatusCatalogConfigurationTest extends TestCase
     {
         $catalogService = $this->read('app/Services/CatalogManagementService.php');
         $request = $this->read('app/Http/Requests/StoreCatalogRequest.php');
-        $combined = $catalogService . "\n" . $request;
+        $validation = $this->read('app/Services/CatalogValidationService.php');
+        $combined = $catalogService . "\n" . $request . "\n" . $validation;
 
         foreach ([
             "'estatus_documentales' => [",
@@ -142,8 +143,9 @@ class AssetStatusCatalogConfigurationTest extends TestCase
     public function test_catalog_interface_and_csv_import_support_status_management_without_free_text(): void
     {
         $controller = $this->read('app/Http/Controllers/CatalogosController.php');
+        $importService = $this->read('app/Services/CatalogImportService.php');
         $view = $this->read('resources/views/swafi/catalogos.blade.php');
-        $combined = $controller . "\n" . $view;
+        $combined = $controller . "\n" . $importService . "\n" . $view;
 
         foreach ([
             "'estatus_documentales', 'estatus_operativos' => ['clave', 'nombre', 'descripcion', 'orden', 'estatus']",

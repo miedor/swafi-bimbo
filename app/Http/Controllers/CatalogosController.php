@@ -2,21 +2,28 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\ApplyCatalogImportRequest;
 use App\Http\Requests\CatalogIndexRequest;
 use App\Http\Requests\ImportCatalogRequest;
 use App\Http\Requests\StoreCatalogRequest;
 use App\Http\Requests\UpdateCatalogStatusRequest;
+use App\Services\CatalogImportService;
 use App\Services\CatalogManagementService;
+use App\Services\SimpleXlsxExporter;
 use DomainException;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
 class CatalogosController extends Controller
 {
     public function __construct(
-        private readonly CatalogManagementService $catalogManagement
+        private readonly CatalogManagementService $catalogManagement,
+        private readonly CatalogImportService $catalogImports,
+        private readonly SimpleXlsxExporter $xlsxExporter
     ) {
     }
     public function index(CatalogIndexRequest $request)
@@ -24,6 +31,38 @@ class CatalogosController extends Controller
         $validated = $request->validated();
         $catalogoActivo = (string) ($validated['catalogo'] ?? 'proveedores');
         $canAdminCatalogs = $this->canAdministerCatalogs($request);
+        $importBatch = null;
+        $importRows = null;
+
+        if ($canAdminCatalogs && !empty($validated['lote'])) {
+            try {
+                $importBatch = $this->catalogImports->findOwnedBatch(
+                    (string) $validated['lote'],
+                    (int) auth()->id()
+                );
+
+                if ($importBatch->catalogo !== $catalogoActivo) {
+                    return redirect()->route('catalogos', [
+                        'catalogo' => $importBatch->catalogo,
+                        'lote' => $importBatch->uuid,
+                    ]);
+                }
+
+                $importRows = $importBatch->filas()
+                    ->when(
+                        !empty($validated['import_status']),
+                        fn ($rowQuery) => $rowQuery->where('estatus', $validated['import_status'])
+                    )
+                    ->orderBy('numero_fila')
+                    ->paginate(20, ['*'], 'import_page')
+                    ->withQueryString();
+            } catch (DomainException $exception) {
+                return redirect()
+                    ->route('catalogos', ['catalogo' => $catalogoActivo])
+                    ->withErrors(['importacion' => $exception->getMessage()]);
+            }
+        }
+
         $query = $this->baseQuery($catalogoActivo);
 
         $this->applyFilters($query, $request, $catalogoActivo);
@@ -68,7 +107,9 @@ class CatalogosController extends Controller
             'filtros' => $validated,
             'opciones' => $this->options(),
             'kpis' => $this->buildKpis($catalogoActivo),
-            'headersLayout' => $this->headersFor($catalogoActivo),
+            'headersLayout' => $this->catalogImports->headersFor($catalogoActivo),
+            'importBatch' => $importBatch,
+            'importRows' => $importRows,
         ]);
     }
 
@@ -98,166 +139,228 @@ class CatalogosController extends Controller
             );
     }
 
-    public function importar(ImportCatalogRequest $request)
+    public function importar(ImportCatalogRequest $request): RedirectResponse
     {
-        $catalogo = (string) $request->validated('catalogo');
-
+        $catalog = (string) $request->validated('catalogo');
         $file = $request->file('archivo_csv');
-        $rows = file($file->getRealPath(), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-
-        if (!$rows || count($rows) < 2) {
-            return back()->withErrors([
-                'archivo_csv' => 'El archivo no contiene registros para importar.',
-            ]);
-        }
-
-        $delimiter = $this->detectDelimiter($rows[0]);
-        $headers = str_getcsv($rows[0], $delimiter);
-        $normalizedHeaders = array_map(fn ($header) => $this->normalizeHeader($header), $headers);
-
-        $requiredHeaders = $this->requiredHeadersFor($catalogo);
-        $missingHeaders = array_diff($requiredHeaders, $normalizedHeaders);
-
-        if (!empty($missingHeaders)) {
-            return back()->withErrors([
-                'archivo_csv' => 'El layout no contiene los encabezados requeridos: ' . implode(', ', $missingHeaders),
-            ]);
-        }
-
-        $headerIndexes = array_flip($normalizedHeaders);
-        $headersToRead = $this->headersFor($catalogo);
-
-        $summary = [
-            'catalogo' => $this->catalogs()[$catalogo] ?? $catalogo,
-            'procesados' => 0,
-            'insertados' => 0,
-            'actualizados' => 0,
-            'rechazados' => 0,
-            'errores' => [],
-        ];
-
-        DB::beginTransaction();
 
         try {
-            foreach (array_slice($rows, 1) as $index => $line) {
-                $lineNumber = $index + 2;
-                $columns = str_getcsv($line, $delimiter);
-                $data = [];
-
-                foreach ($headersToRead as $header) {
-                    $data[$header] = isset($headerIndexes[$header])
-                        ? $this->normalizeCell($columns[$headerIndexes[$header]] ?? '')
-                        : '';
-                }
-
-                if ($this->isEmptyCsvRow($data)) {
-                    continue;
-                }
-
-                $summary['procesados']++;
-
-                $prepared = $this->prepareImportRow($catalogo, $data, $lineNumber, $summary);
-
-                if ($prepared === null) {
-                    continue;
-                }
-
-                $table = $this->tableFor($catalogo);
-                $existing = $this->findExistingImportRecord($catalogo, $prepared);
-
-                if ($existing !== null) {
-                    try {
-                        $this->catalogManagement->assertUpdateAllowed($catalogo, $existing, $prepared);
-
-                        if (
-                            (string) $existing->estatus === 'activo'
-                            && ($prepared['estatus'] ?? 'activo') === 'inactivo'
-                        ) {
-                            if ($catalogo === 'plantas') {
-                                $this->catalogManagement->assertPlantCanBeDeactivated((int) $existing->id);
-                            } else {
-                                $this->catalogManagement->assertCatalogCanBeDeactivated(
-                                    $catalogo,
-                                    (int) $existing->id
-                                );
-                            }
-                        }
-                    } catch (DomainException $exception) {
-                        $this->rejectRow($summary, $lineNumber, $exception->getMessage());
-                        continue;
-                    }
-                }
-
-                $before = $existing ? (array) $existing : null;
-                $now = now();
-
-                if ($existing) {
-                    DB::table($table)
-                        ->where('id', $existing->id)
-                        ->update(array_merge($prepared, [
-                            'updated_at' => $now,
-                        ]));
-
-                    $registroId = (string) $existing->id;
-                    $summary['actualizados']++;
-                    $accion = 'IMPORTACION_CATALOGO_ACTUALIZACION';
-                } else {
-                    $registroId = (string) DB::table($table)->insertGetId(array_merge($prepared, [
-                        'created_at' => $now,
-                        'updated_at' => $now,
-                    ]));
-
-                    $summary['insertados']++;
-                    $accion = 'IMPORTACION_CATALOGO_ALTA';
-                }
-
-                $after = DB::table($table)
-                    ->where('id', $registroId)
-                    ->first();
-
-                $this->registrarBitacora(
-                    accion: $accion,
-                    tablaAfectada: $table,
-                    registroClave: $registroId,
-                    antes: $before,
-                    despues: $after ? (array) $after : null
-                );
-            }
-
-            DB::commit();
+            $batch = $this->catalogImports->preview(
+                file: $file,
+                catalog: $catalog,
+                userId: auth()->id(),
+                ip: $request->ip()
+            );
+        } catch (DomainException $exception) {
+            return back()
+                ->withInput()
+                ->withErrors(['archivo_csv' => $exception->getMessage()]);
         } catch (Throwable $exception) {
-            DB::rollBack();
             report($exception);
 
             return back()
                 ->withInput()
                 ->withErrors([
-                    'archivo_csv' => 'No fue posible completar la importación. Revisa el archivo e inténtalo nuevamente.',
+                    'archivo_csv' => 'No fue posible previsualizar el layout. Revisa el archivo e inténtalo nuevamente.',
                 ]);
         }
 
         return redirect()
-            ->route('catalogos', ['catalogo' => $catalogo])
-            ->with('success', 'La carga masiva del catálogo fue procesada correctamente.')
-            ->with('import_summary', $summary);
+            ->route('catalogos', [
+                'catalogo' => $catalog,
+                'lote' => $batch->uuid,
+            ])
+            ->with('success', 'El layout fue validado. Revisa la previsualización antes de aplicar los cambios.');
     }
 
-    public function plantillaCsv(CatalogIndexRequest $request)
-    {
-        $catalogo = (string) ($request->validated('catalogo') ?? 'proveedores');
-        $headers = $this->headersFor($catalogo);
-        $example = $this->exampleRowFor($catalogo);
+    public function aplicarImportacion(
+        ApplyCatalogImportRequest $request,
+        string $lote
+    ): RedirectResponse {
+        try {
+            $batch = $this->catalogImports->findOwnedBatch($lote, (int) auth()->id());
 
-        return response()->streamDownload(function () use ($headers, $example) {
-            $output = fopen('php://output', 'w');
+            if ($batch->catalogo !== (string) $request->validated('catalogo')) {
+                throw new DomainException('El catálogo enviado no coincide con la previsualización seleccionada.');
+            }
+
+            $summary = $this->catalogImports->apply(
+                batch: $batch,
+                userId: (int) auth()->id(),
+                ip: $request->ip()
+            );
+        } catch (DomainException $exception) {
+            return redirect()
+                ->route('catalogos', ['catalogo' => $request->validated('catalogo'), 'lote' => $lote])
+                ->withInput()
+                ->withErrors(['importacion' => $exception->getMessage()]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return redirect()
+                ->route('catalogos', ['catalogo' => $request->validated('catalogo'), 'lote' => $lote])
+                ->withErrors([
+                    'importacion' => 'No fue posible aplicar el lote. No se confirmó ningún cambio parcial.',
+                ]);
+        }
+
+        return redirect()
+            ->route('catalogos', ['catalogo' => $batch->catalogo, 'lote' => $batch->uuid])
+            ->with('success', 'La carga de catálogos fue aplicada correctamente.')
+            ->with('import_apply_summary', $summary);
+    }
+
+    public function cancelarImportacion(Request $request, string $lote): RedirectResponse
+    {
+        try {
+            $batch = $this->catalogImports->findOwnedBatch($lote, (int) auth()->id());
+            $this->catalogImports->cancel($batch, (int) auth()->id(), $request->ip());
+        } catch (DomainException $exception) {
+            return back()->withErrors(['importacion' => $exception->getMessage()]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors([
+                'importacion' => 'No fue posible cancelar la previsualización. Inténtalo nuevamente.',
+            ]);
+        }
+
+        return redirect()
+            ->route('catalogos', ['catalogo' => $batch->catalogo])
+            ->with('success', 'La previsualización fue cancelada sin modificar los catálogos.');
+    }
+
+    public function exportarIncidenciasXlsx(Request $request, string $lote): RedirectResponse|StreamedResponse
+    {
+        try {
+            $batch = $this->catalogImports->findOwnedBatch($lote, (int) auth()->id());
+            $rows = $this->catalogImports->incidentRows($batch);
+
+            if ($rows->isEmpty()) {
+                throw new DomainException('El lote no contiene filas observadas o rechazadas para exportar.');
+            }
+
+            $contents = $this->xlsxExporter->exportBytes(
+                'Incidencias catálogos',
+                $this->catalogImports->incidentHeaders(),
+                $this->catalogImports->incidentDataRows($rows, $batch->catalogo)
+            );
+
+            $this->catalogImports->registerIncidentExport(
+                $batch,
+                (int) auth()->id(),
+                $request->ip(),
+                'xlsx',
+                $rows->count()
+            );
+        } catch (DomainException $exception) {
+            return back()->withErrors(['importacion' => $exception->getMessage()]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors([
+                'importacion' => 'No fue posible generar el Excel de incidencias. Utiliza la descarga CSV disponible.',
+            ]);
+        }
+
+        return response()->streamDownload(
+            static function () use ($contents): void {
+                echo $contents;
+            },
+            'incidencias_catalogos_' . $batch->uuid . '.xlsx',
+            [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                'X-Content-Type-Options' => 'nosniff',
+            ]
+        );
+    }
+
+    public function exportarIncidenciasCsv(Request $request, string $lote): RedirectResponse|StreamedResponse
+    {
+        try {
+            $batch = $this->catalogImports->findOwnedBatch($lote, (int) auth()->id());
+            $rows = $this->catalogImports->incidentRows($batch);
+
+            if ($rows->isEmpty()) {
+                throw new DomainException('El lote no contiene filas observadas o rechazadas para exportar.');
+            }
+
+            $headers = $this->catalogImports->incidentHeaders();
+            $dataRows = $this->catalogImports->incidentDataRows($rows, $batch->catalogo);
+
+            $this->catalogImports->registerIncidentExport(
+                $batch,
+                (int) auth()->id(),
+                $request->ip(),
+                'csv',
+                $rows->count()
+            );
+        } catch (DomainException $exception) {
+            return back()->withErrors(['importacion' => $exception->getMessage()]);
+        } catch (Throwable $exception) {
+            report($exception);
+
+            return back()->withErrors([
+                'importacion' => 'No fue posible preparar el CSV de incidencias.',
+            ]);
+        }
+
+        return response()->streamDownload(
+            static function () use ($headers, $dataRows): void {
+                $output = fopen('php://output', 'wb');
+
+                if (!is_resource($output)) {
+                    throw new \RuntimeException('No fue posible iniciar la descarga CSV.');
+                }
+
+                fwrite($output, "\xEF\xBB\xBF");
+                fputcsv($output, $headers, ',', '"', '');
+
+                foreach ($dataRows as $row) {
+                    fputcsv($output, array_map(
+                        static fn (mixed $value): string => self::safeSpreadsheetValue($value),
+                        $row
+                    ), ',', '"', '');
+                }
+
+                fclose($output);
+            },
+            'incidencias_catalogos_' . $batch->uuid . '.csv',
+            [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                'X-Content-Type-Options' => 'nosniff',
+            ]
+        );
+    }
+
+    public function plantillaCsv(CatalogIndexRequest $request): StreamedResponse
+    {
+        $catalog = (string) ($request->validated('catalogo') ?? 'proveedores');
+        $headers = $this->catalogImports->headersFor($catalog);
+        $example = $this->catalogImports->exampleRowFor($catalog);
+
+        return response()->streamDownload(function () use ($headers, $example): void {
+            $output = fopen('php://output', 'wb');
+
+            if (!is_resource($output)) {
+                throw new \RuntimeException('No fue posible iniciar la descarga de la plantilla.');
+            }
 
             fwrite($output, "\xEF\xBB\xBF");
-            fputcsv($output, array_map(fn ($header) => Str::headline(str_replace('_', ' ', $header)), $headers));
-            fputcsv($output, $example);
-
+            fputcsv(
+                $output,
+                array_map(fn ($header) => Str::headline(str_replace('_', ' ', $header)), $headers),
+                ',',
+                '"',
+                ''
+            );
+            fputcsv($output, $example, ',', '"', '');
             fclose($output);
-        }, 'plantilla_catalogo_swafi_' . $catalogo . '.csv', [
+        }, 'plantilla_catalogo_swafi_' . $catalog . '.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
+            'X-Content-Type-Options' => 'nosniff',
         ]);
     }
 
@@ -628,440 +731,6 @@ class CatalogosController extends Controller
             || $permissions->contains('catalogos.administrar');
     }
 
-    private function headersFor(string $catalogo): array
-    {
-        return match ($catalogo) {
-            'proveedores' => ['rfc', 'nombre', 'correo', 'telefono', 'estatus'],
-            'plantas' => ['clave', 'nombre', 'direccion', 'estado', 'pais', 'estatus'],
-            'centros_costo' => ['planta_clave', 'clave', 'descripcion', 'estatus'],
-            'categorias_activo' => ['clave', 'nombre', 'descripcion', 'estatus'],
-            'tipos_activo' => ['categoria_clave', 'clave', 'descripcion', 'vida_util_meses', 'estatus'],
-            'estatus_documentales', 'estatus_operativos' => ['clave', 'nombre', 'descripcion', 'orden', 'estatus'],
-            'areas' => ['planta_clave', 'clave', 'nombre', 'estatus'],
-            'ubicaciones' => ['planta_clave', 'area_nombre', 'codigo_interno', 'edificio', 'piso', 'pasillo', 'descripcion', 'estatus'],
-            'responsables' => ['nombre', 'correo', 'telefono', 'estatus'],
-            default => [],
-        };
-    }
-
-    private function requiredHeadersFor(string $catalogo): array
-    {
-        return match ($catalogo) {
-            'proveedores' => ['rfc', 'nombre'],
-            'plantas' => ['clave', 'nombre', 'direccion'],
-            'centros_costo' => ['planta_clave', 'clave', 'descripcion'],
-            'categorias_activo' => ['clave', 'nombre'],
-            'tipos_activo' => ['categoria_clave', 'clave', 'descripcion'],
-            'estatus_documentales', 'estatus_operativos' => ['clave', 'nombre', 'orden'],
-            'areas' => ['planta_clave', 'clave', 'nombre'],
-            'ubicaciones' => ['planta_clave', 'codigo_interno'],
-            'responsables' => ['nombre'],
-            default => [],
-        };
-    }
-
-    private function exampleRowFor(string $catalogo): array
-    {
-        return match ($catalogo) {
-            'proveedores' => ['ACM010101ABC', 'Proveedor industrial del centro', 'contacto@proveedor.com', '5555555555', 'activo'],
-            'plantas' => ['PLT-SM', 'Planta Santa María', 'Calle Industrial 100, Colonia Centro', 'Ciudad de México', 'México', 'activo'],
-            'centros_costo' => ['PLT-SM', 'CC-PLA-200', 'Producción línea 2', 'activo'],
-            'categorias_activo' => ['ME', 'Maquinaria y equipo', 'Bienes productivos e instalaciones técnicas', 'activo'],
-            'tipos_activo' => ['ME', 'EQP', 'Equipo de producción', '120', 'activo'],
-            'estatus_documentales' => ['pendiente_revision', 'Pendiente de revisión', 'Expediente enviado a revisión documental especializada', '100', 'activo'],
-            'estatus_operativos' => ['en_mantenimiento', 'En mantenimiento', 'Activo temporalmente fuera de operación por mantenimiento', '100', 'activo'],
-            'areas' => ['PLT-SM', 'PROD', 'Producción', 'activo'],
-            'ubicaciones' => ['PLT-SM', 'Producción', 'UBI-SM-PRO-L3-PB', 'Edificio B', 'PB', 'Línea 3', 'Producción línea 3 planta baja', 'activo'],
-            'responsables' => ['Jorge Méndez', 'jorge.mendez@bimbo.local', '5555555555', 'activo'],
-            default => [],
-        };
-    }
-
-    private function prepareImportRow(string $catalogo, array $data, int $lineNumber, array &$summary): ?array
-    {
-        $estatus = $this->normalizeEstatus($data['estatus'] ?? 'activo');
-
-        if ($estatus === null) {
-            $this->rejectRow($summary, $lineNumber, 'el estatus debe ser activo o inactivo.');
-            return null;
-        }
-
-        return match ($catalogo) {
-            'proveedores' => $this->prepareProveedor($data, $lineNumber, $summary, $estatus),
-            'plantas' => $this->preparePlanta($data, $lineNumber, $summary, $estatus),
-            'centros_costo' => $this->prepareCentroCosto($data, $lineNumber, $summary, $estatus),
-            'categorias_activo' => $this->prepareCategoriaActivo($data, $lineNumber, $summary, $estatus),
-            'tipos_activo' => $this->prepareTipoActivo($data, $lineNumber, $summary, $estatus),
-            'estatus_documentales', 'estatus_operativos' => $this->prepareAssetStatus($data, $lineNumber, $summary, $estatus),
-            'areas' => $this->prepareArea($data, $lineNumber, $summary, $estatus),
-            'ubicaciones' => $this->prepareUbicacion($data, $lineNumber, $summary, $estatus),
-            'responsables' => $this->prepareResponsable($data, $lineNumber, $summary, $estatus),
-            default => null,
-        };
-    }
-
-    private function prepareProveedor(array $data, int $lineNumber, array &$summary, string $estatus): ?array
-    {
-        $rfc = strtoupper($this->normalizeCell($data['rfc'] ?? ''));
-        $nombre = $this->normalizeCell($data['nombre'] ?? '');
-
-        if ($rfc === '' || mb_strlen($rfc) > 13) {
-            $this->rejectRow($summary, $lineNumber, 'el RFC es obligatorio y no debe superar 13 caracteres.');
-            return null;
-        }
-
-        if ($nombre === '') {
-            $this->rejectRow($summary, $lineNumber, 'el nombre del proveedor es obligatorio.');
-            return null;
-        }
-
-        return [
-            'rfc' => $rfc,
-            'nombre' => $nombre,
-            'correo' => $this->nullableString($data['correo'] ?? null, 120),
-            'telefono' => $this->nullableString($data['telefono'] ?? null, 30),
-            'estatus' => $estatus,
-        ];
-    }
-
-    private function preparePlanta(array $data, int $lineNumber, array &$summary, string $estatus): ?array
-    {
-        $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
-        $nombre = $this->normalizeCell($data['nombre'] ?? '');
-        $direccion = $this->normalizeCell($data['direccion'] ?? '');
-
-        if ($clave === '' || mb_strlen($clave) > 30) {
-            $this->rejectRow($summary, $lineNumber, 'la clave de planta es obligatoria y no debe superar 30 caracteres.');
-            return null;
-        }
-
-        if ($nombre === '') {
-            $this->rejectRow($summary, $lineNumber, 'el nombre de planta es obligatorio.');
-            return null;
-        }
-
-        if ($direccion === '' || mb_strlen($direccion) > 255) {
-            $this->rejectRow($summary, $lineNumber, 'la dirección de la planta es obligatoria y no debe superar 255 caracteres.');
-            return null;
-        }
-
-        return [
-            'clave' => $clave,
-            'nombre' => $nombre,
-            'direccion' => $direccion,
-            'estado' => $this->nullableString($data['estado'] ?? null, 100),
-            'pais' => $this->normalizeCell($data['pais'] ?? '') ?: 'México',
-            'estatus' => $estatus,
-        ];
-    }
-
-    private function prepareCentroCosto(array $data, int $lineNumber, array &$summary, string $estatus): ?array
-    {
-        $plantaClave = strtoupper($this->normalizeCell($data['planta_clave'] ?? ''));
-        $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
-        $descripcion = $this->normalizeCell($data['descripcion'] ?? '');
-
-        if ($plantaClave === '') {
-            $this->rejectRow($summary, $lineNumber, 'la planta_clave es obligatoria.');
-            return null;
-        }
-
-        $plantaId = DB::table('plantas')
-            ->where('clave', $plantaClave)
-            ->where('estatus', 'activo')
-            ->value('id');
-
-        if (!$plantaId) {
-            $this->rejectRow(
-                $summary,
-                $lineNumber,
-                "la planta {$plantaClave} no existe o está inactiva. Registra o reactiva la planta antes de importar el centro de costo."
-            );
-            return null;
-        }
-
-        if ($clave === '' || mb_strlen($clave) > 30) {
-            $this->rejectRow($summary, $lineNumber, 'la clave de centro de costo es obligatoria y no debe superar 30 caracteres.');
-            return null;
-        }
-
-        if ($descripcion === '') {
-            $this->rejectRow($summary, $lineNumber, 'la descripción del centro de costo es obligatoria.');
-            return null;
-        }
-
-        return [
-            'planta_id' => (int) $plantaId,
-            'clave' => $clave,
-            'descripcion' => $descripcion,
-            'estatus' => $estatus,
-        ];
-    }
-
-    private function prepareCategoriaActivo(array $data, int $lineNumber, array &$summary, string $estatus): ?array
-    {
-        $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
-        $nombre = $this->normalizeCell($data['nombre'] ?? '');
-
-        if ($clave === '' || mb_strlen($clave) > 30) {
-            $this->rejectRow($summary, $lineNumber, 'la clave de categoría es obligatoria y no debe superar 30 caracteres.');
-            return null;
-        }
-
-        if ($nombre === '' || mb_strlen($nombre) > 120) {
-            $this->rejectRow($summary, $lineNumber, 'el nombre de categoría es obligatorio y no debe superar 120 caracteres.');
-            return null;
-        }
-
-        return [
-            'clave' => $clave,
-            'nombre' => $nombre,
-            'descripcion' => $this->nullableString($data['descripcion'] ?? null, 255),
-            'estatus' => $estatus,
-        ];
-    }
-
-    private function prepareTipoActivo(array $data, int $lineNumber, array &$summary, string $estatus): ?array
-    {
-        $categoriaClave = strtoupper($this->normalizeCell($data['categoria_clave'] ?? ''));
-        $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
-        $descripcion = $this->normalizeCell($data['descripcion'] ?? '');
-        $vidaUtil = $this->normalizeCell($data['vida_util_meses'] ?? '');
-
-        if ($categoriaClave === '') {
-            $this->rejectRow($summary, $lineNumber, 'la categoria_clave es obligatoria.');
-            return null;
-        }
-
-        $categoriaId = DB::table('categorias_activo')
-            ->where('clave', $categoriaClave)
-            ->where('estatus', 'activo')
-            ->value('id');
-
-        if (!$categoriaId) {
-            $this->rejectRow(
-                $summary,
-                $lineNumber,
-                "la categoría {$categoriaClave} no existe o está inactiva. Registra o reactiva la categoría antes de importar el tipo de activo."
-            );
-            return null;
-        }
-
-        if ($clave === '' || mb_strlen($clave) > 30) {
-            $this->rejectRow($summary, $lineNumber, 'la clave de tipo de activo es obligatoria y no debe superar 30 caracteres.');
-            return null;
-        }
-
-        if ($descripcion === '' || mb_strlen($descripcion) > 120) {
-            $this->rejectRow($summary, $lineNumber, 'el nombre del tipo de activo es obligatorio y no debe superar 120 caracteres.');
-            return null;
-        }
-
-        if ($vidaUtil !== '' && (!ctype_digit($vidaUtil) || (int) $vidaUtil < 1 || (int) $vidaUtil > 600)) {
-            $this->rejectRow($summary, $lineNumber, 'la vida útil debe ser un número entre 1 y 600 meses.');
-            return null;
-        }
-
-        return [
-            'categoria_activo_id' => (int) $categoriaId,
-            'clave' => $clave,
-            'descripcion' => $descripcion,
-            'vida_util_meses' => $vidaUtil !== '' ? (int) $vidaUtil : null,
-            'estatus' => $estatus,
-        ];
-    }
-
-    private function prepareAssetStatus(array $data, int $lineNumber, array &$summary, string $estatus): ?array
-    {
-        $clave = mb_strtolower($this->normalizeCell($data['clave'] ?? ''));
-        $clave = preg_replace('/[^a-z0-9]+/', '_', $clave) ?? '';
-        $clave = trim($clave, '_');
-        $nombre = $this->normalizeCell($data['nombre'] ?? '');
-        $orden = $this->normalizeCell($data['orden'] ?? '');
-
-        if ($clave === '' || mb_strlen($clave) > 20 || preg_match('/^[a-z][a-z0-9_]*$/', $clave) !== 1) {
-            $this->rejectRow(
-                $summary,
-                $lineNumber,
-                'la clave técnica debe iniciar con una letra minúscula y contener solo letras minúsculas, números y guion bajo.'
-            );
-            return null;
-        }
-
-        if ($nombre === '' || mb_strlen($nombre) > 80) {
-            $this->rejectRow($summary, $lineNumber, 'el nombre visible es obligatorio y no debe superar 80 caracteres.');
-            return null;
-        }
-
-        if ($orden === '' || !ctype_digit($orden) || (int) $orden < 1 || (int) $orden > 999) {
-            $this->rejectRow($summary, $lineNumber, 'el orden debe ser un número entero entre 1 y 999.');
-            return null;
-        }
-
-        return [
-            'clave' => $clave,
-            'nombre' => $nombre,
-            'descripcion' => $this->nullableString($data['descripcion'] ?? null, 255),
-            'orden' => (int) $orden,
-            'estatus' => $estatus,
-        ];
-    }
-
-    private function prepareArea(array $data, int $lineNumber, array &$summary, string $estatus): ?array
-    {
-        $plantaClave = strtoupper($this->normalizeCell($data['planta_clave'] ?? ''));
-        $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
-        $nombre = $this->normalizeCell($data['nombre'] ?? '');
-
-        if ($plantaClave === '') {
-            $this->rejectRow($summary, $lineNumber, 'la planta_clave es obligatoria.');
-            return null;
-        }
-
-        $plantaId = DB::table('plantas')
-            ->where('clave', $plantaClave)
-            ->where('estatus', 'activo')
-            ->value('id');
-
-        if (!$plantaId) {
-            $this->rejectRow(
-                $summary,
-                $lineNumber,
-                "la planta {$plantaClave} no existe o está inactiva. Registra o reactiva la planta antes de importar el área."
-            );
-            return null;
-        }
-
-        if ($clave === '' || mb_strlen($clave) > 30) {
-            $this->rejectRow($summary, $lineNumber, 'la clave del área es obligatoria y no debe superar 30 caracteres.');
-            return null;
-        }
-
-        if ($nombre === '') {
-            $this->rejectRow($summary, $lineNumber, 'el nombre del área es obligatorio.');
-            return null;
-        }
-
-        return [
-            'planta_id' => (int) $plantaId,
-            'clave' => $clave,
-            'nombre' => $nombre,
-            'estatus' => $estatus,
-        ];
-    }
-
-    private function prepareUbicacion(array $data, int $lineNumber, array &$summary, string $estatus): ?array
-    {
-        $plantaClave = strtoupper($this->normalizeCell($data['planta_clave'] ?? ''));
-        $areaNombre = $this->normalizeCell($data['area_nombre'] ?? '');
-        $codigoInterno = strtoupper($this->normalizeCell($data['codigo_interno'] ?? ''));
-
-        if ($plantaClave === '') {
-            $this->rejectRow($summary, $lineNumber, 'la planta_clave es obligatoria.');
-            return null;
-        }
-
-        $plantaId = DB::table('plantas')->where('clave', $plantaClave)->value('id');
-
-        if (!$plantaId) {
-            $this->rejectRow($summary, $lineNumber, "la planta {$plantaClave} no existe. Primero importa o registra la planta.");
-            return null;
-        }
-
-        if ($codigoInterno === '') {
-            $this->rejectRow($summary, $lineNumber, 'el codigo_interno de ubicación es obligatorio para evitar duplicados.');
-            return null;
-        }
-
-        $areaId = null;
-
-        if ($areaNombre !== '') {
-            $areaId = DB::table('areas')
-                ->where('planta_id', $plantaId)
-                ->where('nombre', $areaNombre)
-                ->value('id');
-
-            if (!$areaId) {
-                $this->rejectRow($summary, $lineNumber, "el área {$areaNombre} no existe para la planta {$plantaClave}. Primero importa o registra el área.");
-                return null;
-            }
-        }
-
-        return [
-            'planta_id' => $plantaId,
-            'area_id' => $areaId,
-            'codigo_interno' => $codigoInterno,
-            'edificio' => $this->nullableString($data['edificio'] ?? null, 100),
-            'piso' => $this->nullableString($data['piso'] ?? null, 50),
-            'pasillo' => $this->nullableString($data['pasillo'] ?? null, 50),
-            'descripcion' => $this->nullableString($data['descripcion'] ?? null, 255),
-            'estatus' => $estatus,
-        ];
-    }
-
-    private function prepareResponsable(array $data, int $lineNumber, array &$summary, string $estatus): ?array
-    {
-        $nombre = $this->normalizeCell($data['nombre'] ?? '');
-
-        if ($nombre === '') {
-            $this->rejectRow($summary, $lineNumber, 'el nombre del responsable es obligatorio.');
-            return null;
-        }
-
-        return [
-            'nombre' => $nombre,
-            'correo' => $this->nullableString($data['correo'] ?? null, 120),
-            'telefono' => $this->nullableString($data['telefono'] ?? null, 30),
-            'estatus' => $estatus,
-        ];
-    }
-
-    private function findExistingImportRecord(string $catalogo, array $prepared)
-    {
-        return match ($catalogo) {
-            'proveedores' => DB::table('proveedores')->where('rfc', $prepared['rfc'])->lockForUpdate()->first(),
-            'plantas' => DB::table('plantas')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
-            'centros_costo' => DB::table('centros_costo')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
-            'categorias_activo' => DB::table('categorias_activo')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
-            'tipos_activo' => DB::table('tipos_activo')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
-            'estatus_documentales' => DB::table('estatus_documentales')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
-            'estatus_operativos' => DB::table('estatus_operativos')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
-            'areas' => DB::table('areas')
-                ->where('planta_id', $prepared['planta_id'])
-                ->where(function ($query) use ($prepared): void {
-                    $query->where('clave', $prepared['clave'])
-                        ->orWhere(function ($fallback) use ($prepared): void {
-                            $fallback->whereNull('clave')
-                                ->where('nombre', $prepared['nombre']);
-                        });
-                })
-                ->lockForUpdate()
-                ->first(),
-            'ubicaciones' => DB::table('ubicaciones')->where('codigo_interno', $prepared['codigo_interno'])->lockForUpdate()->first(),
-            'responsables' => $this->findExistingResponsable($prepared),
-            default => null,
-        };
-    }
-
-    private function findExistingResponsable(array $prepared)
-    {
-        if (!empty($prepared['correo'])) {
-            $responsable = DB::table('responsables')
-                ->where('correo', $prepared['correo'])
-                ->lockForUpdate()
-                ->first();
-
-            if ($responsable) {
-                return $responsable;
-            }
-        }
-
-        return DB::table('responsables')
-            ->where('nombre', $prepared['nombre'])
-            ->lockForUpdate()
-            ->first();
-    }
-
     private function options(): array
     {
         return [
@@ -1113,7 +782,7 @@ class CatalogosController extends Controller
             $output = fopen('php://output', 'w');
 
             fwrite($output, "\xEF\xBB\xBF");
-            fputcsv($output, array_values($columns));
+            fputcsv($output, array_values($columns), ',', '"', '');
 
             foreach ($rows as $row) {
                 $line = [];
@@ -1122,7 +791,7 @@ class CatalogosController extends Controller
                     $line[] = $this->csvSafeValue(data_get($row, $key));
                 }
 
-                fputcsv($output, $line);
+                fputcsv($output, $line, ',', '"', '');
             }
 
             fclose($output);
@@ -1154,98 +823,15 @@ class CatalogosController extends Controller
         return $value;
     }
 
-    private function detectDelimiter(string $line): string
+    private static function safeSpreadsheetValue(mixed $value): string
     {
-        $candidates = [
-            ',' => substr_count($line, ','),
-            ';' => substr_count($line, ';'),
-            "\t" => substr_count($line, "\t"),
-        ];
+        $string = trim((string) $value);
 
-        arsort($candidates);
-
-        return array_key_first($candidates) ?: ',';
-    }
-
-    private function normalizeHeader(?string $value): string
-    {
-        $value = $this->normalizeCell($value);
-        $value = Str::ascii($value);
-        $value = Str::lower($value);
-        $value = preg_replace('/[^a-z0-9]+/', '_', $value);
-        $value = trim($value, '_');
-
-        return $value;
-    }
-
-    private function normalizeCell(?string $value): string
-    {
-        $value = (string) $value;
-        $value = str_replace("\xEF\xBB\xBF", '', $value);
-        $value = trim($value);
-
-        return $value;
-    }
-
-    private function isEmptyCsvRow(array $data): bool
-    {
-        foreach ($data as $value) {
-            if (trim((string) $value) !== '') {
-                return false;
-            }
+        if ($string !== '' && in_array($string[0], ['=', '+', '-', '@'], true)) {
+            return "'" . $string;
         }
 
-        return true;
+        return $string;
     }
 
-    private function normalizeEstatus(?string $value): ?string
-    {
-        $value = $this->normalizeHeader($value ?: 'activo');
-
-        return match ($value) {
-            'activo', 'activa', '1', 'si' => 'activo',
-            'inactivo', 'inactiva', '0', 'no' => 'inactivo',
-            default => null,
-        };
-    }
-
-    private function nullableString(?string $value, int $maxLength): ?string
-    {
-        $value = $this->normalizeCell($value);
-
-        if ($value === '') {
-            return null;
-        }
-
-        return mb_substr($value, 0, $maxLength);
-    }
-
-    private function rejectRow(array &$summary, int $lineNumber, string $reason): void
-    {
-        $summary['rechazados']++;
-        $summary['errores'][] = "Fila {$lineNumber}: {$reason}";
-    }
-
-    private function registrarBitacora(
-        string $accion,
-        ?string $tablaAfectada,
-        ?string $registroClave,
-        ?array $antes,
-        ?array $despues
-    ): void {
-        DB::table('bitacora_auditoria')->insert([
-            'numero_activo' => null,
-            'user_id' => auth()->id(),
-            'modulo' => 'M04 Administración y seguridad del sistema',
-            'accion' => $accion,
-            'tabla_afectada' => $tablaAfectada,
-            'registro_clave' => $registroClave,
-            'antes' => $antes ? json_encode($antes, JSON_UNESCAPED_UNICODE) : null,
-            'despues' => $despues ? json_encode($despues, JSON_UNESCAPED_UNICODE) : null,
-            'ip' => request()->ip(),
-            'fecha_evento' => now(),
-            'created_at' => now(),
-            'updated_at' => now(),
-        ]);
-    }
 }

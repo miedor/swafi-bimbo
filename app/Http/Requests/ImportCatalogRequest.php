@@ -29,8 +29,8 @@ class ImportCatalogRequest extends FormRequest
             'archivo_csv' => [
                 'required',
                 'file',
-                'mimes:csv,txt',
-                'mimetypes:text/plain,text/csv,application/csv,application/vnd.ms-excel',
+                'mimes:csv,txt,xlsx',
+                'mimetypes:text/plain,text/csv,application/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/zip',
                 'max:10240',
             ],
         ];
@@ -40,11 +40,11 @@ class ImportCatalogRequest extends FormRequest
     {
         return [
             'catalogo.in' => 'El catálogo seleccionado no es válido.',
-            'archivo_csv.required' => 'Debes seleccionar un archivo CSV para importar.',
+            'archivo_csv.required' => 'Debes seleccionar un layout CSV o XLSX para previsualizar.',
             'archivo_csv.file' => 'El archivo seleccionado no es válido.',
-            'archivo_csv.mimes' => 'El archivo debe tener extensión CSV o TXT.',
-            'archivo_csv.mimetypes' => 'El contenido del archivo no corresponde a un CSV válido.',
-            'archivo_csv.max' => 'El archivo CSV no debe superar los 10 MB.',
+            'archivo_csv.mimes' => 'El layout debe tener extensión CSV, TXT o XLSX.',
+            'archivo_csv.mimetypes' => 'El contenido del archivo no corresponde a un layout CSV o XLSX válido.',
+            'archivo_csv.max' => 'El layout no debe superar los 10 MB.',
         ];
     }
 

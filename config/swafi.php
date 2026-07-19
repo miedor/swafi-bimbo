@@ -18,6 +18,29 @@ return [
     ],
 
 
+
+    'catalogos' => [
+        /*
+         * La carga inicial de catálogos se previsualiza antes de aplicar cambios.
+         * Estos límites evitan lotes excesivos y previsualizaciones abandonadas
+         * que permanezcan disponibles indefinidamente.
+         */
+        'importacion_max_filas' => min(
+            20000,
+            max(
+                1,
+                (int) env('SWAFI_CATALOG_IMPORT_MAX_ROWS', 5000)
+            )
+        ),
+        'previsualizacion_horas' => min(
+            72,
+            max(
+                1,
+                (int) env('SWAFI_CATALOG_IMPORT_PREVIEW_HOURS', 24)
+            )
+        ),
+    ],
+
     'bitacora' => [
         /*
          * Límite máximo de filas por archivo para evitar exportaciones que

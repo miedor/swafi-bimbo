@@ -212,6 +212,149 @@
         line-height: 1.45;
     }
 
+    .cat-import-preview {
+        margin-top: 20px;
+        scroll-margin-top: 105px;
+    }
+
+    .cat-preview-meta {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 12px;
+    }
+
+    .cat-preview-meta-item {
+        min-width: 0;
+        padding: 11px 12px;
+        border: 1px solid #e1eaf6;
+        border-radius: 14px;
+        background: #f8fbff;
+    }
+
+    .cat-preview-meta-item span {
+        display: block;
+        margin-bottom: 4px;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 900;
+        text-transform: uppercase;
+    }
+
+    .cat-preview-meta-item strong {
+        display: block;
+        overflow-wrap: anywhere;
+        color: #12345a;
+        font-size: 13px;
+    }
+
+    .cat-import-kpi-grid {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(0, 1fr));
+        gap: 10px;
+        margin-top: 14px;
+    }
+
+    .cat-import-kpi-grid .cat-kpi.is-accepted {
+        background: #eefaf1;
+        border-color: #c7ead0;
+    }
+
+    .cat-import-kpi-grid .cat-kpi.is-observed {
+        background: #fff8e8;
+        border-color: #f0d799;
+    }
+
+    .cat-import-kpi-grid .cat-kpi.is-rejected {
+        background: #fff0f0;
+        border-color: #efc0c0;
+    }
+
+    .cat-import-filter {
+        display: grid;
+        grid-template-columns: minmax(220px, 1fr) auto;
+        gap: 10px;
+        align-items: end;
+        margin-top: 14px;
+        padding: 12px;
+        border: 1px solid #e1eaf6;
+        border-radius: 15px;
+        background: #f8fbff;
+    }
+
+    .cat-import-filter label span {
+        display: block;
+        margin-bottom: 5px;
+        color: #1d3558;
+        font-size: 12px;
+        font-weight: 900;
+    }
+
+    .cat-import-filter select {
+        width: 100%;
+        min-height: 38px;
+        padding: 8px 10px;
+        border: 1px solid #d5e1ef;
+        border-radius: 11px;
+        background: #ffffff;
+        color: #16304d;
+    }
+
+    .cat-preview-messages {
+        margin: 0;
+        padding-left: 18px;
+        color: #5b6780;
+        font-size: 12px;
+        line-height: 1.35;
+    }
+
+    .cat-preview-messages.is-error {
+        color: #9b2c2c;
+    }
+
+    .cat-import-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        align-items: center;
+        margin-top: 15px;
+    }
+
+    .cat-import-confirm {
+        flex: 1 1 420px;
+        padding: 12px;
+        border: 1px solid #cfe0f5;
+        border-radius: 14px;
+        background: #eef6ff;
+    }
+
+    .cat-import-confirm label {
+        display: flex;
+        gap: 9px;
+        align-items: flex-start;
+        color: #264b73;
+        font-size: 13px;
+        font-weight: 800;
+        line-height: 1.4;
+    }
+
+    .cat-import-confirm input[type="checkbox"] {
+        width: 18px;
+        height: 18px;
+        margin-top: 1px;
+        flex: 0 0 auto;
+    }
+
+    .cat-import-state-note {
+        margin-top: 14px;
+        padding: 11px 13px;
+        border-radius: 13px;
+        background: #f8fbff;
+        color: #52657c;
+        font-size: 13px;
+        line-height: 1.45;
+    }
+
     @media (max-width: 1100px) {
         .cat-grid {
             grid-template-columns: 1fr;
@@ -222,7 +365,10 @@
         .cat-form-grid,
         .query-grid-four,
         .cat-kpi-grid,
-        .cat-detail-grid {
+        .cat-detail-grid,
+        .cat-preview-meta,
+        .cat-import-kpi-grid,
+        .cat-import-filter {
             grid-template-columns: 1fr !important;
         }
     }
@@ -237,25 +383,17 @@
     </div>
 @endif
 
-@if (session('import_summary'))
+@if (session('import_apply_summary'))
     @php
-        $summary = session('import_summary');
+        $summary = session('import_apply_summary');
     @endphp
 
     <div class="cat-message cat-message-success">
-        <strong>Resumen de carga masiva de {{ $summary['catalogo'] ?? 'catálogo' }}:</strong><br>
-        Procesados: {{ $summary['procesados'] ?? 0 }} |
+        <strong>La carga de catálogos se aplicó de forma transaccional.</strong><br>
+        Aplicados: {{ $summary['aplicados'] ?? 0 }} |
         Insertados: {{ $summary['insertados'] ?? 0 }} |
         Actualizados: {{ $summary['actualizados'] ?? 0 }} |
-        Rechazados: {{ $summary['rechazados'] ?? 0 }}
-
-        @if (!empty($summary['errores']))
-            <ul>
-                @foreach (array_slice($summary['errores'], 0, 12) as $error)
-                    <li>{{ $error }}</li>
-                @endforeach
-            </ul>
-        @endif
+        Filas rechazadas no aplicadas: {{ $summary['rechazados'] ?? 0 }}
     </div>
 @endif
 
@@ -590,10 +728,10 @@
         </form>
 
         <div class="cat-import">
-            <h3>Carga masiva del catálogo actual</h3>
+            <h3>Carga masiva con previsualización</h3>
             <p>
-                Importa registros desde un archivo CSV. Si la clave principal ya existe, SWAFI actualizará el registro;
-                si no existe, lo creará como nuevo.
+                SWAFI valida el layout y clasifica cada fila como aceptada, observada o rechazada.
+                Ningún catálogo se modifica hasta que revises el resultado y confirmes expresamente la aplicación del lote.
             </p>
 
             <form method="POST" action="{{ route('catalogos.importar') }}" enctype="multipart/form-data">
@@ -602,18 +740,18 @@
                 <input type="hidden" name="catalogo" value="{{ $catalogoActivo }}">
 
                 <label>
-                    <span>Archivo CSV</span>
-                    <input type="file" name="archivo_csv" accept=".csv,.txt" required>
+                    <span>Layout CSV o XLSX</span>
+                    <input type="file" name="archivo_csv" accept=".csv,.txt,.xlsx" required>
                 </label>
 
                 <div class="cat-help">
                     Encabezados esperados para este catálogo:
                     <strong>{{ implode(', ', $headersLayout) }}</strong>.
-                    Guarda el archivo desde Excel como CSV UTF-8.
+                    El archivo no debe contener fórmulas. Para CSV utiliza codificación UTF-8.
                 </div>
 
                 <div class="action-group" style="margin-top:12px">
-                    <button class="tab" type="submit">Importar catálogo</button>
+                    <button class="tab" type="submit">Previsualizar y validar</button>
                     <a class="tab" href="{{ route('catalogos.plantilla', ['catalogo' => $catalogoActivo]) }}">
                         Descargar plantilla
                     </a>
@@ -688,6 +826,221 @@
         </div>
     </div>
 </section>
+
+@if ($canAdminCatalogs && $importBatch !== null)
+    @php
+        $importSummary = is_array($importBatch->resumen) ? $importBatch->resumen : [];
+        $importCanApply = $importBatch->puedeAplicarse();
+        $importIncidentCount = (int) $importBatch->filas_observadas + (int) $importBatch->filas_rechazadas;
+        $importStateClass = match ($importBatch->estado) {
+            'aplicada' => 'ok',
+            'cancelada', 'expirada' => 'danger',
+            default => 'warn',
+        };
+        $importStatusFilter = (string) ($filtros['import_status'] ?? '');
+    @endphp
+
+    <section class="card table-card cat-import-preview" id="swafi-catalog-import-preview">
+        <div class="section-title">
+            <h2>Previsualización del layout</h2>
+            <span class="pill {{ $importStateClass }}">{{ ucfirst($importBatch->estado) }}</span>
+        </div>
+
+        <div class="cat-preview-meta">
+            <div class="cat-preview-meta-item">
+                <span>Catálogo</span>
+                <strong>{{ $catalogosDisponibles[$importBatch->catalogo] ?? $importBatch->catalogo }}</strong>
+            </div>
+            <div class="cat-preview-meta-item">
+                <span>Archivo</span>
+                <strong>{{ $importBatch->archivo_nombre_original }}</strong>
+            </div>
+            <div class="cat-preview-meta-item">
+                <span>Huella SHA-256</span>
+                <strong>{{ $importBatch->archivo_hash_sha256 }}</strong>
+            </div>
+            <div class="cat-preview-meta-item">
+                <span>Vigencia</span>
+                <strong>{{ $importBatch->expira_at?->format('d/m/Y H:i') ?? 'Sin vencimiento' }}</strong>
+            </div>
+        </div>
+
+        <div class="cat-import-kpi-grid">
+            <div class="cat-kpi">
+                <strong>{{ number_format((int) $importBatch->total_filas) }}</strong>
+                <span>Filas evaluadas</span>
+            </div>
+            <div class="cat-kpi is-accepted">
+                <strong>{{ number_format((int) $importBatch->filas_aceptadas) }}</strong>
+                <span>Aceptadas</span>
+            </div>
+            <div class="cat-kpi is-observed">
+                <strong>{{ number_format((int) $importBatch->filas_observadas) }}</strong>
+                <span>Observadas</span>
+            </div>
+            <div class="cat-kpi is-rejected">
+                <strong>{{ number_format((int) $importBatch->filas_rechazadas) }}</strong>
+                <span>Rechazadas</span>
+            </div>
+            <div class="cat-kpi">
+                <strong>{{ number_format((int) ($importSummary['insertar'] ?? 0)) }}</strong>
+                <span>Altas propuestas</span>
+            </div>
+            <div class="cat-kpi">
+                <strong>{{ number_format((int) ($importSummary['actualizar'] ?? 0)) }}</strong>
+                <span>Actualizaciones propuestas</span>
+            </div>
+        </div>
+
+        <form method="GET" action="{{ route('catalogos') }}" class="cat-import-filter">
+            <input type="hidden" name="catalogo" value="{{ $catalogoActivo }}">
+            <input type="hidden" name="lote" value="{{ $importBatch->uuid }}">
+
+            <label>
+                <span>Filtrar clasificación</span>
+                <select name="import_status">
+                    <option value="">Todas las filas</option>
+                    <option value="aceptada" {{ $importStatusFilter === 'aceptada' ? 'selected' : '' }}>Aceptadas</option>
+                    <option value="observada" {{ $importStatusFilter === 'observada' ? 'selected' : '' }}>Observadas</option>
+                    <option value="rechazada" {{ $importStatusFilter === 'rechazada' ? 'selected' : '' }}>Rechazadas</option>
+                </select>
+            </label>
+
+            <div class="action-group">
+                <button class="tab" type="submit">Filtrar previsualización</button>
+                <a class="tab" href="{{ route('catalogos', ['catalogo' => $catalogoActivo, 'lote' => $importBatch->uuid]) }}">Limpiar filtro</a>
+            </div>
+        </form>
+
+        <div class="cat-table-scroll" style="margin-top:14px">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Fila</th>
+                        <th>Identificador</th>
+                        <th>Acción propuesta</th>
+                        <th>Clasificación</th>
+                        <th>Resultado de validación</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @forelse ($importRows as $importRow)
+                        @php
+                            $rowData = is_array($importRow->datos) ? $importRow->datos : [];
+                            $rowErrors = is_array($importRow->errores) ? $importRow->errores : [];
+                            $rowWarnings = is_array($importRow->advertencias) ? $importRow->advertencias : [];
+                            $rowIdentifier = $rowData['rfc']
+                                ?? $rowData['clave']
+                                ?? $rowData['codigo_interno']
+                                ?? $rowData['correo']
+                                ?? $rowData['nombre']
+                                ?? '—';
+                            $rowPillClass = match ($importRow->estatus) {
+                                'aceptada' => 'ok',
+                                'rechazada' => 'danger',
+                                default => 'warn',
+                            };
+                        @endphp
+                        <tr>
+                            <td>{{ $importRow->numero_fila }}</td>
+                            <td><strong>{{ $rowIdentifier }}</strong></td>
+                            <td>{{ $importRow->accion ? ucfirst($importRow->accion) : 'No aplicable' }}</td>
+                            <td><span class="pill {{ $rowPillClass }}">{{ ucfirst($importRow->estatus) }}</span></td>
+                            <td>
+                                @if ($rowErrors !== [])
+                                    <ul class="cat-preview-messages is-error">
+                                        @foreach ($rowErrors as $message)
+                                            <li>{{ $message }}</li>
+                                        @endforeach
+                                    </ul>
+                                @elseif ($rowWarnings !== [])
+                                    <ul class="cat-preview-messages">
+                                        @foreach ($rowWarnings as $message)
+                                            <li>{{ $message }}</li>
+                                        @endforeach
+                                    </ul>
+                                @else
+                                    <span class="pill ok">Sin incidencias</span>
+                                @endif
+                            </td>
+                        </tr>
+                    @empty
+                        <tr>
+                            <td colspan="5">No existen filas con la clasificación seleccionada.</td>
+                        </tr>
+                    @endforelse
+                </tbody>
+            </table>
+        </div>
+
+        @if ($importRows !== null)
+            <div class="table-footer">
+                <div class="table-summary">
+                    Mostrando {{ $importRows->firstItem() ?? 0 }}–{{ $importRows->lastItem() ?? 0 }}
+                    de {{ $importRows->total() }} filas
+                </div>
+                <div class="table-pagination">
+                    @if ($importRows->onFirstPage())
+                        <span class="page-link disabled">Anterior</span>
+                    @else
+                        <a class="page-link" href="{{ $importRows->previousPageUrl() }}">Anterior</a>
+                    @endif
+                    <span class="page-link active">{{ $importRows->currentPage() }}</span>
+                    @if ($importRows->hasMorePages())
+                        <a class="page-link" href="{{ $importRows->nextPageUrl() }}">Siguiente</a>
+                    @else
+                        <span class="page-link disabled">Siguiente</span>
+                    @endif
+                </div>
+                <div class="table-page-size"><span>HU-103 · validación previa</span></div>
+            </div>
+        @endif
+
+        <div class="cat-import-actions">
+            @if ($importCanApply)
+                <form
+                    method="POST"
+                    action="{{ route('catalogos.importaciones.aplicar', ['lote' => $importBatch->uuid]) }}"
+                    class="cat-import-confirm"
+                    onsubmit="return confirm('Se aplicarán únicamente las filas aceptadas y observadas. Las rechazadas permanecerán sin cambios. ¿Deseas continuar?');"
+                >
+                    @csrf
+                    <input type="hidden" name="catalogo" value="{{ $importBatch->catalogo }}">
+                    <label>
+                        <input type="checkbox" name="confirmar_aplicacion" value="1" required>
+                        <span>Revisé el lote y confirmo aplicar las filas aceptadas y observadas. Las filas rechazadas no modificarán los catálogos.</span>
+                    </label>
+                    <button class="tab" type="submit" style="margin-top:10px">Aplicar carga validada</button>
+                </form>
+            @else
+                <div class="cat-import-state-note">
+                    Este lote no admite aplicación porque ya fue aplicado, cancelado, venció o no contiene filas válidas.
+                </div>
+            @endif
+
+            @if ($importBatch->estado === 'previsualizada')
+                <form method="POST" action="{{ route('catalogos.importaciones.cancelar', ['lote' => $importBatch->uuid]) }}">
+                    @csrf
+                    @method('DELETE')
+                    <button class="tab" type="submit" onclick="return confirm('¿Deseas cancelar esta previsualización sin modificar los catálogos?')">
+                        Cancelar lote
+                    </button>
+                </form>
+            @endif
+
+            @if ($importIncidentCount > 0)
+                <a class="tab" href="{{ route('catalogos.importaciones.incidencias.xlsx', ['lote' => $importBatch->uuid]) }}">
+                    Incidencias Excel
+                </a>
+                <a class="tab" href="{{ route('catalogos.importaciones.incidencias.csv', ['lote' => $importBatch->uuid]) }}">
+                    Incidencias CSV
+                </a>
+            @endif
+
+            <a class="tab" href="{{ route('catalogos', ['catalogo' => $catalogoActivo]) }}">Cerrar previsualización</a>
+        </div>
+    </section>
+@endif
 
 @if ($registroDetail !== null)
 <section class="card" style="margin-top:20px" id="swafi-catalogo-detalle">

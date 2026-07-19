@@ -29,7 +29,12 @@ class CatalogIndexRequest extends FormRequest
             return false;
         }
 
-        if (($this->filled('editar') || $this->filled('export')) && !$isAdministrator) {
+        if ((
+            $this->filled('editar')
+            || $this->filled('export')
+            || $this->filled('lote')
+            || $this->filled('import_status')
+        ) && !$isAdministrator) {
             return false;
         }
 
@@ -50,6 +55,8 @@ class CatalogIndexRequest extends FormRequest
             'editar' => ['nullable', 'integer', 'min:1'],
             'detalle' => ['nullable', 'integer', 'min:1'],
             'swafi_focus' => ['nullable', 'string', 'max:80'],
+            'lote' => ['nullable', 'uuid'],
+            'import_status' => ['nullable', Rule::in(['aceptada', 'observada', 'rechazada'])],
         ];
     }
 
@@ -66,6 +73,8 @@ class CatalogIndexRequest extends FormRequest
             'export.in' => 'El formato de exportación solicitado no es válido.',
             'editar.integer' => 'El registro solicitado para edición no es válido.',
             'detalle.integer' => 'El registro solicitado para consulta no es válido.',
+            'lote.uuid' => 'El identificador de la previsualización no es válido.',
+            'import_status.in' => 'El filtro de clasificación de la previsualización no es válido.',
         ];
     }
 
@@ -143,7 +152,7 @@ class CatalogIndexRequest extends FormRequest
             'catalogo' => trim((string) $this->input('catalogo', 'proveedores')) ?: 'proveedores',
         ];
 
-        foreach (['buscar', 'estatus', 'export', 'swafi_focus'] as $field) {
+        foreach (['buscar', 'estatus', 'export', 'swafi_focus', 'lote', 'import_status'] as $field) {
             $value = $this->input($field);
 
             if (is_string($value)) {

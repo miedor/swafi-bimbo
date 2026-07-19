@@ -67,17 +67,21 @@ class CatalogOrganizationalStructureConfigurationTest extends TestCase
     public function test_server_validation_requires_active_plant_and_area_key(): void
     {
         $request = $this->read('app/Http/Requests/StoreCatalogRequest.php');
+        $validation = $this->read('app/Services/CatalogValidationService.php');
+        $combined = $request . "\n" . $validation;
 
         foreach ([
             "'centros_costo' => [",
             "Rule::exists('plantas', 'id')->where",
             "'areas' => [",
             "Rule::unique('areas', 'clave')",
-            "->where(fn (\$query) => \$query->where('planta_id', \$this->input('planta_id')))",
+            "->where(fn (\$query) => \$query->where('planta_id', \$input['planta_id'] ?? null))",
             "'regex:/^[A-Z0-9][A-Z0-9._-]*$/'",
         ] as $expected) {
-            self::assertStringContainsString($expected, $request);
+            self::assertStringContainsString($expected, $combined);
         }
+
+        self::assertStringContainsString('CatalogValidationService::class', $request);
     }
 
     public function test_catalog_query_allows_plant_filter_for_cost_centers_areas_and_locations(): void
@@ -109,21 +113,24 @@ class CatalogOrganizationalStructureConfigurationTest extends TestCase
         }
     }
 
-    public function test_csv_layouts_require_plant_and_area_key_and_keep_controlled_rejections(): void
+    public function test_csv_and_xlsx_layouts_require_plant_and_area_key_and_keep_controlled_rejections(): void
     {
-        $controller = $this->read('app/Http/Controllers/CatalogosController.php');
+        $importService = $this->read('app/Services/CatalogImportService.php');
+        $validation = $this->read('app/Services/CatalogValidationService.php');
+        $management = $this->read('app/Services/CatalogManagementService.php');
+        $combined = implode("\n", [$importService, $validation, $management]);
 
         foreach ([
             "'centros_costo' => ['planta_clave', 'clave', 'descripcion']",
             "'areas' => ['planta_clave', 'clave', 'nombre']",
-            'la planta_clave es obligatoria.',
-            'la clave del área es obligatoria y no debe superar 30 caracteres.',
+            "Rule::exists('plantas', 'id')->where",
+            "Rule::unique('areas', 'clave')",
             'no existe o está inactiva',
-            'assertUpdateAllowed($catalogo, $existing, $prepared)',
+            'assertUpdateAllowed($catalog, $existing, $data)',
             'assertCatalogCanBeDeactivated(',
             "->whereNull('clave')",
         ] as $expected) {
-            self::assertStringContainsString($expected, $controller);
+            self::assertStringContainsString($expected, $combined);
         }
     }
 

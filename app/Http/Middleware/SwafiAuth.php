@@ -224,6 +224,10 @@ class SwafiAuth
 
             'catalogos.store',
             'catalogos.importar',
+            'catalogos.importaciones.aplicar',
+            'catalogos.importaciones.cancelar',
+            'catalogos.importaciones.incidencias-xlsx',
+            'catalogos.importaciones.incidencias-csv',
             'catalogos.plantilla',
             'catalogos.destroy',
             'catalogos.activate' => 'catalogos.administrar',

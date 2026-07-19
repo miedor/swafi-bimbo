@@ -220,6 +220,23 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/catalogos', [CatalogosController::class, 'index'])->name('catalogos');
     Route::post('/catalogos', [CatalogosController::class, 'store'])->name('catalogos.store');
     Route::post('/catalogos/importar', [CatalogosController::class, 'importar'])->name('catalogos.importar');
+
+    Route::post('/catalogos/importaciones/{lote}/aplicar', [CatalogosController::class, 'aplicarImportacion'])
+        ->whereUuid('lote')
+        ->name('catalogos.importaciones.aplicar');
+
+    Route::delete('/catalogos/importaciones/{lote}', [CatalogosController::class, 'cancelarImportacion'])
+        ->whereUuid('lote')
+        ->name('catalogos.importaciones.cancelar');
+
+    Route::get('/catalogos/importaciones/{lote}/incidencias.xlsx', [CatalogosController::class, 'exportarIncidenciasXlsx'])
+        ->whereUuid('lote')
+        ->name('catalogos.importaciones.incidencias-xlsx');
+
+    Route::get('/catalogos/importaciones/{lote}/incidencias.csv', [CatalogosController::class, 'exportarIncidenciasCsv'])
+        ->whereUuid('lote')
+        ->name('catalogos.importaciones.incidencias-csv');
+
     Route::get('/catalogos/plantilla-csv', [CatalogosController::class, 'plantillaCsv'])->name('catalogos.plantilla');
 
     Route::delete('/catalogos/{catalogo}/{id}', [CatalogosController::class, 'destroy'])

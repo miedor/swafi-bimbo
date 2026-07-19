@@ -64,6 +64,8 @@ class AssetTypeClassificationConfigurationTest extends TestCase
     public function test_server_validation_requires_active_category_and_unique_type_name(): void
     {
         $request = $this->read('app/Http/Requests/StoreCatalogRequest.php');
+        $validation = $this->read('app/Services/CatalogValidationService.php');
+        $combined = $request . "\n" . $validation;
 
         foreach ([
             "'categorias_activo' => [",
@@ -75,8 +77,10 @@ class AssetTypeClassificationConfigurationTest extends TestCase
             "Rule::unique('tipos_activo', 'descripcion')->ignore",
             "'vida_util_meses' => ['nullable', 'integer', 'min:1', 'max:600']",
         ] as $expected) {
-            self::assertStringContainsString($expected, $request);
+            self::assertStringContainsString($expected, $combined);
         }
+
+        self::assertStringContainsString('CatalogValidationService::class', $request);
     }
 
     public function test_catalog_query_joins_category_without_n_plus_one_and_supports_filtering(): void
@@ -97,21 +101,20 @@ class AssetTypeClassificationConfigurationTest extends TestCase
         }
     }
 
-    public function test_csv_layouts_require_category_before_importing_asset_types(): void
+    public function test_csv_and_xlsx_layouts_require_category_before_importing_asset_types(): void
     {
-        $controller = $this->read('app/Http/Controllers/CatalogosController.php');
+        $importService = $this->read('app/Services/CatalogImportService.php');
 
         foreach ([
             "'categorias_activo' => ['clave', 'nombre', 'descripcion', 'estatus']",
             "'tipos_activo' => ['categoria_clave', 'clave', 'descripcion', 'vida_util_meses', 'estatus']",
             "'tipos_activo' => ['categoria_clave', 'clave', 'descripcion']",
-            'la categoria_clave es obligatoria.',
             "DB::table('categorias_activo')",
             "->where('estatus', 'activo')",
             'no existe o está inactiva',
-            "'categoria_activo_id' => (int) \$categoriaId",
+            "'categoria_activo_id' => \$categoryId",
         ] as $expected) {
-            self::assertStringContainsString($expected, $controller);
+            self::assertStringContainsString($expected, $importService);
         }
     }
 

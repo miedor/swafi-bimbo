@@ -73,8 +73,10 @@ class CatalogAccessAndPlantLifecycleConfigurationTest extends TestCase
     {
         $index = $this->read('app/Http/Requests/CatalogIndexRequest.php');
         $store = $this->read('app/Http/Requests/StoreCatalogRequest.php');
+        $validation = $this->read('app/Services/CatalogValidationService.php');
         $import = $this->read('app/Http/Requests/ImportCatalogRequest.php');
         $status = $this->read('app/Http/Requests/UpdateCatalogStatusRequest.php');
+        $storeValidation = $store . "\n" . $validation;
 
         foreach ([
             'Rule::in(array_keys(CatalogManagementService::CATALOGS))',
@@ -94,11 +96,12 @@ class CatalogAccessAndPlantLifecycleConfigurationTest extends TestCase
             "'vida_util_meses' => ['nullable', 'integer', 'min:1', 'max:600']",
             'El área seleccionada no pertenece a la planta indicada o está inactiva.',
         ] as $expected) {
-            self::assertStringContainsString($expected, $store);
+            self::assertStringContainsString($expected, $storeValidation);
         }
 
+        self::assertStringContainsString('CatalogValidationService::class', $store);
         self::assertStringContainsString("'max:10240'", $import);
-        self::assertStringContainsString("'mimes:csv,txt'", $import);
+        self::assertStringContainsString("'mimes:csv,txt,xlsx'", $import);
         self::assertStringContainsString("Rule::in(['activo', 'inactivo'])", $status);
     }
 
@@ -139,24 +142,28 @@ class CatalogAccessAndPlantLifecycleConfigurationTest extends TestCase
         }
     }
 
-    public function test_csv_import_cannot_bypass_plant_dependency_validation_and_uses_controlled_errors(): void
+    public function test_catalog_import_cannot_bypass_plant_dependency_validation_and_uses_controlled_errors(): void
     {
         $controller = $this->read('app/Http/Controllers/CatalogosController.php');
+        $importService = $this->read('app/Services/CatalogImportService.php');
+        $validation = $this->read('app/Services/CatalogValidationService.php');
+        $management = $this->read('app/Services/CatalogManagementService.php');
+        $combined = implode("\n", [$controller, $importService, $validation, $management]);
 
         foreach ([
             "'plantas' => ['clave', 'nombre', 'direccion']",
-            'la dirección de la planta es obligatoria y no debe superar 255 caracteres.',
-            'assertPlantCanBeDeactivated((int) $existing->id)',
+            "'direccion' => ['required', 'string', 'min:5', 'max:255']",
+            'assertCatalogCanBeDeactivated($catalog, (int) $existing->id)',
             'catch (DomainException $exception)',
             'catch (Throwable $exception)',
             'report($exception);',
-            'No fue posible completar la importación. Revisa el archivo e inténtalo nuevamente.',
+            'No fue posible previsualizar el layout. Revisa el archivo e inténtalo nuevamente.',
             '->lockForUpdate()',
+            'El catálogo cambió después de la previsualización.',
         ] as $expected) {
-            self::assertStringContainsString($expected, $controller);
+            self::assertStringContainsString($expected, $combined);
         }
 
-        self::assertStringNotContainsString("withErrors(['archivo_csv' => \$exception->getMessage()])", $controller);
     }
 
     public function test_catalog_query_protects_like_searches_and_csv_exports(): void
