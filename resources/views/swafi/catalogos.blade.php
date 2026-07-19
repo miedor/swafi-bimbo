@@ -380,20 +380,59 @@
                     </label>
                 @endif
 
-                @if ($catalogoActivo === 'tipos_activo')
+                @if ($catalogoActivo === 'categorias_activo')
                     <label>
-                        <span>Clave</span>
-                        <input name="clave" value="{{ old('clave', $registroEdit->clave ?? '') }}" required>
+                        <span>Clave de categoría</span>
+                        <input name="clave" value="{{ old('clave', $registroEdit->clave ?? '') }}" maxlength="30" required>
                     </label>
 
                     <label>
+                        <span>Nombre de categoría</span>
+                        <input name="nombre" value="{{ old('nombre', $registroEdit->nombre ?? '') }}" maxlength="120" required>
+                    </label>
+
+                    <label class="cat-field-wide">
                         <span>Descripción</span>
-                        <input name="descripcion" value="{{ old('descripcion', $registroEdit->descripcion ?? '') }}" required>
+                        <input name="descripcion" value="{{ old('descripcion', $registroEdit->descripcion ?? '') }}" maxlength="255">
+                    </label>
+                @endif
+
+                @if ($catalogoActivo === 'tipos_activo')
+                    <label>
+                        <span>Categoría</span>
+                        <select name="categoria_activo_id" required>
+                            <option value="">Seleccione...</option>
+                            @foreach ($opciones['categorias_activo'] as $categoria)
+                                @php
+                                    $categoriaSeleccionada = (string) old('categoria_activo_id', $registroEdit->categoria_activo_id ?? '');
+                                @endphp
+                                <option value="{{ $categoria->id }}" {{ $categoriaSeleccionada === (string) $categoria->id ? 'selected' : '' }}>
+                                    {{ $categoria->clave }} - {{ $categoria->nombre }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </label>
+
+                    @if ($opciones['categorias_activo']->isEmpty())
+                        <div class="cat-message cat-message-error cat-field-wide" style="margin:0">
+                            Registra y activa primero una categoría de activo antes de crear tipos nuevos.
+                            <a href="{{ route('catalogos', ['catalogo' => 'categorias_activo']) }}">Ir a categorías de activo</a>.
+                        </div>
+                    @endif
+
+                    <label>
+                        <span>Clave del tipo</span>
+                        <input name="clave" value="{{ old('clave', $registroEdit->clave ?? '') }}" maxlength="30" required>
+                    </label>
+
+                    <label class="cat-field-wide">
+                        <span>Nombre del tipo de activo</span>
+                        <input name="descripcion" value="{{ old('descripcion', $registroEdit->descripcion ?? '') }}" maxlength="120" required>
                     </label>
 
                     <label>
                         <span>Vida útil meses</span>
-                        <input type="number" name="vida_util_meses" value="{{ old('vida_util_meses', $registroEdit->vida_util_meses ?? '') }}">
+                        <input type="number" name="vida_util_meses" min="1" max="600" value="{{ old('vida_util_meses', $registroEdit->vida_util_meses ?? '') }}">
                     </label>
                 @endif
 
@@ -643,13 +682,17 @@
         </div>
     </div>
 
-    @if (in_array($catalogoActivo, ['plantas', 'centros_costo', 'areas'], true))
+    @if (in_array($catalogoActivo, ['plantas', 'centros_costo', 'categorias_activo', 'tipos_activo', 'areas'], true))
         @if ($dependenciasCatalogo === [])
             <div class="cat-message cat-message-success" style="margin-top:14px;margin-bottom:0">
                 @if ($catalogoActivo === 'plantas')
                     Esta planta no presenta dependencias activas o históricas que impidan su desactivación.
                 @elseif ($catalogoActivo === 'centros_costo')
                     Este centro de costo no presenta activos vigentes que impidan su desactivación.
+                @elseif ($catalogoActivo === 'categorias_activo')
+                    Esta categoría no presenta tipos de activo activos que impidan su desactivación.
+                @elseif ($catalogoActivo === 'tipos_activo')
+                    Este tipo de activo no presenta activos vigentes que impidan su desactivación.
                 @else
                     Esta área no presenta ubicaciones, activos o traslados pendientes que impidan su desactivación.
                 @endif
@@ -661,6 +704,10 @@
                         Dependencias que protegen la integridad de la planta:
                     @elseif ($catalogoActivo === 'centros_costo')
                         Dependencias que protegen la integridad del centro de costo:
+                    @elseif ($catalogoActivo === 'categorias_activo')
+                        Dependencias que protegen la integridad de la categoría de activo:
+                    @elseif ($catalogoActivo === 'tipos_activo')
+                        Dependencias que protegen la integridad del tipo de activo:
                     @else
                         Dependencias que protegen la integridad del área:
                     @endif
@@ -716,6 +763,23 @@
                             @endphp
                             <option value="{{ $planta->id }}" {{ $filtroPlanta === (string) $planta->id ? 'selected' : '' }}>
                                 {{ $planta->clave }} - {{ $planta->nombre }}
+                            </option>
+                        @endforeach
+                    </select>
+                </label>
+            @endif
+
+            @if ($catalogoActivo === 'tipos_activo')
+                <label>
+                    <span>Categoría</span>
+                    <select name="categoria_activo_id">
+                        <option value="">Todas</option>
+                        @foreach ($opciones['categorias_activo'] as $categoria)
+                            @php
+                                $filtroCategoria = (string) ($filtros['categoria_activo_id'] ?? '');
+                            @endphp
+                            <option value="{{ $categoria->id }}" {{ $filtroCategoria === (string) $categoria->id ? 'selected' : '' }}>
+                                {{ $categoria->clave }} - {{ $categoria->nombre }}
                             </option>
                         @endforeach
                     </select>
@@ -830,7 +894,7 @@
                                         <form
                                             method="POST"
                                             action="{{ route('catalogos.destroy', [$catalogoActivo, $row->id]) }}"
-                                            onsubmit="return confirm('{{ $catalogoActivo === 'plantas' ? 'SWAFI verificará activos, centros de costo, áreas, ubicaciones, inventarios y traslados. ¿Deseas intentar desactivar esta planta?' : (in_array($catalogoActivo, ['centros_costo', 'areas'], true) ? 'SWAFI verificará las dependencias operativas antes de desactivar el registro. ¿Deseas continuar?' : '¿Deseas desactivar este registro del catálogo?') }}');"
+                                            onsubmit="return confirm('{{ $catalogoActivo === 'plantas' ? 'SWAFI verificará activos, centros de costo, áreas, ubicaciones, inventarios y traslados. ¿Deseas intentar desactivar esta planta?' : (in_array($catalogoActivo, ['centros_costo', 'categorias_activo', 'tipos_activo', 'areas'], true) ? 'SWAFI verificará las dependencias operativas antes de desactivar el registro. ¿Deseas continuar?' : '¿Deseas desactivar este registro del catálogo?') }}');"
                                             style="display:inline"
                                         >
                                             @csrf

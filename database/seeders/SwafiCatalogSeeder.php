@@ -233,22 +233,63 @@ class SwafiCatalogSeeder extends Seeder
 
         /*
         |--------------------------------------------------------------------------
-        | Tipos de activo
+        | Categorías y tipos de activo
         |--------------------------------------------------------------------------
         */
 
+        $categoriasActivo = [
+            [
+                'clave' => 'ME',
+                'nombre' => 'Maquinaria y equipo',
+                'descripcion' => 'Bienes productivos, equipos industriales y herramientas especializadas.',
+            ],
+            [
+                'clave' => 'VEH',
+                'nombre' => 'Vehículos',
+                'descripcion' => 'Unidades de transporte y vehículos utilitarios.',
+            ],
+            [
+                'clave' => 'MOB',
+                'nombre' => 'Mobiliario',
+                'descripcion' => 'Muebles y bienes de apoyo administrativo u operativo.',
+            ],
+            [
+                'clave' => 'TEC',
+                'nombre' => 'Tecnología',
+                'descripcion' => 'Equipos de cómputo y otros bienes tecnológicos.',
+            ],
+        ];
+
+        foreach ($categoriasActivo as $categoria) {
+            DB::table('categorias_activo')->updateOrInsert(
+                ['clave' => $categoria['clave']],
+                [
+                    'nombre' => $categoria['nombre'],
+                    'descripcion' => $categoria['descripcion'],
+                    'estatus' => 'activo',
+                    'created_at' => $now,
+                    'updated_at' => $now,
+                ]
+            );
+        }
+
+        $categoriaIds = DB::table('categorias_activo')
+            ->whereIn('clave', collect($categoriasActivo)->pluck('clave')->all())
+            ->pluck('id', 'clave');
+
         $tiposActivo = [
-            ['clave' => 'EQP', 'descripcion' => 'Equipo industrial', 'vida_util_meses' => 120],
-            ['clave' => 'VEH', 'descripcion' => 'Vehículo utilitario', 'vida_util_meses' => 60],
-            ['clave' => 'MOB', 'descripcion' => 'Mobiliario', 'vida_util_meses' => 120],
-            ['clave' => 'CMP', 'descripcion' => 'Equipo de cómputo', 'vida_util_meses' => 36],
-            ['clave' => 'HER', 'descripcion' => 'Herramienta especializada', 'vida_util_meses' => 48],
+            ['categoria_clave' => 'ME', 'clave' => 'EQP', 'descripcion' => 'Equipo industrial', 'vida_util_meses' => 120],
+            ['categoria_clave' => 'VEH', 'clave' => 'VEH', 'descripcion' => 'Vehículo utilitario', 'vida_util_meses' => 60],
+            ['categoria_clave' => 'MOB', 'clave' => 'MOB', 'descripcion' => 'Mobiliario', 'vida_util_meses' => 120],
+            ['categoria_clave' => 'TEC', 'clave' => 'CMP', 'descripcion' => 'Equipo de cómputo', 'vida_util_meses' => 36],
+            ['categoria_clave' => 'ME', 'clave' => 'HER', 'descripcion' => 'Herramienta especializada', 'vida_util_meses' => 48],
         ];
 
         foreach ($tiposActivo as $tipo) {
             DB::table('tipos_activo')->updateOrInsert(
                 ['clave' => $tipo['clave']],
                 [
+                    'categoria_activo_id' => $categoriaIds[$tipo['categoria_clave']] ?? null,
                     'descripcion' => $tipo['descripcion'],
                     'vida_util_meses' => $tipo['vida_util_meses'],
                     'estatus' => 'activo',

@@ -83,7 +83,32 @@ class StoreCatalogRequest extends FormRequest
                 'descripcion' => ['required', 'string', 'min:3', 'max:150'],
             ],
 
+            'categorias_activo' => [
+                'clave' => [
+                    'required',
+                    'string',
+                    'min:2',
+                    'max:30',
+                    'regex:/^[A-Z0-9][A-Z0-9._-]*$/',
+                    Rule::unique('categorias_activo', 'clave')->ignore($recordId),
+                ],
+                'nombre' => [
+                    'required',
+                    'string',
+                    'min:3',
+                    'max:120',
+                    Rule::unique('categorias_activo', 'nombre')->ignore($recordId),
+                ],
+                'descripcion' => ['nullable', 'string', 'max:255'],
+            ],
+
             'tipos_activo' => [
+                'categoria_activo_id' => [
+                    'required',
+                    'integer',
+                    Rule::exists('categorias_activo', 'id')
+                        ->where(fn ($query) => $query->where('estatus', 'activo')),
+                ],
                 'clave' => [
                     'required',
                     'string',
@@ -92,7 +117,13 @@ class StoreCatalogRequest extends FormRequest
                     'regex:/^[A-Z0-9][A-Z0-9._-]*$/',
                     Rule::unique('tipos_activo', 'clave')->ignore($recordId),
                 ],
-                'descripcion' => ['required', 'string', 'min:3', 'max:120'],
+                'descripcion' => [
+                    'required',
+                    'string',
+                    'min:3',
+                    'max:120',
+                    Rule::unique('tipos_activo', 'descripcion')->ignore($recordId),
+                ],
                 'vida_util_meses' => ['nullable', 'integer', 'min:1', 'max:600'],
             ],
 
@@ -193,6 +224,7 @@ class StoreCatalogRequest extends FormRequest
             'pais' => 'país',
             'descripcion' => 'descripción',
             'vida_util_meses' => 'vida útil en meses',
+            'categoria_activo_id' => 'categoría de activo',
             'planta_id' => 'planta',
             'area_id' => 'área',
             'codigo_interno' => 'código interno',
@@ -295,7 +327,7 @@ class StoreCatalogRequest extends FormRequest
             $normalized['pais'] = 'México';
         }
 
-        foreach (['planta_id', 'area_id', 'vida_util_meses'] as $field) {
+        foreach (['planta_id', 'area_id', 'categoria_activo_id', 'vida_util_meses'] as $field) {
             $normalized[$field] = $this->normalizeInteger($this->input($field));
         }
 

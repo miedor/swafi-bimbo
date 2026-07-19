@@ -26,10 +26,15 @@ class CatalogManagementService
             'table' => 'centros_costo',
             'fields' => ['planta_id', 'clave', 'descripcion', 'estatus'],
         ],
+        'categorias_activo' => [
+            'label' => 'Categorías de activo',
+            'table' => 'categorias_activo',
+            'fields' => ['clave', 'nombre', 'descripcion', 'estatus'],
+        ],
         'tipos_activo' => [
             'label' => 'Tipos de activo',
             'table' => 'tipos_activo',
-            'fields' => ['clave', 'descripcion', 'vida_util_meses', 'estatus'],
+            'fields' => ['categoria_activo_id', 'clave', 'descripcion', 'vida_util_meses', 'estatus'],
         ],
         'areas' => [
             'label' => 'Áreas',
@@ -224,6 +229,28 @@ class CatalogManagementService
                 }
             }
         }
+
+
+        if ($catalog === 'tipos_activo' && array_key_exists('categoria_activo_id', $data)) {
+            $newCategoryId = (int) ($data['categoria_activo_id'] ?? 0);
+            $oldCategoryId = (int) ($before->categoria_activo_id ?? 0);
+
+            if ($oldCategoryId > 0 && $newCategoryId > 0 && $newCategoryId !== $oldCategoryId) {
+                $activeAssets = DB::table('activos')
+                    ->where('tipo_activo_id', (int) $before->id)
+                    ->where('activo', true)
+                    ->count();
+
+                if ($activeAssets > 0) {
+                    throw new DomainException(
+                        'No puedes cambiar la categoría del tipo de activo porque mantiene '
+                        . $activeAssets
+                        . ' activo(s) vigente(s) asociado(s). Crea un tipo nuevo en la categoría correcta '
+                        . 'y reasigna los activos mediante un proceso controlado.'
+                    );
+                }
+            }
+        }
     }
 
     public function assertCatalogCanBeDeactivated(string $catalog, int $recordId): void
@@ -263,6 +290,8 @@ class CatalogManagementService
         return match ($catalog) {
             'plantas' => $this->plantDependencies($recordId),
             'centros_costo' => $this->costCenterDependencies($recordId),
+            'categorias_activo' => $this->assetCategoryDependencies($recordId),
+            'tipos_activo' => $this->assetTypeDependencies($recordId),
             'areas' => $this->areaDependencies($recordId),
             default => [],
         };
@@ -321,6 +350,36 @@ class CatalogManagementService
         $dependencies = [
             'activo(s) vigente(s) asociado(s)' => DB::table('activos')
                 ->where('centro_costo_id', $costCenterId)
+                ->where('activo', true)
+                ->count(),
+        ];
+
+        return array_filter(
+            $dependencies,
+            fn (int $count) => $count > 0
+        );
+    }
+
+    public function assetCategoryDependencies(int $categoryId): array
+    {
+        $dependencies = [
+            'tipo(s) de activo activo(s)' => DB::table('tipos_activo')
+                ->where('categoria_activo_id', $categoryId)
+                ->where('estatus', 'activo')
+                ->count(),
+        ];
+
+        return array_filter(
+            $dependencies,
+            fn (int $count) => $count > 0
+        );
+    }
+
+    public function assetTypeDependencies(int $typeId): array
+    {
+        $dependencies = [
+            'activo(s) vigente(s) asociado(s)' => DB::table('activos')
+                ->where('tipo_activo_id', $typeId)
                 ->where('activo', true)
                 ->count(),
         ];

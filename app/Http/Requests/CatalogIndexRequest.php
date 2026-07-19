@@ -44,6 +44,7 @@ class CatalogIndexRequest extends FormRequest
             'estatus' => ['nullable', Rule::in(['activo', 'inactivo'])],
             'planta_id' => ['nullable', 'integer', Rule::exists('plantas', 'id')],
             'area_id' => ['nullable', 'integer', Rule::exists('areas', 'id')],
+            'categoria_activo_id' => ['nullable', 'integer', Rule::exists('categorias_activo', 'id')],
             'per_page' => ['nullable', 'integer', Rule::in([10, 25, 50])],
             'export' => ['nullable', Rule::in(['csv'])],
             'editar' => ['nullable', 'integer', 'min:1'],
@@ -60,6 +61,7 @@ class CatalogIndexRequest extends FormRequest
             'estatus.in' => 'El estatus seleccionado no es válido.',
             'planta_id.exists' => 'La planta seleccionada ya no existe.',
             'area_id.exists' => 'El área seleccionada ya no existe.',
+            'categoria_activo_id.exists' => 'La categoría de activo seleccionada ya no existe.',
             'per_page.in' => 'Selecciona 10, 25 o 50 registros por página.',
             'export.in' => 'El formato de exportación solicitado no es válido.',
             'editar.integer' => 'El registro solicitado para edición no es válido.',
@@ -89,6 +91,13 @@ class CatalogIndexRequest extends FormRequest
                     $validator->errors()->add(
                         'area_id',
                         'El filtro de área solo está disponible para ubicaciones.'
+                    );
+                }
+
+                if ($this->filled('categoria_activo_id') && $catalog !== 'tipos_activo') {
+                    $validator->errors()->add(
+                        'categoria_activo_id',
+                        'El filtro de categoría solo está disponible para tipos de activo.'
                     );
                 }
 
@@ -142,7 +151,7 @@ class CatalogIndexRequest extends FormRequest
             }
         }
 
-        foreach (['planta_id', 'area_id', 'per_page', 'editar', 'detalle'] as $field) {
+        foreach (['planta_id', 'area_id', 'categoria_activo_id', 'per_page', 'editar', 'detalle'] as $field) {
             $value = $this->input($field);
 
             if (is_string($value) && preg_match('/^\d+$/', trim($value)) === 1) {

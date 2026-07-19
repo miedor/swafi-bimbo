@@ -330,6 +330,21 @@ class CatalogosController extends Controller
                     'cc.updated_at',
                 ]),
 
+            'tipos_activo' => DB::table('tipos_activo as ta')
+                ->leftJoin('categorias_activo as ca', 'ca.id', '=', 'ta.categoria_activo_id')
+                ->select([
+                    'ta.id',
+                    'ta.categoria_activo_id',
+                    'ca.clave as categoria_clave',
+                    'ca.nombre as categoria_nombre',
+                    'ta.clave',
+                    'ta.descripcion',
+                    'ta.vida_util_meses',
+                    'ta.estatus',
+                    'ta.created_at',
+                    'ta.updated_at',
+                ]),
+
             'areas' => DB::table('areas as a')
                 ->leftJoin('plantas as p', 'p.id', '=', 'a.planta_id')
                 ->select([
@@ -394,9 +409,17 @@ class CatalogosController extends Controller
                         ->orWhere('p.nombre', 'like', $buscar);
                 }),
 
-                'tipos_activo' => $query->where(function ($where) use ($buscar) {
+                'categorias_activo' => $query->where(function ($where) use ($buscar) {
                     $where->where('clave', 'like', $buscar)
+                        ->orWhere('nombre', 'like', $buscar)
                         ->orWhere('descripcion', 'like', $buscar);
+                }),
+
+                'tipos_activo' => $query->where(function ($where) use ($buscar) {
+                    $where->where('ta.clave', 'like', $buscar)
+                        ->orWhere('ta.descripcion', 'like', $buscar)
+                        ->orWhere('ca.clave', 'like', $buscar)
+                        ->orWhere('ca.nombre', 'like', $buscar);
                 }),
 
                 'areas' => $query->where(function ($where) use ($buscar) {
@@ -431,6 +454,8 @@ class CatalogosController extends Controller
 
             if ($catalogo === 'centros_costo') {
                 $query->where('cc.estatus', $estatus);
+            } elseif ($catalogo === 'tipos_activo') {
+                $query->where('ta.estatus', $estatus);
             } elseif ($catalogo === 'areas') {
                 $query->where('a.estatus', $estatus);
             } elseif ($catalogo === 'ubicaciones') {
@@ -450,6 +475,10 @@ class CatalogosController extends Controller
             }
         }
 
+        if ($request->filled('categoria_activo_id') && $catalogo === 'tipos_activo') {
+            $query->where('ta.categoria_activo_id', $request->input('categoria_activo_id'));
+        }
+
         if ($request->filled('area_id') && $catalogo === 'ubicaciones') {
             $query->where('u.area_id', $request->input('area_id'));
         }
@@ -461,7 +490,8 @@ class CatalogosController extends Controller
             'proveedores' => $query->orderBy('nombre'),
             'plantas' => $query->orderBy('nombre'),
             'centros_costo' => $query->orderBy('p.nombre')->orderBy('cc.clave'),
-            'tipos_activo' => $query->orderBy('descripcion'),
+            'categorias_activo' => $query->orderBy('nombre'),
+            'tipos_activo' => $query->orderBy('ca.nombre')->orderBy('ta.descripcion'),
             'areas' => $query->orderBy('p.nombre')->orderBy('a.clave')->orderBy('a.nombre'),
             'ubicaciones' => $query->orderBy('p.nombre')->orderBy('a.nombre')->orderBy('u.codigo_interno'),
             'responsables' => $query->orderBy('nombre'),
@@ -496,9 +526,17 @@ class CatalogosController extends Controller
                 'estatus' => 'Estatus',
             ],
 
-            'tipos_activo' => [
+            'categorias_activo' => [
                 'clave' => 'Clave',
+                'nombre' => 'Categoría',
                 'descripcion' => 'Descripción',
+                'estatus' => 'Estatus',
+            ],
+
+            'tipos_activo' => [
+                'categoria_nombre' => 'Categoría',
+                'clave' => 'Clave',
+                'descripcion' => 'Tipo de activo',
                 'vida_util_meses' => 'Vida útil meses',
                 'estatus' => 'Estatus',
             ],
@@ -558,6 +596,7 @@ class CatalogosController extends Controller
     {
         return match ($catalogo) {
             'centros_costo' => 'cc.id',
+            'tipos_activo' => 'ta.id',
             'areas' => 'a.id',
             'ubicaciones' => 'u.id',
             default => 'id',
@@ -579,7 +618,8 @@ class CatalogosController extends Controller
             'proveedores' => ['rfc', 'nombre', 'correo', 'telefono', 'estatus'],
             'plantas' => ['clave', 'nombre', 'direccion', 'estado', 'pais', 'estatus'],
             'centros_costo' => ['planta_clave', 'clave', 'descripcion', 'estatus'],
-            'tipos_activo' => ['clave', 'descripcion', 'vida_util_meses', 'estatus'],
+            'categorias_activo' => ['clave', 'nombre', 'descripcion', 'estatus'],
+            'tipos_activo' => ['categoria_clave', 'clave', 'descripcion', 'vida_util_meses', 'estatus'],
             'areas' => ['planta_clave', 'clave', 'nombre', 'estatus'],
             'ubicaciones' => ['planta_clave', 'area_nombre', 'codigo_interno', 'edificio', 'piso', 'pasillo', 'descripcion', 'estatus'],
             'responsables' => ['nombre', 'correo', 'telefono', 'estatus'],
@@ -593,7 +633,8 @@ class CatalogosController extends Controller
             'proveedores' => ['rfc', 'nombre'],
             'plantas' => ['clave', 'nombre', 'direccion'],
             'centros_costo' => ['planta_clave', 'clave', 'descripcion'],
-            'tipos_activo' => ['clave', 'descripcion'],
+            'categorias_activo' => ['clave', 'nombre'],
+            'tipos_activo' => ['categoria_clave', 'clave', 'descripcion'],
             'areas' => ['planta_clave', 'clave', 'nombre'],
             'ubicaciones' => ['planta_clave', 'codigo_interno'],
             'responsables' => ['nombre'],
@@ -607,7 +648,8 @@ class CatalogosController extends Controller
             'proveedores' => ['ACM010101ABC', 'Proveedor industrial del centro', 'contacto@proveedor.com', '5555555555', 'activo'],
             'plantas' => ['PLT-SM', 'Planta Santa María', 'Calle Industrial 100, Colonia Centro', 'Ciudad de México', 'México', 'activo'],
             'centros_costo' => ['PLT-SM', 'CC-PLA-200', 'Producción línea 2', 'activo'],
-            'tipos_activo' => ['EQP', 'Equipo de producción', '120', 'activo'],
+            'categorias_activo' => ['ME', 'Maquinaria y equipo', 'Bienes productivos e instalaciones técnicas', 'activo'],
+            'tipos_activo' => ['ME', 'EQP', 'Equipo de producción', '120', 'activo'],
             'areas' => ['PLT-SM', 'PROD', 'Producción', 'activo'],
             'ubicaciones' => ['PLT-SM', 'Producción', 'UBI-SM-PRO-L3-PB', 'Edificio B', 'PB', 'Línea 3', 'Producción línea 3 planta baja', 'activo'],
             'responsables' => ['Jorge Méndez', 'jorge.mendez@bimbo.local', '5555555555', 'activo'],
@@ -628,6 +670,7 @@ class CatalogosController extends Controller
             'proveedores' => $this->prepareProveedor($data, $lineNumber, $summary, $estatus),
             'plantas' => $this->preparePlanta($data, $lineNumber, $summary, $estatus),
             'centros_costo' => $this->prepareCentroCosto($data, $lineNumber, $summary, $estatus),
+            'categorias_activo' => $this->prepareCategoriaActivo($data, $lineNumber, $summary, $estatus),
             'tipos_activo' => $this->prepareTipoActivo($data, $lineNumber, $summary, $estatus),
             'areas' => $this->prepareArea($data, $lineNumber, $summary, $estatus),
             'ubicaciones' => $this->prepareUbicacion($data, $lineNumber, $summary, $estatus),
@@ -734,19 +777,62 @@ class CatalogosController extends Controller
         ];
     }
 
+    private function prepareCategoriaActivo(array $data, int $lineNumber, array &$summary, string $estatus): ?array
+    {
+        $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
+        $nombre = $this->normalizeCell($data['nombre'] ?? '');
+
+        if ($clave === '' || mb_strlen($clave) > 30) {
+            $this->rejectRow($summary, $lineNumber, 'la clave de categoría es obligatoria y no debe superar 30 caracteres.');
+            return null;
+        }
+
+        if ($nombre === '' || mb_strlen($nombre) > 120) {
+            $this->rejectRow($summary, $lineNumber, 'el nombre de categoría es obligatorio y no debe superar 120 caracteres.');
+            return null;
+        }
+
+        return [
+            'clave' => $clave,
+            'nombre' => $nombre,
+            'descripcion' => $this->nullableString($data['descripcion'] ?? null, 255),
+            'estatus' => $estatus,
+        ];
+    }
+
     private function prepareTipoActivo(array $data, int $lineNumber, array &$summary, string $estatus): ?array
     {
+        $categoriaClave = strtoupper($this->normalizeCell($data['categoria_clave'] ?? ''));
         $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
         $descripcion = $this->normalizeCell($data['descripcion'] ?? '');
         $vidaUtil = $this->normalizeCell($data['vida_util_meses'] ?? '');
+
+        if ($categoriaClave === '') {
+            $this->rejectRow($summary, $lineNumber, 'la categoria_clave es obligatoria.');
+            return null;
+        }
+
+        $categoriaId = DB::table('categorias_activo')
+            ->where('clave', $categoriaClave)
+            ->where('estatus', 'activo')
+            ->value('id');
+
+        if (!$categoriaId) {
+            $this->rejectRow(
+                $summary,
+                $lineNumber,
+                "la categoría {$categoriaClave} no existe o está inactiva. Registra o reactiva la categoría antes de importar el tipo de activo."
+            );
+            return null;
+        }
 
         if ($clave === '' || mb_strlen($clave) > 30) {
             $this->rejectRow($summary, $lineNumber, 'la clave de tipo de activo es obligatoria y no debe superar 30 caracteres.');
             return null;
         }
 
-        if ($descripcion === '') {
-            $this->rejectRow($summary, $lineNumber, 'la descripción del tipo de activo es obligatoria.');
+        if ($descripcion === '' || mb_strlen($descripcion) > 120) {
+            $this->rejectRow($summary, $lineNumber, 'el nombre del tipo de activo es obligatorio y no debe superar 120 caracteres.');
             return null;
         }
 
@@ -756,6 +842,7 @@ class CatalogosController extends Controller
         }
 
         return [
+            'categoria_activo_id' => (int) $categoriaId,
             'clave' => $clave,
             'descripcion' => $descripcion,
             'vida_util_meses' => $vidaUtil !== '' ? (int) $vidaUtil : null,
@@ -878,6 +965,7 @@ class CatalogosController extends Controller
             'proveedores' => DB::table('proveedores')->where('rfc', $prepared['rfc'])->lockForUpdate()->first(),
             'plantas' => DB::table('plantas')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
             'centros_costo' => DB::table('centros_costo')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
+            'categorias_activo' => DB::table('categorias_activo')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
             'tipos_activo' => DB::table('tipos_activo')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
             'areas' => DB::table('areas')
                 ->where('planta_id', $prepared['planta_id'])
@@ -919,6 +1007,11 @@ class CatalogosController extends Controller
     {
         return [
             'plantas' => DB::table('plantas')
+                ->where('estatus', 'activo')
+                ->orderBy('nombre')
+                ->get(),
+
+            'categorias_activo' => DB::table('categorias_activo')
                 ->where('estatus', 'activo')
                 ->orderBy('nombre')
                 ->get(),
