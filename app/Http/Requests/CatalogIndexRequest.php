@@ -78,10 +78,10 @@ class CatalogIndexRequest extends FormRequest
                     return;
                 }
 
-                if ($this->filled('planta_id') && !in_array($catalog, ['areas', 'ubicaciones'], true)) {
+                if ($this->filled('planta_id') && !in_array($catalog, ['centros_costo', 'areas', 'ubicaciones'], true)) {
                     $validator->errors()->add(
                         'planta_id',
-                        'El filtro de planta solo está disponible para áreas y ubicaciones.'
+                        'El filtro de planta solo está disponible para centros de costo, áreas y ubicaciones.'
                     );
                 }
 

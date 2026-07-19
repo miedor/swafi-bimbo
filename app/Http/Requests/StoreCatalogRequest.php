@@ -67,6 +67,11 @@ class StoreCatalogRequest extends FormRequest
             ],
 
             'centros_costo' => [
+                'planta_id' => [
+                    'required',
+                    'integer',
+                    Rule::exists('plantas', 'id')->where(fn ($query) => $query->where('estatus', 'activo')),
+                ],
                 'clave' => [
                     'required',
                     'string',
@@ -96,6 +101,16 @@ class StoreCatalogRequest extends FormRequest
                     'required',
                     'integer',
                     Rule::exists('plantas', 'id')->where(fn ($query) => $query->where('estatus', 'activo')),
+                ],
+                'clave' => [
+                    'required',
+                    'string',
+                    'min:2',
+                    'max:30',
+                    'regex:/^[A-Z0-9][A-Z0-9._-]*$/',
+                    Rule::unique('areas', 'clave')
+                        ->where(fn ($query) => $query->where('planta_id', $this->input('planta_id')))
+                        ->ignore($recordId),
                 ],
                 'nombre' => [
                     'required',
