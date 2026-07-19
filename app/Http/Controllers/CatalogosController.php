@@ -47,8 +47,12 @@ class CatalogosController extends Controller
             isset($validated['detalle']) ? (string) $validated['detalle'] : null
         );
 
-        $dependenciasPlanta = $catalogoActivo === 'plantas' && $registroDetail !== null
-            ? $this->catalogManagement->plantDependencies((int) $registroDetail->id)
+        $dependenciasCatalogo = $registroDetail !== null
+            ? $this->catalogManagement->dependenciesFor($catalogoActivo, (int) $registroDetail->id)
+            : [];
+
+        $dependenciasPlanta = $catalogoActivo === 'plantas'
+            ? $dependenciasCatalogo
             : [];
 
         return view('swafi.catalogos', [
@@ -59,6 +63,7 @@ class CatalogosController extends Controller
             'registroEdit' => $registroEdit,
             'registroDetail' => $registroDetail,
             'dependenciasPlanta' => $dependenciasPlanta,
+            'dependenciasCatalogo' => $dependenciasCatalogo,
             'canAdminCatalogs' => $canAdminCatalogs,
             'filtros' => $validated,
             'opciones' => $this->options(),
@@ -160,14 +165,23 @@ class CatalogosController extends Controller
                 $table = $this->tableFor($catalogo);
                 $existing = $this->findExistingImportRecord($catalogo, $prepared);
 
-                if (
-                    $catalogo === 'plantas'
-                    && $existing !== null
-                    && (string) $existing->estatus === 'activo'
-                    && ($prepared['estatus'] ?? 'activo') === 'inactivo'
-                ) {
+                if ($existing !== null) {
                     try {
-                        $this->catalogManagement->assertPlantCanBeDeactivated((int) $existing->id);
+                        $this->catalogManagement->assertUpdateAllowed($catalogo, $existing, $prepared);
+
+                        if (
+                            (string) $existing->estatus === 'activo'
+                            && ($prepared['estatus'] ?? 'activo') === 'inactivo'
+                        ) {
+                            if ($catalogo === 'plantas') {
+                                $this->catalogManagement->assertPlantCanBeDeactivated((int) $existing->id);
+                            } else {
+                                $this->catalogManagement->assertCatalogCanBeDeactivated(
+                                    $catalogo,
+                                    (int) $existing->id
+                                );
+                            }
+                        }
                     } catch (DomainException $exception) {
                         $this->rejectRow($summary, $lineNumber, $exception->getMessage());
                         continue;
@@ -302,6 +316,20 @@ class CatalogosController extends Controller
     private function baseQuery(string $catalogo)
     {
         return match ($catalogo) {
+            'centros_costo' => DB::table('centros_costo as cc')
+                ->leftJoin('plantas as p', 'p.id', '=', 'cc.planta_id')
+                ->select([
+                    'cc.id',
+                    'cc.planta_id',
+                    'p.clave as planta_clave',
+                    'p.nombre as planta_nombre',
+                    'cc.clave',
+                    'cc.descripcion',
+                    'cc.estatus',
+                    'cc.created_at',
+                    'cc.updated_at',
+                ]),
+
             'areas' => DB::table('areas as a')
                 ->leftJoin('plantas as p', 'p.id', '=', 'a.planta_id')
                 ->select([
@@ -309,6 +337,7 @@ class CatalogosController extends Controller
                     'a.planta_id',
                     'p.clave as planta_clave',
                     'p.nombre as planta_nombre',
+                    'a.clave',
                     'a.nombre',
                     'a.estatus',
                     'a.created_at',
@@ -359,8 +388,10 @@ class CatalogosController extends Controller
                 }),
 
                 'centros_costo' => $query->where(function ($where) use ($buscar) {
-                    $where->where('clave', 'like', $buscar)
-                        ->orWhere('descripcion', 'like', $buscar);
+                    $where->where('cc.clave', 'like', $buscar)
+                        ->orWhere('cc.descripcion', 'like', $buscar)
+                        ->orWhere('p.clave', 'like', $buscar)
+                        ->orWhere('p.nombre', 'like', $buscar);
                 }),
 
                 'tipos_activo' => $query->where(function ($where) use ($buscar) {
@@ -369,7 +400,8 @@ class CatalogosController extends Controller
                 }),
 
                 'areas' => $query->where(function ($where) use ($buscar) {
-                    $where->where('a.nombre', 'like', $buscar)
+                    $where->where('a.clave', 'like', $buscar)
+                        ->orWhere('a.nombre', 'like', $buscar)
                         ->orWhere('p.clave', 'like', $buscar)
                         ->orWhere('p.nombre', 'like', $buscar);
                 }),
@@ -397,7 +429,9 @@ class CatalogosController extends Controller
         if ($request->filled('estatus')) {
             $estatus = $request->input('estatus');
 
-            if ($catalogo === 'areas') {
+            if ($catalogo === 'centros_costo') {
+                $query->where('cc.estatus', $estatus);
+            } elseif ($catalogo === 'areas') {
                 $query->where('a.estatus', $estatus);
             } elseif ($catalogo === 'ubicaciones') {
                 $query->where('u.estatus', $estatus);
@@ -406,8 +440,10 @@ class CatalogosController extends Controller
             }
         }
 
-        if ($request->filled('planta_id') && in_array($catalogo, ['areas', 'ubicaciones'], true)) {
-            if ($catalogo === 'areas') {
+        if ($request->filled('planta_id') && in_array($catalogo, ['centros_costo', 'areas', 'ubicaciones'], true)) {
+            if ($catalogo === 'centros_costo') {
+                $query->where('cc.planta_id', $request->input('planta_id'));
+            } elseif ($catalogo === 'areas') {
                 $query->where('a.planta_id', $request->input('planta_id'));
             } else {
                 $query->where('u.planta_id', $request->input('planta_id'));
@@ -424,9 +460,9 @@ class CatalogosController extends Controller
         match ($catalogo) {
             'proveedores' => $query->orderBy('nombre'),
             'plantas' => $query->orderBy('nombre'),
-            'centros_costo' => $query->orderBy('clave'),
+            'centros_costo' => $query->orderBy('p.nombre')->orderBy('cc.clave'),
             'tipos_activo' => $query->orderBy('descripcion'),
-            'areas' => $query->orderBy('p.nombre')->orderBy('a.nombre'),
+            'areas' => $query->orderBy('p.nombre')->orderBy('a.clave')->orderBy('a.nombre'),
             'ubicaciones' => $query->orderBy('p.nombre')->orderBy('a.nombre')->orderBy('u.codigo_interno'),
             'responsables' => $query->orderBy('nombre'),
             default => $query->orderBy('id'),
@@ -454,6 +490,7 @@ class CatalogosController extends Controller
             ],
 
             'centros_costo' => [
+                'planta_nombre' => 'Planta',
                 'clave' => 'Clave',
                 'descripcion' => 'Descripción',
                 'estatus' => 'Estatus',
@@ -468,6 +505,7 @@ class CatalogosController extends Controller
 
             'areas' => [
                 'planta_nombre' => 'Planta',
+                'clave' => 'Clave',
                 'nombre' => 'Área',
                 'estatus' => 'Estatus',
             ],
@@ -519,6 +557,7 @@ class CatalogosController extends Controller
     private function qualifiedIdColumn(string $catalogo): string
     {
         return match ($catalogo) {
+            'centros_costo' => 'cc.id',
             'areas' => 'a.id',
             'ubicaciones' => 'u.id',
             default => 'id',
@@ -539,9 +578,9 @@ class CatalogosController extends Controller
         return match ($catalogo) {
             'proveedores' => ['rfc', 'nombre', 'correo', 'telefono', 'estatus'],
             'plantas' => ['clave', 'nombre', 'direccion', 'estado', 'pais', 'estatus'],
-            'centros_costo' => ['clave', 'descripcion', 'estatus'],
+            'centros_costo' => ['planta_clave', 'clave', 'descripcion', 'estatus'],
             'tipos_activo' => ['clave', 'descripcion', 'vida_util_meses', 'estatus'],
-            'areas' => ['planta_clave', 'nombre', 'estatus'],
+            'areas' => ['planta_clave', 'clave', 'nombre', 'estatus'],
             'ubicaciones' => ['planta_clave', 'area_nombre', 'codigo_interno', 'edificio', 'piso', 'pasillo', 'descripcion', 'estatus'],
             'responsables' => ['nombre', 'correo', 'telefono', 'estatus'],
             default => [],
@@ -553,9 +592,9 @@ class CatalogosController extends Controller
         return match ($catalogo) {
             'proveedores' => ['rfc', 'nombre'],
             'plantas' => ['clave', 'nombre', 'direccion'],
-            'centros_costo' => ['clave', 'descripcion'],
+            'centros_costo' => ['planta_clave', 'clave', 'descripcion'],
             'tipos_activo' => ['clave', 'descripcion'],
-            'areas' => ['planta_clave', 'nombre'],
+            'areas' => ['planta_clave', 'clave', 'nombre'],
             'ubicaciones' => ['planta_clave', 'codigo_interno'],
             'responsables' => ['nombre'],
             default => [],
@@ -567,9 +606,9 @@ class CatalogosController extends Controller
         return match ($catalogo) {
             'proveedores' => ['ACM010101ABC', 'Proveedor industrial del centro', 'contacto@proveedor.com', '5555555555', 'activo'],
             'plantas' => ['PLT-SM', 'Planta Santa María', 'Calle Industrial 100, Colonia Centro', 'Ciudad de México', 'México', 'activo'],
-            'centros_costo' => ['CC-PLA-200', 'Producción línea 2', 'activo'],
+            'centros_costo' => ['PLT-SM', 'CC-PLA-200', 'Producción línea 2', 'activo'],
             'tipos_activo' => ['EQP', 'Equipo de producción', '120', 'activo'],
-            'areas' => ['PLT-SM', 'Producción', 'activo'],
+            'areas' => ['PLT-SM', 'PROD', 'Producción', 'activo'],
             'ubicaciones' => ['PLT-SM', 'Producción', 'UBI-SM-PRO-L3-PB', 'Edificio B', 'PB', 'Línea 3', 'Producción línea 3 planta baja', 'activo'],
             'responsables' => ['Jorge Méndez', 'jorge.mendez@bimbo.local', '5555555555', 'activo'],
             default => [],
@@ -654,8 +693,28 @@ class CatalogosController extends Controller
 
     private function prepareCentroCosto(array $data, int $lineNumber, array &$summary, string $estatus): ?array
     {
+        $plantaClave = strtoupper($this->normalizeCell($data['planta_clave'] ?? ''));
         $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
         $descripcion = $this->normalizeCell($data['descripcion'] ?? '');
+
+        if ($plantaClave === '') {
+            $this->rejectRow($summary, $lineNumber, 'la planta_clave es obligatoria.');
+            return null;
+        }
+
+        $plantaId = DB::table('plantas')
+            ->where('clave', $plantaClave)
+            ->where('estatus', 'activo')
+            ->value('id');
+
+        if (!$plantaId) {
+            $this->rejectRow(
+                $summary,
+                $lineNumber,
+                "la planta {$plantaClave} no existe o está inactiva. Registra o reactiva la planta antes de importar el centro de costo."
+            );
+            return null;
+        }
 
         if ($clave === '' || mb_strlen($clave) > 30) {
             $this->rejectRow($summary, $lineNumber, 'la clave de centro de costo es obligatoria y no debe superar 30 caracteres.');
@@ -668,6 +727,7 @@ class CatalogosController extends Controller
         }
 
         return [
+            'planta_id' => (int) $plantaId,
             'clave' => $clave,
             'descripcion' => $descripcion,
             'estatus' => $estatus,
@@ -706,6 +766,7 @@ class CatalogosController extends Controller
     private function prepareArea(array $data, int $lineNumber, array &$summary, string $estatus): ?array
     {
         $plantaClave = strtoupper($this->normalizeCell($data['planta_clave'] ?? ''));
+        $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
         $nombre = $this->normalizeCell($data['nombre'] ?? '');
 
         if ($plantaClave === '') {
@@ -713,10 +774,22 @@ class CatalogosController extends Controller
             return null;
         }
 
-        $plantaId = DB::table('plantas')->where('clave', $plantaClave)->value('id');
+        $plantaId = DB::table('plantas')
+            ->where('clave', $plantaClave)
+            ->where('estatus', 'activo')
+            ->value('id');
 
         if (!$plantaId) {
-            $this->rejectRow($summary, $lineNumber, "la planta {$plantaClave} no existe. Primero importa o registra la planta.");
+            $this->rejectRow(
+                $summary,
+                $lineNumber,
+                "la planta {$plantaClave} no existe o está inactiva. Registra o reactiva la planta antes de importar el área."
+            );
+            return null;
+        }
+
+        if ($clave === '' || mb_strlen($clave) > 30) {
+            $this->rejectRow($summary, $lineNumber, 'la clave del área es obligatoria y no debe superar 30 caracteres.');
             return null;
         }
 
@@ -726,7 +799,8 @@ class CatalogosController extends Controller
         }
 
         return [
-            'planta_id' => $plantaId,
+            'planta_id' => (int) $plantaId,
+            'clave' => $clave,
             'nombre' => $nombre,
             'estatus' => $estatus,
         ];
@@ -807,7 +881,13 @@ class CatalogosController extends Controller
             'tipos_activo' => DB::table('tipos_activo')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
             'areas' => DB::table('areas')
                 ->where('planta_id', $prepared['planta_id'])
-                ->where('nombre', $prepared['nombre'])
+                ->where(function ($query) use ($prepared): void {
+                    $query->where('clave', $prepared['clave'])
+                        ->orWhere(function ($fallback) use ($prepared): void {
+                            $fallback->whereNull('clave')
+                                ->where('nombre', $prepared['nombre']);
+                        });
+                })
                 ->lockForUpdate()
                 ->first(),
             'ubicaciones' => DB::table('ubicaciones')->where('codigo_interno', $prepared['codigo_interno'])->lockForUpdate()->first(),
@@ -850,6 +930,7 @@ class CatalogosController extends Controller
                 ->orderBy('a.nombre')
                 ->select([
                     'a.id',
+                    'a.clave',
                     'a.nombre',
                     'a.planta_id',
                     'p.nombre as planta_nombre',
