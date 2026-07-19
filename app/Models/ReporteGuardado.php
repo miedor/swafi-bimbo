@@ -27,4 +27,9 @@ class ReporteGuardado extends Model
         'filtros' => 'array',
         'columnas' => 'array',
     ];
+
+    public function programacion()
+    {
+        return $this->hasOne(ReporteProgramado::class, 'reporte_guardado_id');
+    }
 }

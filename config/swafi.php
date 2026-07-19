@@ -1,6 +1,31 @@
 <?php
 
 return [
+
+    'reportes_programados' => [
+        /*
+         * Configuración operativa para HU-082. La zona horaria se utiliza para
+         * interpretar la hora capturada y las fechas se almacenan en UTC.
+         */
+        'habilitados' => (bool) env('SWAFI_SCHEDULED_REPORTS_ENABLED', true),
+        'zona_horaria' => env('SWAFI_SCHEDULED_REPORTS_TIMEZONE', 'America/Mexico_City'),
+        'cola' => env('SWAFI_SCHEDULED_REPORTS_QUEUE', 'reports'),
+        'dominios_destinatarios_permitidos' => array_values(array_filter(array_map(
+            static fn (string $domain): string => mb_strtolower(trim($domain)),
+            explode(',', (string) env(
+                'SWAFI_SCHEDULED_REPORTS_ALLOWED_DOMAINS',
+                'bimbo.local,grupobimbo.com'
+            ))
+        ))),
+        'limite_lote' => min(
+            100,
+            max(
+                1,
+                (int) env('SWAFI_SCHEDULED_REPORTS_BATCH_LIMIT', 50)
+            )
+        ),
+    ],
+
     'importaciones' => [
         /*
          * Ventana máxima para solicitar la reversión controlada de un lote

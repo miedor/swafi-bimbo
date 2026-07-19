@@ -222,6 +222,11 @@ class SwafiAuth
             'reportes-guardados.apply',
             'reportes-guardados.destroy' => 'reportes.plantillas',
 
+
+            'reportes-programados.store',
+            'reportes-programados.toggle',
+            'reportes-programados.destroy' => 'reportes.programar',
+
             'catalogos' => 'catalogos.ver',
 
             'catalogos.store',

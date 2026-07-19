@@ -24,3 +24,22 @@ if (config('filesystems.swafi_audit_scheduled', true)) {
         ->withoutOverlapping(30)
         ->onOneServer();
 }
+
+/*
+|--------------------------------------------------------------------------
+| Reportes programados SWAFI (HU-082)
+|--------------------------------------------------------------------------
+|
+| Laravel Cloud debe ejecutar el scheduler y mantener un worker para la cola
+| configurada en SWAFI_SCHEDULED_REPORTS_QUEUE.
+|
+*/
+if (config('swafi.reportes_programados.habilitados', true)) {
+    Schedule::command(
+        'swafi:dispatch-scheduled-reports --limit=' .
+        (int) config('swafi.reportes_programados.limite_lote', 50)
+    )
+        ->everyFiveMinutes()
+        ->withoutOverlapping(10)
+        ->onOneServer();
+}

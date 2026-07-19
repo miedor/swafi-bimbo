@@ -3,6 +3,8 @@
 namespace App\Http\Controllers;
 
 use App\Models\ReporteGuardado;
+use App\Models\ReporteProgramado;
+use App\Services\SafeExceptionReporter;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -10,6 +12,9 @@ use Illuminate\Validation\Rule;
 
 class ReporteGuardadoController extends Controller
 {
+    public function __construct(private readonly SafeExceptionReporter $safeExceptions)
+    {
+    }
     private const REPORT_TYPES = [
         'expedientes_documentales',
         'expedientes_incompletos',
@@ -216,12 +221,31 @@ class ReporteGuardadoController extends Controller
         $motivoBaja = trim((string) ($validated['motivo_baja'] ?? ''))
             ?: 'Baja lógica solicitada por la persona propietaria del reporte.';
         $snapshot = $savedReport->toArray();
+        $userId = $this->userId();
 
-        $savedReport->forceFill([
-            'deleted_by' => $this->userId(),
-            'delete_reason' => $motivoBaja,
-        ])->save();
-        $savedReport->delete();
+        DB::transaction(function () use ($savedReport, $motivoBaja, $userId): void {
+            $programacion = ReporteProgramado::query()
+                ->where('reporte_guardado_id', $savedReport->id)
+                ->lockForUpdate()
+                ->first();
+
+            if ($programacion) {
+                $programacion->forceFill([
+                    'activo' => false,
+                    'proxima_ejecucion_at' => null,
+                    'ultimo_estado' => 'eliminado',
+                    'deleted_by' => $userId,
+                    'delete_reason' => $motivoBaja,
+                ])->save();
+                $programacion->delete();
+            }
+
+            $savedReport->forceFill([
+                'deleted_by' => $userId,
+                'delete_reason' => $motivoBaja,
+            ])->save();
+            $savedReport->delete();
+        }, 3);
 
         $this->registerAudit('REPORTE_GUARDADO_BAJA_LOGICA', [
             'reporte_guardado_antes' => $snapshot,
@@ -270,7 +294,15 @@ class ReporteGuardadoController extends Controller
                 'updated_at' => now(),
             ]);
         } catch (\Throwable $exception) {
-            // La gestión del reporte guardado no debe fallar por un error de bitácora.
+            $this->safeExceptions->warning(
+                $exception,
+                'saved_report_audit',
+                [
+                    'action' => $action,
+                    'user_id' => $this->userId(),
+                    'saved_report_id' => $details['reporte_guardado_id'] ?? null,
+                ]
+            );
         }
     }
 }

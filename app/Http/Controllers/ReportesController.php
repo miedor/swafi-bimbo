@@ -3,9 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Models\ReporteGuardado;
+use App\Models\User;
 use App\Services\AssetStatusCatalogService;
 use App\Services\SimplePdfTableExporter;
 use App\Services\SimpleXlsxExporter;
+use App\Services\SwafiAuthorizationService;
+use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Query\Builder;
 use Illuminate\Http\Request;
 use Illuminate\Support\Collection;
@@ -14,11 +17,18 @@ use Illuminate\Support\Facades\Schema;
 use Symfony\Component\HttpFoundation\BinaryFileResponse;
 use Symfony\Component\HttpFoundation\Response;
 use Illuminate\Validation\Rule;
+use Illuminate\Validation\ValidationException;
+use RuntimeException;
 
 class ReportesController extends Controller
 {
-    public function __construct(private readonly AssetStatusCatalogService $statusCatalogs)
-    {
+    private readonly SwafiAuthorizationService $authorization;
+
+    public function __construct(
+        private readonly AssetStatusCatalogService $statusCatalogs,
+        ?SwafiAuthorizationService $authorization = null
+    ) {
+        $this->authorization = $authorization ?? new SwafiAuthorizationService();
     }
 
     private const EXPORT_LIMIT = 5000;
@@ -106,8 +116,154 @@ class ReportesController extends Controller
             'canSaveReports' => $this->can('reportes.plantillas'),
             'canExportExcel' => $this->can('reportes.exportar_excel'),
             'canExportPdf' => $this->can('reportes.exportar_pdf'),
+            'canScheduleReports' => $this->can('reportes.programar'),
             'exportLimit' => self::EXPORT_LIMIT,
         ]);
+    }
+
+    /**
+     * Genera un archivo para una ejecución programada reutilizando exactamente
+     * las reglas, filtros y columnas del Centro de reportes.
+     *
+     * @return array{contents:string,file_name:string,mime_type:string,row_count:int,report_label:string,filter_summary:string}
+     */
+    public function generateScheduledExport(
+        ReporteGuardado $savedReport,
+        User $owner,
+        string $format,
+        SimpleXlsxExporter $xlsxExporter,
+        SimplePdfTableExporter $pdfExporter
+    ): array {
+        $format = strtolower(trim($format));
+
+        if (!in_array($format, ['csv', 'xlsx', 'pdf'], true)) {
+            throw ValidationException::withMessages([
+                'formato' => 'El formato del reporte programado no es válido.',
+            ]);
+        }
+
+        if ($owner->estatus !== 'activo') {
+            throw new AuthorizationException('El propietario del reporte programado no está activo.');
+        }
+
+        $definitions = $this->reportDefinitions();
+        $definition = $definitions[$savedReport->tipo_reporte] ?? null;
+
+        if (!$definition) {
+            throw ValidationException::withMessages([
+                'tipo_reporte' => 'La plantilla contiene un tipo de reporte que ya no está disponible.',
+            ]);
+        }
+
+        $context = $this->authorization->contextForUser((int) $owner->id);
+        $requiredPermission = (string) $definition['permission'];
+
+        if (
+            !$context['is_admin'] &&
+            !in_array($requiredPermission, $context['permissions'], true)
+        ) {
+            throw new AuthorizationException(
+                'El propietario ya no tiene permiso para generar este tipo de reporte.'
+            );
+        }
+
+        $filters = is_array($savedReport->filtros) ? $savedReport->filtros : [];
+        $parameters = array_merge($filters, [
+            'tipo_reporte' => $savedReport->tipo_reporte,
+            'columnas' => is_array($savedReport->columnas) ? $savedReport->columnas : [],
+            'orientacion' => $savedReport->orientacion ?: 'horizontal',
+        ]);
+        $request = Request::create('/reportes', 'GET', $parameters);
+
+        $this->normalizeInventoryVerificationPeriod($request, $savedReport->tipo_reporte);
+
+        $query = $this->queryForReport($savedReport->tipo_reporte, $request);
+        $this->applyFilters($query, $request, $savedReport->tipo_reporte);
+        $this->applyOrder($query, $request, $savedReport->tipo_reporte);
+
+        $availableColumns = $this->columnsFor($savedReport->tipo_reporte);
+        $columns = $this->selectedColumns($request, $availableColumns);
+        $rows = (clone $query)
+            ->limit(self::EXPORT_LIMIT + 1)
+            ->get();
+
+        if ($rows->count() > self::EXPORT_LIMIT) {
+            throw new RuntimeException(
+                'La ejecución programada supera el límite de registros permitido.'
+            );
+        }
+
+        $dataRows = $this->rowsForExport($rows, array_keys($columns), $format);
+        $reportLabel = (string) $definition['label'];
+        $timestamp = now()->format('Ymd_His');
+        $safeType = preg_replace('/[^a-z0-9_-]+/i', '_', $savedReport->tipo_reporte) ?: 'reporte';
+        $fileName = 'reporte_swafi_' . $safeType . '_' . $timestamp . '.' . $format;
+
+        if ($format === 'xlsx') {
+            $contents = $xlsxExporter->exportBytes(
+                $reportLabel,
+                array_values($columns),
+                $dataRows
+            );
+            $mimeType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+        } elseif ($format === 'pdf') {
+            $contents = $pdfExporter->export(
+                title: $reportLabel,
+                headers: array_values($columns),
+                rows: $dataRows,
+                metadata: [
+                    'usuario' => $owner->name ?: $owner->email,
+                    'fecha' => now()->format('d/m/Y H:i:s'),
+                    'filtros' => $this->filterSummary($request),
+                ]
+            );
+            $mimeType = 'application/pdf';
+        } else {
+            $contents = $this->csvContents(array_values($columns), $dataRows);
+            $mimeType = 'text/csv; charset=UTF-8';
+        }
+
+        return [
+            'contents' => $contents,
+            'file_name' => $fileName,
+            'mime_type' => $mimeType,
+            'row_count' => $rows->count(),
+            'report_label' => $reportLabel,
+            'filter_summary' => $this->filterSummary($request),
+        ];
+    }
+
+    /**
+     * @param array<int, string> $headers
+     * @param array<int, array<int, mixed>> $rows
+     */
+    private function csvContents(array $headers, array $rows): string
+    {
+        $stream = fopen('php://temp', 'w+b');
+
+        if ($stream === false) {
+            throw new RuntimeException('No fue posible preparar el archivo CSV.');
+        }
+
+        try {
+            fwrite($stream, "\xEF\xBB\xBF");
+            fputcsv($stream, $headers, ',', '"', '');
+
+            foreach ($rows as $row) {
+                fputcsv($stream, $row, ',', '"', '');
+            }
+
+            rewind($stream);
+            $contents = stream_get_contents($stream);
+
+            if (!is_string($contents)) {
+                throw new RuntimeException('No fue posible leer el archivo CSV generado.');
+            }
+
+            return $contents;
+        } finally {
+            fclose($stream);
+        }
     }
 
     private function reportDefinitions(): array
@@ -1072,6 +1228,7 @@ class ReportesController extends Controller
         }
 
         return ReporteGuardado::query()
+            ->with('programacion')
             ->where('user_id', $this->userId())
             ->orderByDesc('updated_at')
             ->get();

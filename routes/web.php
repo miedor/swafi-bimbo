@@ -18,6 +18,7 @@ use App\Http\Controllers\RegistroIndividualController;
 use App\Http\Controllers\RegistroMasivoController;
 use App\Http\Controllers\ReportesController;
 use App\Http\Controllers\ReporteGuardadoController;
+use App\Http\Controllers\ReporteProgramadoController;
 use App\Http\Controllers\SeguridadController;
 use App\Http\Controllers\TransferApprovalController;
 use App\Http\Controllers\UbicacionInventarioController;
@@ -216,6 +217,18 @@ Route::middleware('swafi.auth')->group(function () {
     Route::delete('/reportes-guardados/{reporte}', [ReporteGuardadoController::class, 'destroy'])
         ->whereNumber('reporte')
         ->name('reportes-guardados.destroy');
+
+
+    Route::post('/reportes-programados', [ReporteProgramadoController::class, 'store'])
+        ->name('reportes-programados.store');
+
+    Route::patch('/reportes-programados/{programacion}/estado', [ReporteProgramadoController::class, 'toggle'])
+        ->whereNumber('programacion')
+        ->name('reportes-programados.toggle');
+
+    Route::delete('/reportes-programados/{programacion}', [ReporteProgramadoController::class, 'destroy'])
+        ->whereNumber('programacion')
+        ->name('reportes-programados.destroy');
 
     Route::get('/catalogos', [CatalogosController::class, 'index'])->name('catalogos');
     Route::post('/catalogos', [CatalogosController::class, 'store'])->name('catalogos.store');

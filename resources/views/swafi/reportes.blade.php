@@ -2,7 +2,7 @@
 
 @section('title', 'Centro de reportes | SWAFI')
 @section('page_title', 'Centro de reportes')
-@section('page_subtitle', 'Reportes ad hoc, plantillas personales y exportación controlada')
+@section('page_subtitle', 'Reportes ad hoc, plantillas personales, programación y exportación controlada')
 @section('breadcrumb', 'Reportes')
 
 @section('page_styles')
@@ -198,6 +198,81 @@
         margin-top: 8px;
     }
 
+
+    .rp-schedule {
+        margin-top: 10px;
+        border-top: 1px solid #e6edf7;
+        padding-top: 9px;
+    }
+
+    .rp-schedule summary {
+        color: #174f9a;
+        font-size: 11.5px;
+        font-weight: 900;
+        cursor: pointer;
+    }
+
+    .rp-schedule-form {
+        display: grid;
+        gap: 8px;
+        margin-top: 9px;
+        padding: 10px;
+        border: 1px solid #dfe9f7;
+        border-radius: 12px;
+        background: #f8fbff;
+    }
+
+    .rp-schedule-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+    }
+
+    .rp-schedule-form textarea {
+        width: 100%;
+        min-height: 74px;
+        resize: vertical;
+        padding: 8px 10px;
+        border: 1px solid #d5e1ef;
+        border-radius: 11px;
+        color: #16304d;
+        font: inherit;
+        font-size: 12px;
+    }
+
+    .rp-schedule-state {
+        display: grid;
+        gap: 4px;
+        margin-top: 8px;
+        padding: 8px 9px;
+        border-radius: 11px;
+        background: #eef5ff;
+        color: #294867;
+        font-size: 11px;
+        line-height: 1.4;
+    }
+
+    .rp-inline-check {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        color: #294867;
+        font-size: 12px;
+        font-weight: 800;
+    }
+
+    .rp-inline-check input {
+        width: auto;
+        min-height: auto;
+    }
+
+    .rp-schedule-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 8px;
+    }
+
     .rp-link-button {
         border: 0;
         background: none;
@@ -317,6 +392,14 @@
             justify-content: center;
         }
     }
+
+
+    @media (max-width: 620px) {
+        .rp-schedule-grid {
+            grid-template-columns: 1fr;
+        }
+    }
+
 </style>
 @endsection
 
@@ -683,6 +766,32 @@
 
             <div class="rp-saved-list">
                 @forelse ($reportesGuardados as $savedReport)
+                    @php
+                        $schedule = $savedReport->programacion;
+                        $isCurrentScheduleForm = (int) old('reporte_guardado_id') === (int) $savedReport->id;
+                        $scheduleFrequency = $isCurrentScheduleForm
+                            ? old('frecuencia', 'semanal')
+                            : ($schedule?->frecuencia ?? 'semanal');
+                        $scheduleWeekday = $isCurrentScheduleForm
+                            ? old('dia_semana', 1)
+                            : ($schedule?->dia_semana ?? 1);
+                        $scheduleMonthDay = $isCurrentScheduleForm
+                            ? old('dia_mes', 1)
+                            : ($schedule?->dia_mes ?? 1);
+                        $scheduleTime = $isCurrentScheduleForm
+                            ? old('hora_local', '08:00')
+                            : (substr((string) ($schedule?->hora_local ?? '08:00'), 0, 5));
+                        $scheduleFormat = $isCurrentScheduleForm
+                            ? old('formato', 'xlsx')
+                            : ($schedule?->formato ?? 'xlsx');
+                        $scheduleRecipients = $isCurrentScheduleForm
+                            ? old('destinatarios_texto', '')
+                            : implode(PHP_EOL, $schedule?->destinatarios ?? []);
+                        $scheduleActive = $isCurrentScheduleForm
+                            ? old('activo', '1') === '1'
+                            : ($schedule?->activo ?? true);
+                    @endphp
+
                     <div class="rp-saved-item">
                         <strong>{{ $savedReport->nombre }}</strong>
                         <small>{{ $tiposReporte[$savedReport->tipo_reporte] ?? str_replace('_', ' ', $savedReport->tipo_reporte) }}</small>
@@ -696,6 +805,123 @@
                                 <button class="rp-link-button danger" type="submit">Dar de baja</button>
                             </form>
                         </div>
+
+                        @if ($canScheduleReports)
+                            <details class="rp-schedule" @if ($isCurrentScheduleForm) open @endif>
+                                <summary>
+                                    {{ $schedule ? 'Administrar programación' : 'Programar envío periódico' }}
+                                </summary>
+
+                                @if ($schedule)
+                                    <div class="rp-schedule-state">
+                                        <strong>Estado: {{ $schedule->activo ? 'Activa' : 'Suspendida' }}</strong>
+                                        <span>
+                                            Próxima ejecución:
+                                            {{ $schedule->proxima_ejecucion_at
+                                                ? $schedule->proxima_ejecucion_at->timezone($schedule->zona_horaria)->format('d/m/Y H:i')
+                                                : 'Sin ejecución pendiente' }}
+                                        </span>
+                                        <span>
+                                            Último resultado: {{ ucfirst($schedule->ultimo_estado ?: 'sin ejecuciones') }}
+                                        </span>
+                                        @if ($schedule->ultimo_error_referencia)
+                                            <span>Referencia técnica: {{ $schedule->ultimo_error_referencia }}</span>
+                                        @endif
+                                    </div>
+                                @endif
+
+                                <form method="POST" action="{{ route('reportes-programados.store') }}" class="rp-schedule-form" data-scheduled-report-form>
+                                    @csrf
+                                    <input type="hidden" name="reporte_guardado_id" value="{{ $savedReport->id }}">
+                                    <input type="hidden" name="zona_horaria" value="{{ config('swafi.reportes_programados.zona_horaria', 'America/Mexico_City') }}">
+
+                                    <div class="rp-schedule-grid">
+                                        <label class="rp-field">
+                                            <span>Frecuencia</span>
+                                            <select name="frecuencia" data-schedule-frequency required>
+                                                <option value="diaria" @selected($scheduleFrequency === 'diaria')>Diaria</option>
+                                                <option value="semanal" @selected($scheduleFrequency === 'semanal')>Semanal</option>
+                                                <option value="mensual" @selected($scheduleFrequency === 'mensual')>Mensual</option>
+                                            </select>
+                                        </label>
+
+                                        <label class="rp-field" data-schedule-weekday>
+                                            <span>Día de la semana</span>
+                                            <select name="dia_semana">
+                                                @foreach ([1 => 'Lunes', 2 => 'Martes', 3 => 'Miércoles', 4 => 'Jueves', 5 => 'Viernes', 6 => 'Sábado', 7 => 'Domingo'] as $dayNumber => $dayLabel)
+                                                    <option value="{{ $dayNumber }}" @selected((int) $scheduleWeekday === $dayNumber)>{{ $dayLabel }}</option>
+                                                @endforeach
+                                            </select>
+                                        </label>
+
+                                        <label class="rp-field" data-schedule-monthday>
+                                            <span>Día del mes</span>
+                                            <input type="number" name="dia_mes" min="1" max="28" value="{{ $scheduleMonthDay }}">
+                                        </label>
+
+                                        <label class="rp-field">
+                                            <span>Hora de envío</span>
+                                            <input type="time" name="hora_local" value="{{ $scheduleTime }}" required>
+                                        </label>
+
+                                        <label class="rp-field">
+                                            <span>Formato</span>
+                                            <select name="formato" required>
+                                                <option value="xlsx" @selected($scheduleFormat === 'xlsx')>Excel</option>
+                                                <option value="pdf" @selected($scheduleFormat === 'pdf')>PDF</option>
+                                                <option value="csv" @selected($scheduleFormat === 'csv')>CSV</option>
+                                            </select>
+                                        </label>
+                                    </div>
+
+                                    <label class="rp-field">
+                                        <span>Destinatarios (máximo 10)</span>
+                                        <textarea name="destinatarios_texto" maxlength="1500" placeholder="correo1@empresa.com&#10;correo2@empresa.com" required>{{ $scheduleRecipients }}</textarea>
+                                        @php
+                                            $allowedRecipientDomains = config(
+                                                'swafi.reportes_programados.dominios_destinatarios_permitidos',
+                                                []
+                                            );
+                                        @endphp
+                                        @if (is_array($allowedRecipientDomains) && $allowedRecipientDomains !== [])
+                                            <small>
+                                                Dominios autorizados: {{ implode(', ', $allowedRecipientDomains) }}
+                                            </small>
+                                        @endif
+                                    </label>
+
+                                    <input type="hidden" name="activo" value="0">
+                                    <label class="rp-inline-check">
+                                        <input type="checkbox" name="activo" value="1" @checked($scheduleActive)>
+                                        Mantener activa la programación
+                                    </label>
+
+                                    <button class="tab" type="submit">
+                                        {{ $schedule ? 'Actualizar programación' : 'Guardar programación' }}
+                                    </button>
+                                </form>
+
+                                @if ($schedule)
+                                    <div class="rp-schedule-actions">
+                                        <form method="POST" action="{{ route('reportes-programados.toggle', $schedule->id) }}">
+                                            @csrf
+                                            @method('PATCH')
+                                            <input type="hidden" name="activo" value="{{ $schedule->activo ? 0 : 1 }}">
+                                            <button class="rp-link-button" type="submit">
+                                                {{ $schedule->activo ? 'Suspender' : 'Reactivar' }}
+                                            </button>
+                                        </form>
+
+                                        <form method="POST" action="{{ route('reportes-programados.destroy', $schedule->id) }}" onsubmit="return confirm('¿Deseas dar de baja lógicamente esta programación?');">
+                                            @csrf
+                                            @method('DELETE')
+                                            <input type="hidden" name="motivo_baja" value="Baja lógica solicitada por la persona propietaria de la programación.">
+                                            <button class="rp-link-button danger" type="submit">Dar de baja programación</button>
+                                        </form>
+                                    </div>
+                                @endif
+                            </details>
+                        @endif
                     </div>
                 @empty
                     <div class="rp-note" style="margin-top:0">Aún no has guardado parámetros de reporte.</div>
@@ -840,6 +1066,37 @@
         }
 
         refreshGroups();
+
+        document.querySelectorAll('[data-scheduled-report-form]').forEach(function (form) {
+            const frequency = form.querySelector('[data-schedule-frequency]');
+            const weekday = form.querySelector('[data-schedule-weekday]');
+            const monthday = form.querySelector('[data-schedule-monthday]');
+
+            function refreshScheduleFields() {
+                const value = frequency ? frequency.value : 'semanal';
+                const weekdayInput = weekday ? weekday.querySelector('select') : null;
+                const monthdayInput = monthday ? monthday.querySelector('input') : null;
+
+                if (weekday) {
+                    weekday.hidden = value !== 'semanal';
+                }
+                if (monthday) {
+                    monthday.hidden = value !== 'mensual';
+                }
+                if (weekdayInput) {
+                    weekdayInput.disabled = value !== 'semanal';
+                }
+                if (monthdayInput) {
+                    monthdayInput.disabled = value !== 'mensual';
+                }
+            }
+
+            if (frequency) {
+                frequency.addEventListener('change', refreshScheduleFields);
+            }
+
+            refreshScheduleFields();
+        });
     });
 </script>
 @endsection
