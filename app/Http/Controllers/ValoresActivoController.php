@@ -6,6 +6,7 @@ use App\Http\Requests\ImportValoresActivoRequest;
 use App\Http\Requests\StoreValorActivoRequest;
 use App\Models\ValorActivo;
 use App\Services\CfdiValidationService;
+use App\Services\SafeExceptionReporter;
 use App\Services\SwafiAuthorizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -14,14 +15,16 @@ use Illuminate\Support\Str;
 class ValoresActivoController extends Controller
 {
     public function __construct(
-        private readonly SwafiAuthorizationService $authorization
+        private readonly SwafiAuthorizationService $authorization,
+        private readonly SafeExceptionReporter $safeExceptions
     ) {
     }
 
     public function index(Request $request)
     {
-        $query = $this->baseQuery();
-        $this->applyFilters($query, $request);
+        $canViewSensitiveValues = $this->canViewSensitiveValues();
+        $query = $this->baseQuery($canViewSensitiveValues);
+        $this->applyFilters($query, $request, $canViewSensitiveValues);
 
         if ($request->input('export') === 'csv') {
             abort_unless(
@@ -50,11 +53,16 @@ class ValoresActivoController extends Controller
 
         return view('swafi.valores', [
             'resultados' => $resultados,
-            'catalogos' => $this->catalogos(),
+            'catalogos' => $this->catalogos($canViewSensitiveValues),
             'filtros' => $request->all(),
             'valorEdit' => $valorEdit,
             'canAdministrarValores' => $this->canManageValues(),
+            'canViewSensitiveValues' => $canViewSensitiveValues,
             'canExportarValores' => $this->canExportValues(),
+            'canExportarExcel' => $canViewSensitiveValues
+                && $this->authorization->canCurrentUser('reportes.exportar_excel'),
+            'canExportarPdf' => $canViewSensitiveValues
+                && $this->authorization->canCurrentUser('reportes.exportar_pdf'),
         ]);
     }
 
@@ -296,10 +304,17 @@ class ValoresActivoController extends Controller
             DB::commit();
         } catch (\Throwable $exception) {
             DB::rollBack();
-            report($exception);
+            $this->safeExceptions->warning(
+                $exception,
+                'asset_values_bulk_import',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
 
             return back()->withErrors([
-                'archivo_csv' => 'La importación fue revertida por un error: ' . $exception->getMessage(),
+                'archivo_csv' => 'La importación fue revertida porque ocurrió un error inesperado. Verifica el archivo e inténtalo nuevamente.',
             ]);
         }
 
@@ -373,14 +388,14 @@ class ValoresActivoController extends Controller
             );
     }
 
-    private function baseQuery()
+    private function baseQuery(bool $includeSensitiveValues = true)
     {
         $latestExpedientes = DB::table('expedientes')
             ->whereNull('deleted_at')
             ->select('numero_activo', DB::raw('MAX(id) as expediente_id'))
             ->groupBy('numero_activo');
 
-        return DB::table('valores_activo as v')
+        $query = DB::table('valores_activo as v')
             ->whereNull('v.deleted_at')
             ->join('activos as a', 'a.numero_activo', '=', 'v.numero_activo')
             ->leftJoinSub($latestExpedientes, 'le', fn ($join) => $join->on('le.numero_activo', '=', 'a.numero_activo'))
@@ -389,31 +404,67 @@ class ValoresActivoController extends Controller
             ->leftJoin('centros_costo as cc', 'cc.id', '=', 'a.centro_costo_id')
             ->leftJoin('plantas as pl', 'pl.id', '=', 'a.planta_id')
             ->leftJoin('tipos_activo as ta', 'ta.id', '=', 'a.tipo_activo_id')
-            ->leftJoin('cfdi_validaciones as cv', 'cv.id', '=', 'v.cfdi_validacion_id')
-            ->select([
-                'v.id as valor_id', 'v.numero_activo', 'v.valor_fiscal', 'v.valor_financiero',
-                'v.moneda', 'v.tipo_cambio', 'v.fecha_tipo_cambio', 'v.origen_tipo_cambio',
-                'v.depreciacion_acumulada', 'v.valor_en_libros', 'v.vida_util_meses',
-                'v.estatus_contable', 'v.motivo_cambio', 'v.conciliacion_cfdi',
-                'v.conciliacion_detalle', 'v.fecha_corte', 'v.created_at', 'v.updated_at',
-                'e.id as expediente_id', 'e.folio_factura', 'e.uuid_cfdi',
-                'a.descripcion as activo_descripcion', 'a.estatus_operativo', 'a.estatus_documental',
-                'p.id as proveedor_id', 'p.nombre as proveedor_nombre', 'p.rfc as proveedor_rfc',
-                'cc.id as centro_costo_id', 'cc.clave as centro_costo_clave',
-                'pl.id as planta_id', 'pl.nombre as planta_nombre',
-                'ta.id as tipo_activo_id', 'ta.descripcion as tipo_activo',
-                'cv.estatus_validacion as cfdi_estatus', 'cv.total as cfdi_total',
-                'cv.moneda as cfdi_moneda', 'cv.uuid_cfdi as cfdi_uuid',
-            ]);
+            ->leftJoin('cfdi_validaciones as cv', 'cv.id', '=', 'v.cfdi_validacion_id');
+
+        $commonColumns = [
+            'v.id as valor_id',
+            'v.numero_activo',
+            'v.estatus_contable',
+            'v.conciliacion_cfdi',
+            'v.fecha_corte',
+            'v.updated_at',
+            'e.id as expediente_id',
+            'a.descripcion as activo_descripcion',
+            'a.estatus_operativo',
+            'a.estatus_documental',
+            'cc.id as centro_costo_id',
+            'cc.clave as centro_costo_clave',
+            'pl.id as planta_id',
+            'pl.nombre as planta_nombre',
+            'ta.id as tipo_activo_id',
+            'ta.descripcion as tipo_activo',
+        ];
+
+        if (!$includeSensitiveValues) {
+            return $query->select($commonColumns);
+        }
+
+        return $query->select(array_merge($commonColumns, [
+            'v.valor_fiscal',
+            'v.valor_financiero',
+            'v.moneda',
+            'v.tipo_cambio',
+            'v.fecha_tipo_cambio',
+            'v.origen_tipo_cambio',
+            'v.depreciacion_acumulada',
+            'v.valor_en_libros',
+            'v.vida_util_meses',
+            'v.motivo_cambio',
+            'v.conciliacion_detalle',
+            'v.created_at',
+            'e.folio_factura',
+            'e.uuid_cfdi',
+            'p.id as proveedor_id',
+            'p.nombre as proveedor_nombre',
+            'p.rfc as proveedor_rfc',
+            'cv.estatus_validacion as cfdi_estatus',
+            'cv.total as cfdi_total',
+            'cv.moneda as cfdi_moneda',
+            'cv.uuid_cfdi as cfdi_uuid',
+        ]));
     }
 
-    private function applyFilters($query, Request $request): void
-    {
+    private function applyFilters(
+        $query,
+        Request $request,
+        bool $includeSensitiveValues = true
+    ): void {
         foreach ([
-            'planta_id' => 'a.planta_id', 'proveedor_id' => 'a.proveedor_id',
-            'centro_costo_id' => 'a.centro_costo_id', 'tipo_activo_id' => 'a.tipo_activo_id',
-            'estatus_contable' => 'v.estatus_contable', 'conciliacion_cfdi' => 'v.conciliacion_cfdi',
-            'moneda' => 'v.moneda',
+            'planta_id' => 'a.planta_id',
+            'centro_costo_id' => 'a.centro_costo_id',
+            'tipo_activo_id' => 'a.tipo_activo_id',
+            'estatus_contable' => 'v.estatus_contable',
+            'conciliacion_cfdi' => 'v.conciliacion_cfdi',
         ] as $input => $column) {
             if ($request->filled($input)) {
                 $query->where($column, $request->input($input));
@@ -423,6 +474,20 @@ class ValoresActivoController extends Controller
         if ($request->filled('numero_activo')) {
             $query->where('v.numero_activo', 'like', '%' . $request->input('numero_activo') . '%');
         }
+
+        if (!$includeSensitiveValues) {
+            return;
+        }
+
+        foreach ([
+            'proveedor_id' => 'a.proveedor_id',
+            'moneda' => 'v.moneda',
+        ] as $input => $column) {
+            if ($request->filled($input)) {
+                $query->where($column, $request->input($input));
+            }
+        }
+
         if ($request->filled('fecha_desde')) {
             $query->whereDate('v.fecha_corte', '>=', $request->input('fecha_desde'));
         }
@@ -437,12 +502,14 @@ class ValoresActivoController extends Controller
         }
     }
 
-    private function catalogos(): array
+    private function catalogos(bool $includeSensitiveValues = true): array
     {
         return [
             'activos' => DB::table('activos')->select('numero_activo', 'descripcion')->orderBy('numero_activo')->get(),
             'plantas' => DB::table('plantas')->where('estatus', 'activo')->orderBy('nombre')->get(),
-            'proveedores' => DB::table('proveedores')->where('estatus', 'activo')->orderBy('nombre')->get(),
+            'proveedores' => $includeSensitiveValues
+                ? DB::table('proveedores')->where('estatus', 'activo')->orderBy('nombre')->get()
+                : collect(),
             'centrosCosto' => DB::table('centros_costo')->where('estatus', 'activo')->orderBy('clave')->get(),
             'tiposActivo' => DB::table('tipos_activo')->where('estatus', 'activo')->orderBy('descripcion')->get(),
         ];
@@ -450,7 +517,7 @@ class ValoresActivoController extends Controller
 
     private function findValorForEdit(int $id)
     {
-        return $this->baseQuery()->where('v.id', $id)->first();
+        return $this->baseQuery(true)->where('v.id', $id)->first();
     }
 
     private function exportCsv($query)
@@ -665,9 +732,16 @@ class ValoresActivoController extends Controller
         return $this->authorization->canCurrentUser('valores.administrar');
     }
 
+    private function canViewSensitiveValues(): bool
+    {
+        return $this->canManageValues()
+            || $this->authorization->canCurrentUser('reportes.valores');
+    }
+
     private function canExportValues(): bool
     {
-        return $this->authorization->canCurrentUser('reportes.exportar');
+        return $this->canViewSensitiveValues()
+            && $this->authorization->canCurrentUser('reportes.exportar');
     }
 
     private function abortUnlessCanManageValues(): void

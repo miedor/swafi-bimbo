@@ -10,8 +10,10 @@ class FilterValorActivoHistoryRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        return app(SwafiAuthorizationService::class)
-            ->canCurrentUser('valores.ver');
+        $authorization = app(SwafiAuthorizationService::class);
+
+        return $authorization->canCurrentUser('valores.administrar')
+            || $authorization->canCurrentUser('reportes.valores');
     }
 
     protected function prepareForValidation(): void

@@ -22,6 +22,7 @@ use App\Http\Controllers\ReporteProgramadoController;
 use App\Http\Controllers\SeguridadController;
 use App\Http\Controllers\TransferApprovalController;
 use App\Http\Controllers\UbicacionInventarioController;
+use App\Http\Controllers\ValorActivoExportController;
 use App\Http\Controllers\ValorActivoHistoryController;
 use App\Http\Controllers\ValoresActivoController;
 use Illuminate\Support\Facades\Route;
@@ -80,6 +81,11 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/valores-fiscales-financieros/{numeroActivo}/historial', [ValorActivoHistoryController::class, 'index'])
         ->where('numeroActivo', '[A-Za-z0-9._-]+')
         ->name('valores.historial');
+
+    Route::get('/valores-fiscales-financieros/{numeroActivo}/exportar/{formato}', [ValorActivoExportController::class, 'download'])
+        ->where('numeroActivo', '[A-Za-z0-9._-]+')
+        ->where('formato', 'xlsx|pdf')
+        ->name('valores.exportar-ficha');
 
     Route::post('/valores-fiscales-financieros', [ValoresActivoController::class, 'store'])->name('valores.store');
     Route::get('/valores-fiscales-financieros/plantilla-csv', [ValoresActivoController::class, 'plantillaCsv'])->name('valores.plantilla');

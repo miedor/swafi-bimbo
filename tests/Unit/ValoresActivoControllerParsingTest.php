@@ -3,6 +3,7 @@
 namespace Tests\Unit;
 
 use App\Http\Controllers\ValoresActivoController;
+use App\Services\SafeExceptionReporter;
 use App\Services\SwafiAuthorizationService;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -55,6 +56,9 @@ class ValoresActivoControllerParsingTest extends TestCase
 
     private function controller(): ValoresActivoController
     {
-        return new ValoresActivoController(new SwafiAuthorizationService());
+        return new ValoresActivoController(
+            new SwafiAuthorizationService(),
+            new SafeExceptionReporter()
+        );
     }
 }

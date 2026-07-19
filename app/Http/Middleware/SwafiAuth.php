@@ -193,7 +193,8 @@ class SwafiAuth
             'observaciones.cancelar' => 'observaciones.validar',
 
             'valores',
-            'valores.historial' => 'valores.ver',
+            'valores.historial',
+            'valores.exportar-ficha' => 'valores.ver',
 
             'valores.store',
             'valores.plantilla',

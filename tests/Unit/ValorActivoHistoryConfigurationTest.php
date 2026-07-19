@@ -34,7 +34,8 @@ class ValorActivoHistoryConfigurationTest extends TestCase
         $request = $this->read('app/Http/Requests/FilterValorActivoHistoryRequest.php');
 
         foreach ([
-            "canCurrentUser('valores.ver')",
+            "canCurrentUser('valores.administrar')",
+            "canCurrentUser('reportes.valores')",
             "'usuario_id'",
             "'exists:users,id'",
             "'date_format:Y-m-d'",
@@ -72,7 +73,10 @@ class ValorActivoHistoryConfigurationTest extends TestCase
         self::assertStringContainsString("'accion' => 'CONSULTA_HIST_VALORES'", $controller);
         self::assertStringContainsString("'tabla_afectada' => 'bitacora_auditoria'", $controller);
         self::assertStringContainsString('array_intersect_key($filters', $controller);
-        self::assertStringContainsString('report($exception);', $controller);
+        self::assertStringContainsString('SafeExceptionReporter', $controller);
+        self::assertStringContainsString('asset_value_history_query_audit', $controller);
+        self::assertStringNotContainsString('report($exception);', $controller);
+        self::assertStringNotContainsString('getMessage()', $controller);
         self::assertLessThanOrEqual(40, strlen('CONSULTA_HIST_VALORES'));
     }
 

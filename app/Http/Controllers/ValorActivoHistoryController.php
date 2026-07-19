@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\FilterValorActivoHistoryRequest;
+use App\Services\SafeExceptionReporter;
 use App\Services\ValorActivoHistoryService;
 use Illuminate\Support\Facades\DB;
 use Throwable;
@@ -10,7 +11,8 @@ use Throwable;
 class ValorActivoHistoryController extends Controller
 {
     public function __construct(
-        private readonly ValorActivoHistoryService $historyService
+        private readonly ValorActivoHistoryService $historyService,
+        private readonly SafeExceptionReporter $safeExceptions
     ) {
     }
 
@@ -110,7 +112,15 @@ class ValorActivoHistoryController extends Controller
                 'updated_at' => now(),
             ]);
         } catch (Throwable $exception) {
-            report($exception);
+            $this->safeExceptions->warning(
+                $exception,
+                'asset_value_history_query_audit',
+                [
+                    'asset_number' => $numeroActivo,
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
         }
     }
 }

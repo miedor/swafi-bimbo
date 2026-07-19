@@ -572,7 +572,11 @@
 
   @unless($canAdministrarValores)
     <div class="vf-readonly">
-      Tu perfil cuenta con acceso de consulta. La creación, edición, carga masiva y eliminación de valores está reservada para Administrador SWAFI y Usuario Captura.
+      @if($canViewSensitiveValues)
+        Tu perfil cuenta con consulta fiscal y financiera completa en modo de solo lectura. La creación, edición, carga masiva y eliminación permanece reservada para Administrador SWAFI y Usuario Captura.
+      @else
+        Tu perfil cuenta con consulta operativa básica. Por seguridad, SWAFI oculta montos, proveedor, factura, moneda, tipo de cambio, historial y exportaciones fiscales o financieras.
+      @endif
     </div>
   @endunless
 
@@ -627,7 +631,13 @@
     <div class="vf-title">
       <div>
         <h2>Filtros de consulta</h2>
-        <p>Localiza activos por estructura organizacional, estatus, conciliación, moneda, fecha o valor.</p>
+        <p>
+          @if($canViewSensitiveValues)
+            Localiza activos por estructura organizacional, estatus, conciliación, moneda, fecha o valor.
+          @else
+            Localiza activos por estructura organizacional y estatus, sin exponer información fiscal o financiera sensible.
+          @endif
+        </p>
       </div>
       <span class="pill ok">{{ $resultados->total() }} resultado(s)</span>
     </div>
@@ -651,6 +661,7 @@
           </select>
         </label>
 
+        @if($canViewSensitiveValues)
         <label class="vf-field">
           <span>Proveedor</span>
           <select name="proveedor_id">
@@ -660,6 +671,8 @@
             @endforeach
           </select>
         </label>
+
+        @endif
 
         <label class="vf-field">
           <span>Centro de costo</span>
@@ -701,6 +714,7 @@
           </select>
         </label>
 
+        @if($canViewSensitiveValues)
         <label class="vf-field">
           <span>Moneda</span>
           <input name="moneda" maxlength="3" value="{{ $filtros['moneda'] ?? '' }}">
@@ -725,6 +739,8 @@
           <span>Valor hasta</span>
           <input type="number" step="0.01" name="valor_hasta" value="{{ $filtros['valor_hasta'] ?? '' }}">
         </label>
+
+        @endif
 
         <label class="vf-field">
           <span>Registros por página</span>
@@ -756,16 +772,27 @@
     <div class="vf-table-scroll" tabindex="0" aria-label="Tabla de valores fiscales y financieros">
       <table>
         <thead>
-          <tr>
-            <th>Activo / factura</th>
-            <th>Proveedor / planta</th>
-            <th>Valores</th>
-            <th>Moneda</th>
-            <th>Contable</th>
-            <th>Conciliación CFDI</th>
-            <th>Fecha</th>
-            <th>Acciones</th>
-          </tr>
+          @if($canViewSensitiveValues)
+            <tr>
+              <th>Activo / factura</th>
+              <th>Proveedor / planta</th>
+              <th>Valores</th>
+              <th>Moneda</th>
+              <th>Contable</th>
+              <th>Conciliación CFDI</th>
+              <th>Fecha</th>
+              <th>Acciones</th>
+            </tr>
+          @else
+            <tr>
+              <th>Activo</th>
+              <th>Ubicación / clasificación</th>
+              <th>Contable</th>
+              <th>Conciliación documental</th>
+              <th>Fecha de corte</th>
+              <th>Acciones</th>
+            </tr>
+          @endif
         </thead>
         <tbody>
           @forelse($resultados as $row)
@@ -773,68 +800,118 @@
               $conciliation = $row->conciliacion_cfdi ?: 'sin_xml';
               $conciliationClass = $conciliation === 'validado' ? 'ok' : ($conciliation === 'observado' ? 'warn' : 'danger');
               $accountClass = $row->estatus_contable === 'vigente' ? 'ok' : ($row->estatus_contable === 'en_revision' ? 'warn' : 'danger');
-              $detail = is_string($row->conciliacion_detalle) ? json_decode($row->conciliacion_detalle, true) : $row->conciliacion_detalle;
-              $detail = is_array($detail) ? $detail : [];
+              $detail = [];
+
+              if ($canViewSensitiveValues) {
+                $detail = is_string($row->conciliacion_detalle) ? json_decode($row->conciliacion_detalle, true) : $row->conciliacion_detalle;
+                $detail = is_array($detail) ? $detail : [];
+              }
             @endphp
 
-            <tr>
-              <td>
-                <strong>{{ $row->numero_activo }}</strong><br>
-                <small>{{ $row->activo_descripcion }}</small><br>
-                <small>{{ $row->folio_factura ?: 'Sin folio' }}</small>
-              </td>
-              <td>
-                {{ $row->proveedor_nombre ?: 'Sin proveedor' }}<br>
-                <small>{{ $row->planta_nombre ?: 'Sin planta' }} · {{ $row->centro_costo_clave ?: 'Sin CC' }}</small>
-              </td>
-              <td>
-                Fiscal: ${{ number_format((float)$row->valor_fiscal, 2) }}<br>
-                Financiero: ${{ number_format((float)$row->valor_financiero, 2) }}<br>
-                <small>Libros: ${{ number_format((float)$row->valor_en_libros, 2) }}</small>
-              </td>
-              <td>
-                {{ $row->moneda ?: 'MXN' }}<br>
-                <small>TC: {{ $row->tipo_cambio ? number_format((float)$row->tipo_cambio, 6) : 'N/A' }}</small>
-              </td>
-              <td>
-                <span class="vf-status {{ $accountClass }}">{{ ucfirst(str_replace('_', ' ', $row->estatus_contable)) }}</span>
-              </td>
-              <td>
-                <span class="vf-status {{ $conciliationClass }}">{{ ucfirst(str_replace('_', ' ', $conciliation)) }}</span>
-                <div class="vf-details">{{ implode(' ', array_slice($detail, 0, 2)) }}</div>
-              </td>
-              <td>
-                {{ $row->fecha_corte }}<br>
-                <small>{{ $row->updated_at }}</small>
-              </td>
-              <td>
-                <div class="vf-row-actions">
-                  @if($row->expediente_id)
-                    <a href="{{ route('expediente', $row->expediente_id) }}">Consultar</a>
-                  @endif
+            @if($canViewSensitiveValues)
+              <tr>
+                <td>
+                  <strong>{{ $row->numero_activo }}</strong><br>
+                  <small>{{ $row->activo_descripcion }}</small><br>
+                  <small>{{ $row->folio_factura ?: 'Sin folio' }}</small>
+                </td>
+                <td>
+                  {{ $row->proveedor_nombre ?: 'Sin proveedor' }}<br>
+                  <small>{{ $row->planta_nombre ?: 'Sin planta' }} · {{ $row->centro_costo_clave ?: 'Sin CC' }}</small>
+                </td>
+                <td>
+                  Fiscal: ${{ number_format((float)$row->valor_fiscal, 2) }}<br>
+                  Financiero: ${{ number_format((float)$row->valor_financiero, 2) }}<br>
+                  <small>Libros: ${{ number_format((float)$row->valor_en_libros, 2) }}</small>
+                </td>
+                <td>
+                  {{ $row->moneda ?: 'MXN' }}<br>
+                  <small>TC: {{ $row->tipo_cambio ? number_format((float)$row->tipo_cambio, 6) : 'N/A' }}</small>
+                </td>
+                <td>
+                  <span class="vf-status {{ $accountClass }}">{{ ucfirst(str_replace('_', ' ', $row->estatus_contable)) }}</span>
+                </td>
+                <td>
+                  <span class="vf-status {{ $conciliationClass }}">{{ ucfirst(str_replace('_', ' ', $conciliation)) }}</span>
+                  <div class="vf-details">{{ implode(' ', array_slice($detail, 0, 2)) }}</div>
+                </td>
+                <td>
+                  {{ $row->fecha_corte }}<br>
+                  <small>{{ $row->updated_at }}</small>
+                </td>
+                <td>
+                  <div class="vf-row-actions">
+                    @if($row->expediente_id)
+                      <a href="{{ route('expediente', $row->expediente_id) }}">Consultar</a>
+                    @endif
 
-                  <a href="{{ route('valores.historial', $row->numero_activo) }}">Historial</a>
+                    <a href="{{ route('valores.historial', $row->numero_activo) }}">Historial</a>
 
-                  @if($canAdministrarValores)
-                    <a href="{{ route('valores', array_merge(request()->query(), ['panel' => 'captura', 'editar_valor' => $row->valor_id])) }}">Editar</a>
+                    @if($canExportarExcel)
+                      <a
+                        href="{{ route('valores.exportar-ficha', ['numeroActivo' => $row->numero_activo, 'formato' => 'xlsx']) }}"
+                        aria-label="Exportar ficha fiscal y financiera del activo {{ $row->numero_activo }} a Excel"
+                      >Ficha Excel</a>
+                    @endif
 
-                    <form
-                      method="POST"
-                      action="{{ route('valores.destroy', $row->valor_id) }}"
-                      onsubmit="return confirm('¿Dar de baja lógicamente los valores del activo? El registro se conservará para auditoría y el Dashboard lo marcará como pendiente.');"
-                    >
-                      @csrf
-                      @method('DELETE')
-                      <input type="hidden" name="motivo_baja" value="Baja lógica solicitada desde el módulo de valores.">
-                      <button class="danger" type="submit">Dar de baja</button>
-                    </form>
-                  @endif
-                </div>
-              </td>
-            </tr>
+                    @if($canExportarPdf)
+                      <a
+                        href="{{ route('valores.exportar-ficha', ['numeroActivo' => $row->numero_activo, 'formato' => 'pdf']) }}"
+                        aria-label="Exportar ficha fiscal y financiera del activo {{ $row->numero_activo }} a PDF"
+                      >Ficha PDF</a>
+                    @endif
+
+                    @if($canAdministrarValores)
+                      <a href="{{ route('valores', array_merge(request()->query(), ['panel' => 'captura', 'editar_valor' => $row->valor_id])) }}">Editar</a>
+
+                      <form
+                        method="POST"
+                        action="{{ route('valores.destroy', $row->valor_id) }}"
+                        onsubmit="return confirm('¿Dar de baja lógicamente los valores del activo? El registro se conservará para auditoría y el Dashboard lo marcará como pendiente.');"
+                      >
+                        @csrf
+                        @method('DELETE')
+                        <input type="hidden" name="motivo_baja" value="Baja lógica solicitada desde el módulo de valores.">
+                        <button class="danger" type="submit">Dar de baja</button>
+                      </form>
+                    @endif
+                  </div>
+                </td>
+              </tr>
+            @else
+              <tr>
+                <td>
+                  <strong>{{ $row->numero_activo }}</strong><br>
+                  <small>{{ $row->activo_descripcion }}</small>
+                </td>
+                <td>
+                  {{ $row->planta_nombre ?: 'Sin planta' }} · {{ $row->centro_costo_clave ?: 'Sin CC' }}<br>
+                  <small>{{ $row->tipo_activo ?: 'Sin clasificación' }}</small>
+                </td>
+                <td>
+                  <span class="vf-status {{ $accountClass }}">{{ ucfirst(str_replace('_', ' ', $row->estatus_contable)) }}</span>
+                </td>
+                <td>
+                  <span class="vf-status {{ $conciliationClass }}">{{ ucfirst(str_replace('_', ' ', $conciliation)) }}</span>
+                </td>
+                <td>
+                  {{ $row->fecha_corte ?: 'Sin fecha' }}<br>
+                  <small>{{ $row->updated_at }}</small>
+                </td>
+                <td>
+                  <div class="vf-row-actions">
+                    @if($row->expediente_id)
+                      <a href="{{ route('expediente', $row->expediente_id) }}">Consultar expediente</a>
+                    @else
+                      <span>Sin expediente relacionado</span>
+                    @endif
+                  </div>
+                </td>
+              </tr>
+            @endif
           @empty
             <tr>
-              <td colspan="8">No existen valores con los filtros seleccionados.</td>
+              <td colspan="{{ $canViewSensitiveValues ? 8 : 6 }}">No existen valores con los filtros seleccionados.</td>
             </tr>
           @endforelse
         </tbody>
