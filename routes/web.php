@@ -226,6 +226,10 @@ Route::middleware('swafi.auth')->group(function () {
         ->whereNumber('id')
         ->name('catalogos.destroy');
 
+    Route::patch('/catalogos/{catalogo}/{id}/activar', [CatalogosController::class, 'activate'])
+        ->whereNumber('id')
+        ->name('catalogos.activate');
+
     Route::get('/seguridad-acceso', [SeguridadController::class, 'index'])->name('seguridad');
 
     Route::post('/seguridad-acceso/usuarios', [SeguridadController::class, 'storeUser'])->name('seguridad.usuarios.store');
