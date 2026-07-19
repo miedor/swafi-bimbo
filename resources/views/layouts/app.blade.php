@@ -52,7 +52,7 @@
   $showM01 = $swafiCan('expedientes.ver') || $swafiCan('expedientes.crear');
   $showM02 = $swafiCan('valores.ver') || $swafiCan('valores.administrar') || $swafiCan('ubicaciones.ver') || $swafiCan('ubicaciones.administrar') || $swafiCan('ubicaciones.aprobar_traslados') || $swafiCan('ubicaciones.cerrar_inventario');
   $showM03 = $swafiCan('expedientes.ver') || $swafiCan('reportes.exportar');
-  $showM04 = $swafiCan('catalogos.administrar') || $swafiCan('seguridad.administrar') || $swafiCan('bitacora.ver');
+  $showM04 = $swafiCan('catalogos.ver') || $swafiCan('catalogos.administrar') || $swafiCan('seguridad.administrar') || $swafiCan('bitacora.ver');
 
   $pageIcon = match (true) {
     request()->routeIs('dashboard') => 'dashboard',
@@ -757,7 +757,7 @@
         </button>
 
         <div class="nav-submenu {{ $m04Open ? 'is-open' : '' }}" data-nav-group="m04">
-          @if ($swafiCan('catalogos.administrar'))
+          @if ($swafiCan('catalogos.ver') || $swafiCan('catalogos.administrar'))
             <a class="nav-item {{ request()->routeIs('catalogos') ? 'active' : '' }}" href="{{ route('catalogos') }}">
               {!! $swafiIcon('settings', 'nav-icon') !!}
               <span>Catálogos base</span>
