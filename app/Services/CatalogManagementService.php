@@ -24,7 +24,7 @@ class CatalogManagementService
         'centros_costo' => [
             'label' => 'Centros de costo',
             'table' => 'centros_costo',
-            'fields' => ['clave', 'descripcion', 'estatus'],
+            'fields' => ['planta_id', 'clave', 'descripcion', 'estatus'],
         ],
         'tipos_activo' => [
             'label' => 'Tipos de activo',
@@ -34,7 +34,7 @@ class CatalogManagementService
         'areas' => [
             'label' => 'Áreas',
             'table' => 'areas',
-            'fields' => ['planta_id', 'nombre', 'estatus'],
+            'fields' => ['planta_id', 'clave', 'nombre', 'estatus'],
         ],
         'ubicaciones' => [
             'label' => 'Ubicaciones',
@@ -79,12 +79,13 @@ class CatalogManagementService
                     throw new DomainException('El registro que intentas actualizar ya no existe.');
                 }
 
+                $this->assertUpdateAllowed($catalog, $before, $data);
+
                 if (
-                    $catalog === 'plantas'
-                    && (string) $before->estatus === 'activo'
-                    && ($data['estatus'] ?? 'activo') === 'inactivo'
+                    (string) ($before->estatus ?? 'activo') === 'activo'
+                    && (string) ($data['estatus'] ?? 'activo') === 'inactivo'
                 ) {
-                    $this->assertPlantCanBeDeactivated($recordId);
+                    $this->assertCatalogCanBeDeactivated($catalog, $recordId);
                 }
 
                 DB::table($table)
@@ -147,8 +148,8 @@ class CatalogManagementService
                 return $before;
             }
 
-            if ($catalog === 'plantas' && $status === 'inactivo') {
-                $this->assertPlantCanBeDeactivated($recordId);
+            if ($status === 'inactivo') {
+                $this->assertCatalogCanBeDeactivated($catalog, $recordId);
             }
 
             DB::table($table)
@@ -180,9 +181,54 @@ class CatalogManagementService
         }, 3);
     }
 
-    public function assertPlantCanBeDeactivated(int $plantId): void
+    public function assertUpdateAllowed(string $catalog, object $before, array $data): void
     {
-        $dependencies = $this->plantDependencies($plantId);
+        if ($catalog === 'centros_costo' && array_key_exists('planta_id', $data)) {
+            $newPlantId = (int) ($data['planta_id'] ?? 0);
+            $oldPlantId = (int) ($before->planta_id ?? 0);
+
+            if ($newPlantId > 0 && $newPlantId !== $oldPlantId) {
+                $incompatibleAssets = DB::table('activos')
+                    ->where('centro_costo_id', (int) $before->id)
+                    ->where('activo', true)
+                    ->where('planta_id', '<>', $newPlantId)
+                    ->count();
+
+                if ($incompatibleAssets > 0) {
+                    throw new DomainException(
+                        'No puedes cambiar la planta del centro de costo porque '
+                        . $incompatibleAssets
+                        . ' activo(s) vigente(s) están registrados en una planta diferente. '
+                        . 'Regulariza primero la asignación de los activos.'
+                    );
+                }
+            }
+        }
+
+        if ($catalog === 'areas' && array_key_exists('planta_id', $data)) {
+            $newPlantId = (int) ($data['planta_id'] ?? 0);
+            $oldPlantId = (int) ($before->planta_id ?? 0);
+
+            if ($newPlantId > 0 && $newPlantId !== $oldPlantId) {
+                $locations = DB::table('ubicaciones')
+                    ->where('area_id', (int) $before->id)
+                    ->count();
+
+                if ($locations > 0) {
+                    throw new DomainException(
+                        'No puedes cambiar la planta del área porque mantiene '
+                        . $locations
+                        . ' ubicación(es) relacionada(s). Crea el área correcta en la planta destino '
+                        . 'y reasigna las ubicaciones mediante un proceso controlado.'
+                    );
+                }
+            }
+        }
+    }
+
+    public function assertCatalogCanBeDeactivated(string $catalog, int $recordId): void
+    {
+        $dependencies = $this->dependenciesFor($catalog, $recordId);
 
         if ($dependencies === []) {
             return;
@@ -192,11 +238,34 @@ class CatalogManagementService
             ->map(fn (int $count, string $label) => $count . ' ' . $label)
             ->implode(', ');
 
+        if ($catalog === 'plantas') {
+            throw new DomainException(
+                'No puedes desactivar la planta porque mantiene dependencias activas o históricas: '
+                . $details
+                . '. Reubica o regulariza esas relaciones antes de intentarlo nuevamente.'
+            );
+        }
+
         throw new DomainException(
-            'No puedes desactivar la planta porque mantiene dependencias activas o históricas: '
+            'No puedes desactivar este registro del catálogo porque mantiene dependencias operativas: '
             . $details
-            . '. Reubica o regulariza esas relaciones antes de intentarlo nuevamente.'
+            . '. Regulariza esas relaciones antes de intentarlo nuevamente.'
         );
+    }
+
+    public function assertPlantCanBeDeactivated(int $plantId): void
+    {
+        $this->assertCatalogCanBeDeactivated('plantas', $plantId);
+    }
+
+    public function dependenciesFor(string $catalog, int $recordId): array
+    {
+        return match ($catalog) {
+            'plantas' => $this->plantDependencies($recordId),
+            'centros_costo' => $this->costCenterDependencies($recordId),
+            'areas' => $this->areaDependencies($recordId),
+            default => [],
+        };
     }
 
     public function plantDependencies(int $plantId): array
@@ -215,6 +284,13 @@ class CatalogManagementService
                 ->count(),
         ];
 
+        if (Schema::hasColumn('centros_costo', 'planta_id')) {
+            $dependencies['centro(s) de costo activo(s)'] = DB::table('centros_costo')
+                ->where('planta_id', $plantId)
+                ->where('estatus', 'activo')
+                ->count();
+        }
+
         if (Schema::hasTable('periodos_inventario')) {
             $dependencies['periodo(s) de inventario vigente(s)'] = DB::table('periodos_inventario')
                 ->where('planta_id', $plantId)
@@ -230,6 +306,53 @@ class CatalogManagementService
                 ->where(function ($query) use ($plantId): void {
                     $query->where('origen.planta_id', $plantId)
                         ->orWhere('destino.planta_id', $plantId);
+                })
+                ->count();
+        }
+
+        return array_filter(
+            $dependencies,
+            fn (int $count) => $count > 0
+        );
+    }
+
+    public function costCenterDependencies(int $costCenterId): array
+    {
+        $dependencies = [
+            'activo(s) vigente(s) asociado(s)' => DB::table('activos')
+                ->where('centro_costo_id', $costCenterId)
+                ->where('activo', true)
+                ->count(),
+        ];
+
+        return array_filter(
+            $dependencies,
+            fn (int $count) => $count > 0
+        );
+    }
+
+    public function areaDependencies(int $areaId): array
+    {
+        $dependencies = [
+            'ubicación(es) activa(s)' => DB::table('ubicaciones')
+                ->where('area_id', $areaId)
+                ->where('estatus', 'activo')
+                ->count(),
+            'activo(s) vigente(s) ubicado(s) en el área' => DB::table('activos as ac')
+                ->join('ubicaciones as u', 'u.id', '=', 'ac.ubicacion_id')
+                ->where('u.area_id', $areaId)
+                ->where('ac.activo', true)
+                ->count(),
+        ];
+
+        if (Schema::hasTable('solicitudes_traslado')) {
+            $dependencies['solicitud(es) de traslado pendiente(s)'] = DB::table('solicitudes_traslado as s')
+                ->leftJoin('ubicaciones as origen', 'origen.id', '=', 's.ubicacion_origen_id')
+                ->join('ubicaciones as destino', 'destino.id', '=', 's.ubicacion_destino_id')
+                ->where('s.estatus', 'pendiente')
+                ->where(function ($query) use ($areaId): void {
+                    $query->where('origen.area_id', $areaId)
+                        ->orWhere('destino.area_id', $areaId);
                 })
                 ->count();
         }
