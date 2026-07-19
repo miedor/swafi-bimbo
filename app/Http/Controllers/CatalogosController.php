@@ -2,111 +2,100 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\CatalogIndexRequest;
+use App\Http\Requests\ImportCatalogRequest;
+use App\Http\Requests\StoreCatalogRequest;
+use App\Http\Requests\UpdateCatalogStatusRequest;
+use App\Services\CatalogManagementService;
+use DomainException;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use Illuminate\Validation\Rule;
+use Throwable;
 
 class CatalogosController extends Controller
 {
-    public function index(Request $request)
+    public function __construct(
+        private readonly CatalogManagementService $catalogManagement
+    ) {
+    }
+    public function index(CatalogIndexRequest $request)
     {
-        $catalogoActivo = $this->normalizeCatalog($request->input('catalogo', 'proveedores'));
+        $validated = $request->validated();
+        $catalogoActivo = (string) ($validated['catalogo'] ?? 'proveedores');
+        $canAdminCatalogs = $this->canAdministerCatalogs($request);
         $query = $this->baseQuery($catalogoActivo);
 
         $this->applyFilters($query, $request, $catalogoActivo);
 
-        if ($request->input('export') === 'csv') {
+        if (($validated['export'] ?? null) === 'csv') {
             return $this->exportCsv($query, $catalogoActivo);
         }
 
         $this->applyOrder($query, $catalogoActivo);
 
         $resultados = $query
-            ->paginate((int) $request->input('per_page', 10))
+            ->paginate((int) ($validated['per_page'] ?? 10))
             ->withQueryString();
+
+        $registroEdit = $canAdminCatalogs
+            ? $this->findForEdit($catalogoActivo, isset($validated['editar']) ? (string) $validated['editar'] : null)
+            : null;
+
+        $registroDetail = $this->findForDetail(
+            $catalogoActivo,
+            isset($validated['detalle']) ? (string) $validated['detalle'] : null
+        );
+
+        $dependenciasPlanta = $catalogoActivo === 'plantas' && $registroDetail !== null
+            ? $this->catalogManagement->plantDependencies((int) $registroDetail->id)
+            : [];
 
         return view('swafi.catalogos', [
             'catalogoActivo' => $catalogoActivo,
             'catalogosDisponibles' => $this->catalogs(),
             'columnas' => $this->columnsFor($catalogoActivo),
             'resultados' => $resultados,
-            'registroEdit' => $this->findForEdit($catalogoActivo, $request->input('editar')),
-            'filtros' => $request->all(),
+            'registroEdit' => $registroEdit,
+            'registroDetail' => $registroDetail,
+            'dependenciasPlanta' => $dependenciasPlanta,
+            'canAdminCatalogs' => $canAdminCatalogs,
+            'filtros' => $validated,
             'opciones' => $this->options(),
             'kpis' => $this->buildKpis($catalogoActivo),
             'headersLayout' => $this->headersFor($catalogoActivo),
         ]);
     }
 
-    public function store(Request $request)
+    public function store(StoreCatalogRequest $request)
     {
-        $catalogo = $this->normalizeCatalog($request->input('catalogo'));
-        $id = $request->input('id');
-
-        $validated = $this->validateCatalog($request, $catalogo, $id);
-
-        $before = null;
-
-        if ($id) {
-            $before = DB::table($this->tableFor($catalogo))
-                ->where('id', $id)
-                ->first();
+        try {
+            $this->catalogManagement->save(
+                catalog: $request->catalog(),
+                data: $request->catalogData(),
+                recordId: $request->recordId(),
+                userId: auth()->id(),
+                ip: $request->ip()
+            );
+        } catch (DomainException $exception) {
+            return back()
+                ->withInput()
+                ->withErrors(['catalogo' => $exception->getMessage()]);
         }
 
-        DB::transaction(function () use ($catalogo, $validated, $id, $before) {
-            $table = $this->tableFor($catalogo);
-            $now = now();
-
-            if ($id) {
-                DB::table($table)
-                    ->where('id', $id)
-                    ->update(array_merge($validated, [
-                        'updated_at' => $now,
-                    ]));
-
-                $registroId = (string) $id;
-                $accion = 'ACTUALIZACION_CATALOGO';
-            } else {
-                $registroId = (string) DB::table($table)->insertGetId(array_merge($validated, [
-                    'created_at' => $now,
-                    'updated_at' => $now,
-                ]));
-
-                $accion = 'ALTA_CATALOGO';
-            }
-
-            $after = DB::table($table)
-                ->where('id', $registroId)
-                ->first();
-
-            $this->registrarBitacora(
-                accion: $accion,
-                tablaAfectada: $table,
-                registroClave: $registroId,
-                antes: $before ? (array) $before : null,
-                despues: $after ? (array) $after : null
-            );
-        });
-
         return redirect()
-            ->route('catalogos', ['catalogo' => $catalogo])
-            ->with('success', $id ? 'El catálogo se actualizó correctamente.' : 'El registro se creó correctamente.');
+            ->route('catalogos', ['catalogo' => $request->catalog()])
+            ->with(
+                'success',
+                $request->recordId() !== null
+                    ? 'El catálogo se actualizó correctamente.'
+                    : 'El registro se creó correctamente.'
+            );
     }
 
-    public function importar(Request $request)
+    public function importar(ImportCatalogRequest $request)
     {
-        $catalogo = $this->normalizeCatalog($request->input('catalogo'));
-
-        $request->validate([
-            'catalogo' => ['required', Rule::in(array_keys($this->catalogs()))],
-            'archivo_csv' => ['required', 'file', 'mimes:csv,txt', 'max:10240'],
-        ], [
-            'archivo_csv.required' => 'Debes seleccionar un archivo CSV para importar.',
-            'archivo_csv.file' => 'El archivo seleccionado no es válido.',
-            'archivo_csv.mimes' => 'El archivo debe tener extensión CSV o TXT.',
-            'archivo_csv.max' => 'El archivo CSV no debe superar los 10 MB.',
-        ]);
+        $catalogo = (string) $request->validated('catalogo');
 
         $file = $request->file('archivo_csv');
         $rows = file($file->getRealPath(), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
@@ -170,6 +159,21 @@ class CatalogosController extends Controller
 
                 $table = $this->tableFor($catalogo);
                 $existing = $this->findExistingImportRecord($catalogo, $prepared);
+
+                if (
+                    $catalogo === 'plantas'
+                    && $existing !== null
+                    && (string) $existing->estatus === 'activo'
+                    && ($prepared['estatus'] ?? 'activo') === 'inactivo'
+                ) {
+                    try {
+                        $this->catalogManagement->assertPlantCanBeDeactivated((int) $existing->id);
+                    } catch (DomainException $exception) {
+                        $this->rejectRow($summary, $lineNumber, $exception->getMessage());
+                        continue;
+                    }
+                }
+
                 $before = $existing ? (array) $existing : null;
                 $now = now();
 
@@ -207,12 +211,15 @@ class CatalogosController extends Controller
             }
 
             DB::commit();
-        } catch (\Throwable $exception) {
+        } catch (Throwable $exception) {
             DB::rollBack();
+            report($exception);
 
-            return back()->withErrors([
-                'archivo_csv' => 'Ocurrió un error durante la importación: ' . $exception->getMessage(),
-            ]);
+            return back()
+                ->withInput()
+                ->withErrors([
+                    'archivo_csv' => 'No fue posible completar la importación. Revisa el archivo e inténtalo nuevamente.',
+                ]);
         }
 
         return redirect()
@@ -221,9 +228,9 @@ class CatalogosController extends Controller
             ->with('import_summary', $summary);
     }
 
-    public function plantillaCsv(Request $request)
+    public function plantillaCsv(CatalogIndexRequest $request)
     {
-        $catalogo = $this->normalizeCatalog($request->input('catalogo', 'proveedores'));
+        $catalogo = (string) ($request->validated('catalogo') ?? 'proveedores');
         $headers = $this->headersFor($catalogo);
         $example = $this->exampleRowFor($catalogo);
 
@@ -240,81 +247,56 @@ class CatalogosController extends Controller
         ]);
     }
 
-    public function destroy(string $catalogo, int $id)
+    public function destroy(UpdateCatalogStatusRequest $request, string $catalogo, int $id)
     {
-        $catalogo = $this->normalizeCatalog($catalogo);
-        $table = $this->tableFor($catalogo);
+        return $this->updateStatus($request, 'inactivo');
+    }
 
-        $before = DB::table($table)
-            ->where('id', $id)
-            ->first();
+    public function activate(UpdateCatalogStatusRequest $request, string $catalogo, int $id)
+    {
+        return $this->updateStatus($request, 'activo');
+    }
 
-        if (!$before) {
+    private function updateStatus(UpdateCatalogStatusRequest $request, string $status)
+    {
+        try {
+            $this->catalogManagement->changeStatus(
+                catalog: $request->catalog(),
+                recordId: $request->recordId(),
+                status: $status,
+                userId: auth()->id(),
+                ip: $request->ip()
+            );
+        } catch (DomainException $exception) {
             return redirect()
-                ->route('catalogos', ['catalogo' => $catalogo])
-                ->withErrors(['catalogo' => 'El registro seleccionado no existe.']);
+                ->route('catalogos', [
+                    'catalogo' => $request->catalog(),
+                    'detalle' => $request->recordId(),
+                ])
+                ->withErrors(['catalogo' => $exception->getMessage()]);
         }
 
-        DB::transaction(function () use ($table, $id, $before) {
-            DB::table($table)
-                ->where('id', $id)
-                ->update([
-                    'estatus' => 'inactivo',
-                    'updated_at' => now(),
-                ]);
-
-            $after = DB::table($table)
-                ->where('id', $id)
-                ->first();
-
-            $this->registrarBitacora(
-                accion: 'DESACTIVACION_CATALOGO',
-                tablaAfectada: $table,
-                registroClave: (string) $id,
-                antes: (array) $before,
-                despues: $after ? (array) $after : null
-            );
-        });
-
         return redirect()
-            ->route('catalogos', ['catalogo' => $catalogo])
-            ->with('success', 'El registro fue desactivado correctamente. Se conserva por trazabilidad.');
+            ->route('catalogos', ['catalogo' => $request->catalog()])
+            ->with(
+                'success',
+                $status === 'activo'
+                    ? 'El registro fue activado correctamente.'
+                    : 'El registro fue desactivado correctamente. Se conserva por trazabilidad.'
+            );
     }
 
     private function catalogs(): array
     {
-        return [
-            'proveedores' => 'Proveedores',
-            'plantas' => 'Plantas',
-            'centros_costo' => 'Centros de costo',
-            'tipos_activo' => 'Tipos de activo',
-            'areas' => 'Áreas',
-            'ubicaciones' => 'Ubicaciones',
-            'responsables' => 'Responsables',
-        ];
+        return collect(CatalogManagementService::CATALOGS)
+            ->mapWithKeys(fn (array $definition, string $key) => [$key => $definition['label']])
+            ->all();
     }
 
-    private function normalizeCatalog(?string $catalogo): string
-    {
-        $catalogo = (string) $catalogo;
-
-        return array_key_exists($catalogo, $this->catalogs())
-            ? $catalogo
-            : 'proveedores';
-    }
 
     private function tableFor(string $catalogo): string
     {
-        return match ($catalogo) {
-            'proveedores' => 'proveedores',
-            'plantas' => 'plantas',
-            'centros_costo' => 'centros_costo',
-            'tipos_activo' => 'tipos_activo',
-            'areas' => 'areas',
-            'ubicaciones' => 'ubicaciones',
-            'responsables' => 'responsables',
-            default => 'proveedores',
-        };
+        return $this->catalogManagement->tableFor($catalogo);
     }
 
     private function baseQuery(string $catalogo)
@@ -360,7 +342,7 @@ class CatalogosController extends Controller
     private function applyFilters($query, Request $request, string $catalogo): void
     {
         if ($request->filled('buscar')) {
-            $buscar = '%' . trim($request->input('buscar')) . '%';
+            $buscar = $this->likePattern((string) $request->input('buscar'));
 
             match ($catalogo) {
                 'proveedores' => $query->where(function ($where) use ($buscar) {
@@ -465,6 +447,7 @@ class CatalogosController extends Controller
             'plantas' => [
                 'clave' => 'Clave',
                 'nombre' => 'Nombre',
+                'direccion' => 'Dirección',
                 'estado' => 'Estado',
                 'pais' => 'País',
                 'estatus' => 'Estatus',
@@ -522,105 +505,40 @@ class CatalogosController extends Controller
             ->first();
     }
 
-    private function validateCatalog(Request $request, string $catalogo, ?string $id): array
+    private function findForDetail(string $catalogo, ?string $id)
     {
-        $estatusRule = ['required', Rule::in(['activo', 'inactivo'])];
+        if (!$id) {
+            return null;
+        }
 
+        return $this->baseQuery($catalogo)
+            ->where($this->qualifiedIdColumn($catalogo), (int) $id)
+            ->first();
+    }
+
+    private function qualifiedIdColumn(string $catalogo): string
+    {
         return match ($catalogo) {
-            'proveedores' => $request->validate([
-                'rfc' => [
-                    'required',
-                    'string',
-                    'max:13',
-                    Rule::unique('proveedores', 'rfc')->ignore($id),
-                ],
-                'nombre' => ['required', 'string', 'max:150'],
-                'correo' => ['nullable', 'email', 'max:120'],
-                'telefono' => ['nullable', 'string', 'max:30'],
-                'estatus' => $estatusRule,
-            ], $this->messages()),
-
-            'plantas' => $request->validate([
-                'clave' => [
-                    'required',
-                    'string',
-                    'max:30',
-                    Rule::unique('plantas', 'clave')->ignore($id),
-                ],
-                'nombre' => ['required', 'string', 'max:150'],
-                'estado' => ['nullable', 'string', 'max:100'],
-                'pais' => ['required', 'string', 'max:80'],
-                'estatus' => $estatusRule,
-            ], $this->messages()),
-
-            'centros_costo' => $request->validate([
-                'clave' => [
-                    'required',
-                    'string',
-                    'max:30',
-                    Rule::unique('centros_costo', 'clave')->ignore($id),
-                ],
-                'descripcion' => ['required', 'string', 'max:150'],
-                'estatus' => $estatusRule,
-            ], $this->messages()),
-
-            'tipos_activo' => $request->validate([
-                'clave' => [
-                    'required',
-                    'string',
-                    'max:30',
-                    Rule::unique('tipos_activo', 'clave')->ignore($id),
-                ],
-                'descripcion' => ['required', 'string', 'max:120'],
-                'vida_util_meses' => ['nullable', 'integer', 'min:1', 'max:600'],
-                'estatus' => $estatusRule,
-            ], $this->messages()),
-
-            'areas' => $request->validate([
-                'planta_id' => ['required', 'integer', 'exists:plantas,id'],
-                'nombre' => [
-                    'required',
-                    'string',
-                    'max:120',
-                    Rule::unique('areas', 'nombre')
-                        ->where(fn ($query) => $query->where('planta_id', $request->input('planta_id')))
-                        ->ignore($id),
-                ],
-                'estatus' => $estatusRule,
-            ], $this->messages()),
-
-            'ubicaciones' => $request->validate([
-                'planta_id' => ['required', 'integer', 'exists:plantas,id'],
-                'area_id' => ['nullable', 'integer', 'exists:areas,id'],
-                'edificio' => ['nullable', 'string', 'max:100'],
-                'piso' => ['nullable', 'string', 'max:50'],
-                'pasillo' => ['nullable', 'string', 'max:50'],
-                'descripcion' => ['nullable', 'string', 'max:255'],
-                'codigo_interno' => [
-                    'nullable',
-                    'string',
-                    'max:60',
-                    Rule::unique('ubicaciones', 'codigo_interno')->ignore($id),
-                ],
-                'estatus' => $estatusRule,
-            ], $this->messages()),
-
-            'responsables' => $request->validate([
-                'nombre' => ['required', 'string', 'max:120'],
-                'correo' => ['nullable', 'email', 'max:120'],
-                'telefono' => ['nullable', 'string', 'max:30'],
-                'estatus' => $estatusRule,
-            ], $this->messages()),
-
-            default => [],
+            'areas' => 'a.id',
+            'ubicaciones' => 'u.id',
+            default => 'id',
         };
+    }
+
+    private function canAdministerCatalogs(Request $request): bool
+    {
+        $roles = collect($request->session()->get('swafi_roles', []));
+        $permissions = collect($request->session()->get('swafi_permissions', []));
+
+        return $roles->contains('Administrador SWAFI')
+            || $permissions->contains('catalogos.administrar');
     }
 
     private function headersFor(string $catalogo): array
     {
         return match ($catalogo) {
             'proveedores' => ['rfc', 'nombre', 'correo', 'telefono', 'estatus'],
-            'plantas' => ['clave', 'nombre', 'estado', 'pais', 'estatus'],
+            'plantas' => ['clave', 'nombre', 'direccion', 'estado', 'pais', 'estatus'],
             'centros_costo' => ['clave', 'descripcion', 'estatus'],
             'tipos_activo' => ['clave', 'descripcion', 'vida_util_meses', 'estatus'],
             'areas' => ['planta_clave', 'nombre', 'estatus'],
@@ -634,7 +552,7 @@ class CatalogosController extends Controller
     {
         return match ($catalogo) {
             'proveedores' => ['rfc', 'nombre'],
-            'plantas' => ['clave', 'nombre'],
+            'plantas' => ['clave', 'nombre', 'direccion'],
             'centros_costo' => ['clave', 'descripcion'],
             'tipos_activo' => ['clave', 'descripcion'],
             'areas' => ['planta_clave', 'nombre'],
@@ -648,7 +566,7 @@ class CatalogosController extends Controller
     {
         return match ($catalogo) {
             'proveedores' => ['ACM010101ABC', 'Proveedor industrial del centro', 'contacto@proveedor.com', '5555555555', 'activo'],
-            'plantas' => ['PLT-SM', 'Planta Santa María', 'Ciudad de México', 'México', 'activo'],
+            'plantas' => ['PLT-SM', 'Planta Santa María', 'Calle Industrial 100, Colonia Centro', 'Ciudad de México', 'México', 'activo'],
             'centros_costo' => ['CC-PLA-200', 'Producción línea 2', 'activo'],
             'tipos_activo' => ['EQP', 'Equipo de producción', '120', 'activo'],
             'areas' => ['PLT-SM', 'Producción', 'activo'],
@@ -707,6 +625,7 @@ class CatalogosController extends Controller
     {
         $clave = strtoupper($this->normalizeCell($data['clave'] ?? ''));
         $nombre = $this->normalizeCell($data['nombre'] ?? '');
+        $direccion = $this->normalizeCell($data['direccion'] ?? '');
 
         if ($clave === '' || mb_strlen($clave) > 30) {
             $this->rejectRow($summary, $lineNumber, 'la clave de planta es obligatoria y no debe superar 30 caracteres.');
@@ -718,9 +637,15 @@ class CatalogosController extends Controller
             return null;
         }
 
+        if ($direccion === '' || mb_strlen($direccion) > 255) {
+            $this->rejectRow($summary, $lineNumber, 'la dirección de la planta es obligatoria y no debe superar 255 caracteres.');
+            return null;
+        }
+
         return [
             'clave' => $clave,
             'nombre' => $nombre,
+            'direccion' => $direccion,
             'estado' => $this->nullableString($data['estado'] ?? null, 100),
             'pais' => $this->normalizeCell($data['pais'] ?? '') ?: 'México',
             'estatus' => $estatus,
@@ -876,15 +801,16 @@ class CatalogosController extends Controller
     private function findExistingImportRecord(string $catalogo, array $prepared)
     {
         return match ($catalogo) {
-            'proveedores' => DB::table('proveedores')->where('rfc', $prepared['rfc'])->first(),
-            'plantas' => DB::table('plantas')->where('clave', $prepared['clave'])->first(),
-            'centros_costo' => DB::table('centros_costo')->where('clave', $prepared['clave'])->first(),
-            'tipos_activo' => DB::table('tipos_activo')->where('clave', $prepared['clave'])->first(),
+            'proveedores' => DB::table('proveedores')->where('rfc', $prepared['rfc'])->lockForUpdate()->first(),
+            'plantas' => DB::table('plantas')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
+            'centros_costo' => DB::table('centros_costo')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
+            'tipos_activo' => DB::table('tipos_activo')->where('clave', $prepared['clave'])->lockForUpdate()->first(),
             'areas' => DB::table('areas')
                 ->where('planta_id', $prepared['planta_id'])
                 ->where('nombre', $prepared['nombre'])
+                ->lockForUpdate()
                 ->first(),
-            'ubicaciones' => DB::table('ubicaciones')->where('codigo_interno', $prepared['codigo_interno'])->first(),
+            'ubicaciones' => DB::table('ubicaciones')->where('codigo_interno', $prepared['codigo_interno'])->lockForUpdate()->first(),
             'responsables' => $this->findExistingResponsable($prepared),
             default => null,
         };
@@ -895,6 +821,7 @@ class CatalogosController extends Controller
         if (!empty($prepared['correo'])) {
             $responsable = DB::table('responsables')
                 ->where('correo', $prepared['correo'])
+                ->lockForUpdate()
                 ->first();
 
             if ($responsable) {
@@ -904,21 +831,8 @@ class CatalogosController extends Controller
 
         return DB::table('responsables')
             ->where('nombre', $prepared['nombre'])
+            ->lockForUpdate()
             ->first();
-    }
-
-    private function messages(): array
-    {
-        return [
-            'required' => 'El campo :attribute es obligatorio.',
-            'unique' => 'El valor capturado en :attribute ya existe.',
-            'email' => 'El correo electrónico no tiene un formato válido.',
-            'exists' => 'El valor seleccionado en :attribute no existe.',
-            'integer' => 'El campo :attribute debe ser numérico.',
-            'min' => 'El campo :attribute no cumple el valor mínimo permitido.',
-            'max' => 'El campo :attribute supera la longitud permitida.',
-            'in' => 'El campo :attribute contiene un valor no válido.',
-        ];
     }
 
     private function options(): array
@@ -960,7 +874,7 @@ class CatalogosController extends Controller
     {
         $columns = $this->columnsFor($catalogo);
         $this->applyOrder($query, $catalogo);
-        $rows = $query->get();
+        $rows = $query->cursor();
 
         return response()->streamDownload(function () use ($rows, $columns) {
             $output = fopen('php://output', 'w');
@@ -972,7 +886,7 @@ class CatalogosController extends Controller
                 $line = [];
 
                 foreach (array_keys($columns) as $key) {
-                    $line[] = data_get($row, $key);
+                    $line[] = $this->csvSafeValue(data_get($row, $key));
                 }
 
                 fputcsv($output, $line);
@@ -982,6 +896,29 @@ class CatalogosController extends Controller
         }, 'catalogo_swafi_' . $catalogo . '_' . now()->format('Ymd_His') . '.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
         ]);
+    }
+
+    private function likePattern(string $value): string
+    {
+        $escaped = str_replace(
+            ['\\', '%', '_'],
+            ['\\\\', '\\%', '\\_'],
+            trim($value)
+        );
+
+        return '%' . $escaped . '%';
+    }
+
+    private function csvSafeValue(mixed $value): string
+    {
+        $value = is_scalar($value) ? (string) $value : '';
+        $trimmed = ltrim($value);
+
+        if ($trimmed !== '' && in_array($trimmed[0], ['=', '+', '-', '@'], true)) {
+            return "'" . $value;
+        }
+
+        return $value;
     }
 
     private function detectDelimiter(string $line): string
