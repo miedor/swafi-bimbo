@@ -355,11 +355,26 @@
 
                 @if ($catalogoActivo === 'centros_costo')
                     <label>
+                        <span>Planta responsable</span>
+                        <select name="planta_id" required>
+                            <option value="">Seleccione...</option>
+                            @foreach ($opciones['plantas'] as $planta)
+                                @php
+                                    $plantaSeleccionada = (string) old('planta_id', $registroEdit->planta_id ?? '');
+                                @endphp
+                                <option value="{{ $planta->id }}" {{ $plantaSeleccionada === (string) $planta->id ? 'selected' : '' }}>
+                                    {{ $planta->clave }} - {{ $planta->nombre }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </label>
+
+                    <label>
                         <span>Clave</span>
                         <input name="clave" value="{{ old('clave', $registroEdit->clave ?? '') }}" required>
                     </label>
 
-                    <label>
+                    <label class="cat-field-wide">
                         <span>Descripción</span>
                         <input name="descripcion" value="{{ old('descripcion', $registroEdit->descripcion ?? '') }}" required>
                     </label>
@@ -399,6 +414,11 @@
                     </label>
 
                     <label>
+                        <span>Clave del área</span>
+                        <input name="clave" value="{{ old('clave', $registroEdit->clave ?? '') }}" required>
+                    </label>
+
+                    <label class="cat-field-wide">
                         <span>Nombre del área</span>
                         <input name="nombre" value="{{ old('nombre', $registroEdit->nombre ?? '') }}" required>
                     </label>
@@ -429,7 +449,7 @@
                                     $areaSeleccionada = (string) old('area_id', $registroEdit->area_id ?? '');
                                 @endphp
                                 <option value="{{ $area->id }}" {{ $areaSeleccionada === (string) $area->id ? 'selected' : '' }}>
-                                    {{ $area->planta_nombre }} / {{ $area->nombre }}
+                                    {{ $area->planta_nombre }} / {{ $area->clave }} - {{ $area->nombre }}
                                 </option>
                             @endforeach
                         </select>
@@ -623,20 +643,34 @@
         </div>
     </div>
 
-    @if ($catalogoActivo === 'plantas')
-        @if ($dependenciasPlanta === [])
+    @if (in_array($catalogoActivo, ['plantas', 'centros_costo', 'areas'], true))
+        @if ($dependenciasCatalogo === [])
             <div class="cat-message cat-message-success" style="margin-top:14px;margin-bottom:0">
-                Esta planta no presenta dependencias activas o históricas que impidan su desactivación.
+                @if ($catalogoActivo === 'plantas')
+                    Esta planta no presenta dependencias activas o históricas que impidan su desactivación.
+                @elseif ($catalogoActivo === 'centros_costo')
+                    Este centro de costo no presenta activos vigentes que impidan su desactivación.
+                @else
+                    Esta área no presenta ubicaciones, activos o traslados pendientes que impidan su desactivación.
+                @endif
             </div>
         @else
             <div class="cat-message cat-message-error" style="margin-top:14px;margin-bottom:0">
-                <strong>Dependencias que protegen la integridad de la planta:</strong>
+                <strong>
+                    @if ($catalogoActivo === 'plantas')
+                        Dependencias que protegen la integridad de la planta:
+                    @elseif ($catalogoActivo === 'centros_costo')
+                        Dependencias que protegen la integridad del centro de costo:
+                    @else
+                        Dependencias que protegen la integridad del área:
+                    @endif
+                </strong>
                 <ul class="cat-dependency-list">
-                    @foreach ($dependenciasPlanta as $descripcion => $cantidad)
+                    @foreach ($dependenciasCatalogo as $descripcion => $cantidad)
                         <li>{{ $cantidad }} {{ $descripcion }}</li>
                     @endforeach
                 </ul>
-                La planta no podrá desactivarse hasta regularizar estas relaciones.
+                El registro no podrá desactivarse hasta regularizar estas relaciones.
             </div>
         @endif
     @endif
@@ -671,7 +705,7 @@
                 </select>
             </label>
 
-            @if (in_array($catalogoActivo, ['areas', 'ubicaciones'], true))
+            @if (in_array($catalogoActivo, ['centros_costo', 'areas', 'ubicaciones'], true))
                 <label>
                     <span>Planta</span>
                     <select name="planta_id">
@@ -796,7 +830,7 @@
                                         <form
                                             method="POST"
                                             action="{{ route('catalogos.destroy', [$catalogoActivo, $row->id]) }}"
-                                            onsubmit="return confirm('{{ $catalogoActivo === 'plantas' ? 'SWAFI verificará activos, áreas, ubicaciones, inventarios y traslados. ¿Deseas intentar desactivar esta planta?' : '¿Deseas desactivar este registro del catálogo?' }}');"
+                                            onsubmit="return confirm('{{ $catalogoActivo === 'plantas' ? 'SWAFI verificará activos, centros de costo, áreas, ubicaciones, inventarios y traslados. ¿Deseas intentar desactivar esta planta?' : (in_array($catalogoActivo, ['centros_costo', 'areas'], true) ? 'SWAFI verificará las dependencias operativas antes de desactivar el registro. ¿Deseas continuar?' : '¿Deseas desactivar este registro del catálogo?') }}');"
                                             style="display:inline"
                                         >
                                             @csrf
