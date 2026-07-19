@@ -1096,10 +1096,10 @@
             </a>
           @endif
 
-          @if ($can('catalogos.administrar'))
+          @if ($can('catalogos.ver') || $can('catalogos.administrar'))
             <a class="dash-quick-link" href="{{ route('catalogos') }}">
               <strong>Catálogos base</strong>
-              <span>Proveedores, plantas y datos maestros.</span>
+              <span>Consulta de proveedores, plantas y datos maestros.</span>
             </a>
           @endif
 

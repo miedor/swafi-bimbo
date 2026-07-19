@@ -2,7 +2,7 @@
 
 @section('title', 'Catálogos base | SWAFI')
 @section('page_title', 'Catálogos base')
-@section('page_subtitle', 'Administración funcional de catálogos transversales del sistema')
+@section('page_subtitle', 'Consulta y administración controlada de catálogos transversales del sistema')
 @section('breadcrumb', 'Catálogos base')
 
 @section('page_styles')
@@ -12,6 +12,10 @@
         grid-template-columns: 0.9fr 1.1fr;
         gap: 18px;
         align-items: start;
+    }
+
+    .cat-grid-readonly {
+        grid-template-columns: 1fr;
     }
 
     .cat-form-grid {
@@ -159,6 +163,55 @@
         overflow-x: auto;
     }
 
+    .cat-detail-grid {
+        display: grid;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        gap: 12px;
+        margin-top: 14px;
+    }
+
+    .cat-detail-item {
+        min-width: 0;
+        padding: 12px;
+        border: 1px solid #e1eaf6;
+        border-radius: 14px;
+        background: #f8fbff;
+    }
+
+    .cat-detail-item span {
+        display: block;
+        margin-bottom: 5px;
+        color: #64748b;
+        font-size: 11px;
+        font-weight: 900;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+    }
+
+    .cat-detail-item strong {
+        display: block;
+        overflow-wrap: anywhere;
+        color: #12345a;
+        font-size: 13px;
+    }
+
+    .cat-dependency-list {
+        margin: 10px 0 0 18px;
+        color: #7a3e00;
+        font-size: 13px;
+    }
+
+    .cat-readonly-note {
+        margin-top: 14px;
+        padding: 12px 14px;
+        border: 1px solid #cfe0f5;
+        border-radius: 14px;
+        background: #eef6ff;
+        color: #264b73;
+        font-size: 13px;
+        line-height: 1.45;
+    }
+
     @media (max-width: 1100px) {
         .cat-grid {
             grid-template-columns: 1fr;
@@ -168,7 +221,8 @@
     @media (max-width: 760px) {
         .cat-form-grid,
         .query-grid-four,
-        .cat-kpi-grid {
+        .cat-kpi-grid,
+        .cat-detail-grid {
             grid-template-columns: 1fr !important;
         }
     }
@@ -221,7 +275,8 @@
     $estatusActual = old('estatus', $registroEdit->estatus ?? 'activo');
 @endphp
 
-<section class="cat-grid">
+<section class="cat-grid {{ $canAdminCatalogs ? '' : 'cat-grid-readonly' }}">
+    @if ($canAdminCatalogs)
     <div class="card">
         <div class="section-title">
             <h2>{{ $editing ? 'Editar catálogo' : 'Alta de catálogo' }}</h2>
@@ -280,6 +335,11 @@
                     <label>
                         <span>Nombre</span>
                         <input name="nombre" value="{{ old('nombre', $registroEdit->nombre ?? '') }}" required>
+                    </label>
+
+                    <label class="cat-field-wide">
+                        <span>Dirección</span>
+                        <input name="direccion" value="{{ old('direccion', $registroEdit->direccion ?? '') }}" maxlength="255" required>
                     </label>
 
                     <label>
@@ -472,12 +532,31 @@
             ya relacionados con activos, expedientes, ubicaciones o reportes.
         </div>
     </div>
+    @endif
 
     <div class="card">
         <div class="section-title">
             <h2>Resumen del catálogo</h2>
             <span class="pill ok">Conectado a MySQL</span>
         </div>
+
+        <label class="cat-filter" style="display:block;margin-bottom:14px">
+            <span>Catálogo a consultar</span>
+            <select onchange="window.location='{{ route('catalogos') }}?catalogo=' + encodeURIComponent(this.value)">
+                @foreach ($catalogosDisponibles as $key => $label)
+                    <option value="{{ $key }}" {{ $catalogoActivo === $key ? 'selected' : '' }}>
+                        {{ $label }}
+                    </option>
+                @endforeach
+            </select>
+        </label>
+
+        @unless ($canAdminCatalogs)
+            <div class="cat-readonly-note">
+                Tu perfil cuenta con acceso de consulta. Las altas, modificaciones, importaciones, activaciones y
+                desactivaciones requieren el permiso <strong>catalogos.administrar</strong>.
+            </div>
+        @endunless
 
         <div class="cat-kpi-grid">
             <div class="cat-kpi">
@@ -496,8 +575,8 @@
             </div>
 
             <div class="cat-kpi">
-                <strong>CSV</strong>
-                <span>Importación / exportación</span>
+                <strong>{{ $canAdminCatalogs ? 'CRUD' : 'Consulta' }}</strong>
+                <span>{{ $canAdminCatalogs ? 'Administración y CSV' : 'Acceso de solo lectura' }}</span>
             </div>
         </div>
 
@@ -515,6 +594,54 @@
         </div>
     </div>
 </section>
+
+@if ($registroDetail !== null)
+<section class="card" style="margin-top:20px" id="swafi-catalogo-detalle">
+    <div class="section-title">
+        <h2>Detalle de {{ $catalogosDisponibles[$catalogoActivo] ?? 'catálogo' }}</h2>
+        <a class="tab" href="{{ route('catalogos', array_merge(request()->except(['detalle', 'editar']), ['catalogo' => $catalogoActivo])) }}">
+            Cerrar detalle
+        </a>
+    </div>
+
+    <div class="cat-detail-grid">
+        @foreach ($columnas as $key => $label)
+            <div class="cat-detail-item">
+                <span>{{ $label }}</span>
+                <strong>{{ data_get($registroDetail, $key) !== null && data_get($registroDetail, $key) !== '' ? data_get($registroDetail, $key) : '—' }}</strong>
+            </div>
+        @endforeach
+
+        <div class="cat-detail-item">
+            <span>Creado</span>
+            <strong>{{ $registroDetail->created_at ?? '—' }}</strong>
+        </div>
+
+        <div class="cat-detail-item">
+            <span>Última actualización</span>
+            <strong>{{ $registroDetail->updated_at ?? '—' }}</strong>
+        </div>
+    </div>
+
+    @if ($catalogoActivo === 'plantas')
+        @if ($dependenciasPlanta === [])
+            <div class="cat-message cat-message-success" style="margin-top:14px;margin-bottom:0">
+                Esta planta no presenta dependencias activas o históricas que impidan su desactivación.
+            </div>
+        @else
+            <div class="cat-message cat-message-error" style="margin-top:14px;margin-bottom:0">
+                <strong>Dependencias que protegen la integridad de la planta:</strong>
+                <ul class="cat-dependency-list">
+                    @foreach ($dependenciasPlanta as $descripcion => $cantidad)
+                        <li>{{ $cantidad }} {{ $descripcion }}</li>
+                    @endforeach
+                </ul>
+                La planta no podrá desactivarse hasta regularizar estas relaciones.
+            </div>
+        @endif
+    @endif
+</section>
+@endif
 
 <div data-swafi-query-workspace data-swafi-query-key="catalogos">
 <section class="card" style="margin-top:20px" data-swafi-query-panel>
@@ -544,35 +671,39 @@
                 </select>
             </label>
 
-            <label>
-                <span>Planta</span>
-                <select name="planta_id">
-                    <option value="">Todas</option>
-                    @foreach ($opciones['plantas'] as $planta)
-                        @php
-                            $filtroPlanta = (string) ($filtros['planta_id'] ?? '');
-                        @endphp
-                        <option value="{{ $planta->id }}" {{ $filtroPlanta === (string) $planta->id ? 'selected' : '' }}>
-                            {{ $planta->clave }} - {{ $planta->nombre }}
-                        </option>
-                    @endforeach
-                </select>
-            </label>
+            @if (in_array($catalogoActivo, ['areas', 'ubicaciones'], true))
+                <label>
+                    <span>Planta</span>
+                    <select name="planta_id">
+                        <option value="">Todas</option>
+                        @foreach ($opciones['plantas'] as $planta)
+                            @php
+                                $filtroPlanta = (string) ($filtros['planta_id'] ?? '');
+                            @endphp
+                            <option value="{{ $planta->id }}" {{ $filtroPlanta === (string) $planta->id ? 'selected' : '' }}>
+                                {{ $planta->clave }} - {{ $planta->nombre }}
+                            </option>
+                        @endforeach
+                    </select>
+                </label>
+            @endif
 
-            <label>
-                <span>Área</span>
-                <select name="area_id">
-                    <option value="">Todas</option>
-                    @foreach ($opciones['areas'] as $area)
-                        @php
-                            $filtroArea = (string) ($filtros['area_id'] ?? '');
-                        @endphp
-                        <option value="{{ $area->id }}" {{ $filtroArea === (string) $area->id ? 'selected' : '' }}>
-                            {{ $area->planta_nombre }} / {{ $area->nombre }}
-                        </option>
-                    @endforeach
-                </select>
-            </label>
+            @if ($catalogoActivo === 'ubicaciones')
+                <label>
+                    <span>Área</span>
+                    <select name="area_id">
+                        <option value="">Todas</option>
+                        @foreach ($opciones['areas'] as $area)
+                            @php
+                                $filtroArea = (string) ($filtros['area_id'] ?? '');
+                            @endphp
+                            <option value="{{ $area->id }}" {{ $filtroArea === (string) $area->id ? 'selected' : '' }}>
+                                {{ $area->planta_nombre }} / {{ $area->nombre }}
+                            </option>
+                        @endforeach
+                    </select>
+                </label>
+            @endif
         </div>
 
         <div class="query-grid query-grid-four" style="margin-top:10px">
@@ -594,7 +725,9 @@
                 <span>Consultar</span>
                 <div class="action-group">
                     <button class="tab" type="submit">Consultar</button>
-                    <button class="tab" type="submit" name="export" value="csv">Exportar CSV</button>
+                    @if ($canAdminCatalogs)
+                        <button class="tab" type="submit" name="export" value="csv">Exportar CSV</button>
+                    @endif
                 </div>
             </label>
 
@@ -611,7 +744,7 @@
 <section class="card table-card" style="margin-top:20px" data-swafi-query-results id="swafi-catalogos-resultados">
     <div class="section-title">
         <h2>Consulta de {{ $catalogosDisponibles[$catalogoActivo] ?? 'catálogo' }}</h2>
-        <span class="pill ok">CRUD + carga masiva</span>
+        <span class="pill ok">{{ $canAdminCatalogs ? 'CRUD + carga masiva' : 'Consulta autorizada' }}</span>
     </div>
 
     <div class="cat-table-scroll">
@@ -650,25 +783,51 @@
 
                         <td>
                             <div class="table-actions">
-                                <a href="{{ route('catalogos', array_merge(request()->query(), ['catalogo' => $catalogoActivo, 'editar' => $row->id])) }}">
-                                    Editar
+                                <a href="{{ route('catalogos', array_merge(request()->except(['detalle', 'editar']), ['catalogo' => $catalogoActivo, 'detalle' => $row->id])) }}">
+                                    Ver detalle
                                 </a>
 
-                                <form
-                                    method="POST"
-                                    action="{{ route('catalogos.destroy', [$catalogoActivo, $row->id]) }}"
-                                    onsubmit="return confirm('¿Deseas desactivar este registro del catálogo?');"
-                                    style="display:inline"
-                                >
-                                    @csrf
-                                    @method('DELETE')
-                                    <button
-                                        type="submit"
-                                        style="border:0;background:none;color:#b42318;font-weight:800;cursor:pointer;padding:0"
-                                    >
-                                        Desactivar
-                                    </button>
-                                </form>
+                                @if ($canAdminCatalogs)
+                                    <a href="{{ route('catalogos', array_merge(request()->except(['detalle', 'editar']), ['catalogo' => $catalogoActivo, 'editar' => $row->id])) }}">
+                                        Editar
+                                    </a>
+
+                                    @if (($row->estatus ?? 'activo') === 'activo')
+                                        <form
+                                            method="POST"
+                                            action="{{ route('catalogos.destroy', [$catalogoActivo, $row->id]) }}"
+                                            onsubmit="return confirm('{{ $catalogoActivo === 'plantas' ? 'SWAFI verificará activos, áreas, ubicaciones, inventarios y traslados. ¿Deseas intentar desactivar esta planta?' : '¿Deseas desactivar este registro del catálogo?' }}');"
+                                            style="display:inline"
+                                        >
+                                            @csrf
+                                            @method('DELETE')
+                                            <input type="hidden" name="estatus" value="inactivo">
+                                            <button
+                                                type="submit"
+                                                style="border:0;background:none;color:#b42318;font-weight:800;cursor:pointer;padding:0"
+                                            >
+                                                Desactivar
+                                            </button>
+                                        </form>
+                                    @else
+                                        <form
+                                            method="POST"
+                                            action="{{ route('catalogos.activate', [$catalogoActivo, $row->id]) }}"
+                                            onsubmit="return confirm('¿Deseas reactivar este registro del catálogo?');"
+                                            style="display:inline"
+                                        >
+                                            @csrf
+                                            @method('PATCH')
+                                            <input type="hidden" name="estatus" value="activo">
+                                            <button
+                                                type="submit"
+                                                style="border:0;background:none;color:#176b35;font-weight:800;cursor:pointer;padding:0"
+                                            >
+                                                Activar
+                                            </button>
+                                        </form>
+                                    @endif
+                                @endif
                             </div>
                         </td>
                     </tr>
@@ -706,7 +865,7 @@
         </div>
 
         <div class="table-page-size">
-            <span>M04 catálogos funcional</span>
+            <span>{{ $canAdminCatalogs ? 'M04 catálogos administrables' : 'M04 consulta de catálogos' }}</span>
         </div>
     </div>
 </section>
