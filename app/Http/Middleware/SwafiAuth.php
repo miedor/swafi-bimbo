@@ -220,11 +220,13 @@ class SwafiAuth
             'reportes-guardados.apply',
             'reportes-guardados.destroy' => 'reportes.plantillas',
 
-            'catalogos',
+            'catalogos' => 'catalogos.ver',
+
             'catalogos.store',
             'catalogos.importar',
             'catalogos.plantilla',
-            'catalogos.destroy' => 'catalogos.administrar',
+            'catalogos.destroy',
+            'catalogos.activate' => 'catalogos.administrar',
 
             'seguridad.usuarios.store',
             'seguridad.usuarios.destroy',
@@ -247,6 +249,8 @@ class SwafiAuth
         }
 
         $impliedPermissions = [
+            'catalogos.ver' => ['catalogos.administrar'],
+
             'ubicaciones.ver' => [
                 'ubicaciones.administrar',
                 'ubicaciones.aprobar_traslados',
