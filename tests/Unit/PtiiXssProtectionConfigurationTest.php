@@ -29,16 +29,26 @@ class PtiiXssProtectionConfigurationTest extends TestCase
 
     public function test_every_inline_script_and_style_uses_the_request_nonce(): void
     {
+        $openingTagPattern = '/<(?:script|style)\b(?:"[^"]*"|\'[^\']*\'|[^\'">])*>/is';
+        $requiredNonce = 'nonce="{{ request()->attributes->get(\'csp_nonce\') }}"';
+
         foreach ($this->bladeFiles() as $path => $contents) {
-            foreach (preg_split('/\R/', $contents) ?: [] as $lineNumber => $line) {
-                if (stripos($line, '<script') === false && stripos($line, '<style') === false) {
-                    continue;
-                }
+            $matchCount = preg_match_all(
+                $openingTagPattern,
+                $contents,
+                $matches,
+                PREG_OFFSET_CAPTURE
+            );
+
+            self::assertNotFalse($matchCount, "No fue posible analizar etiquetas script/style en {$path}.");
+
+            foreach ($matches[0] ?? [] as [$openingTag, $offset]) {
+                $lineNumber = substr_count(substr($contents, 0, $offset), "\n") + 1;
 
                 self::assertStringContainsString(
-                    'nonce="{{ request()->attributes->get(\'csp_nonce\') }}"',
-                    $line,
-                    $path.':'.($lineNumber + 1)
+                    $requiredNonce,
+                    $openingTag,
+                    $path.':'.$lineNumber
                 );
             }
         }
