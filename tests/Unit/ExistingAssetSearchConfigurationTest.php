@@ -63,7 +63,7 @@ class ExistingAssetSearchConfigurationTest extends TestCase
             "->where('a.proveedor_id', (int) \$filters['proveedor_id'])",
             "->where('a.planta_id', (int) \$filters['planta_id'])",
             "->paginate(",
-            "$allowedPerPage = [5, 8, 10, 15, 20]",
+            '$allowedPerPage = [5, 8, 10, 15, 20]',
             "COUNT(*) AS expedientes_vigentes",
             "->whereNull('deleted_at')",
             "->leftJoinSub(",
