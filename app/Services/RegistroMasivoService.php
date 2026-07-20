@@ -51,17 +51,19 @@ class RegistroMasivoService
 
     public function __construct(
         private readonly SwafiStorageService $storage,
-        private readonly AssetStatusCatalogService $statusCatalogs
+        private readonly AssetStatusCatalogService $statusCatalogs,
+        private readonly SimpleXlsxReader $xlsxReader
     ) {
     }
 
     public function previsualizar(
-        UploadedFile $csvFile,
+        UploadedFile $layoutFile,
         UploadedFile $zipFile,
         ?int $userId
     ): ImportacionMasiva {
-        $csv = $this->readCsvRecords($csvFile);
-        $normalizedHeaders = $csv['headers'];
+        $layout = $this->readLayoutRecords($layoutFile);
+        $normalizedHeaders = $layout['headers'];
+        $layoutFormat = $this->layoutFormat($layoutFile);
 
         $this->validateHeaders($normalizedHeaders);
 
@@ -78,9 +80,9 @@ class RegistroMasivoService
             $directory = 'swafi/importaciones/' . $uuid;
 
             $storedCsv = $this->storage->storeUploadedFile(
-                $csvFile,
+                $layoutFile,
                 $directory,
-                'layout.csv'
+                'layout.' . $layoutFormat
             );
 
             $storedZip = $this->storage->storeUploadedFile(
@@ -105,7 +107,7 @@ class RegistroMasivoService
                 'rechazadas' => 0,
             ];
 
-            foreach ($csv['records'] as $record) {
+            foreach ($layout['records'] as $record) {
                 $lineNumber = $record['numero_fila'];
                 $columns = $record['columns'];
                 $data = [];
@@ -128,7 +130,7 @@ class RegistroMasivoService
                         . $record['columnas_recibidas']
                         . ' columnas y el encabezado define '
                         . $record['columnas_esperadas']
-                        . '. Revisa comas, separadores y campos entrecomillados.',
+                        . '. Revisa el número de celdas, separadores y campos entrecomillados.',
                     ];
                 }
 
@@ -163,7 +165,8 @@ class RegistroMasivoService
             $batch = DB::transaction(function () use (
                 $uuid,
                 $userId,
-                $csvFile,
+                $layoutFile,
+                $layoutFormat,
                 $zipFile,
                 $storedCsv,
                 $storedZip,
@@ -174,10 +177,11 @@ class RegistroMasivoService
                     'uuid' => $uuid,
                     'user_id' => $userId,
                     'estado' => 'previsualizada',
-                    'csv_nombre_original' => basename($csvFile->getClientOriginalName()),
+                    'csv_nombre_original' => basename($layoutFile->getClientOriginalName()),
                     'csv_storage_disk' => $storedCsv['disk'],
                     'csv_ruta' => $storedCsv['path'],
                     'csv_hash_sha256' => $storedCsv['hash_sha256'],
+                    'layout_formato' => $layoutFormat,
                     'zip_nombre_original' => basename($zipFile->getClientOriginalName()),
                     'zip_storage_disk' => $storedZip['disk'],
                     'zip_ruta' => $storedZip['path'],
@@ -223,7 +227,8 @@ class RegistroMasivoService
                     antes: null,
                     despues: [
                         'archivos' => [
-                            'csv' => $batch->csv_nombre_original,
+                            'layout' => $batch->csv_nombre_original,
+                            'layout_formato' => $batch->layout_formato,
                             'zip' => $batch->zip_nombre_original,
                         ],
                         'resumen' => $summary,
@@ -1453,6 +1458,126 @@ class RegistroMasivoService
     }
 
     /**
+     * Lee el layout de datos conservando una estructura común para CSV y XLSX.
+     *
+     * @return array{
+     *     headers:array<int,string>,
+     *     records:array<int,array{
+     *         numero_fila:int,
+     *         columns:array<int,mixed>,
+     *         columnas_esperadas:int,
+     *         columnas_recibidas:int
+     *     }>
+     * }
+     */
+    private function readLayoutRecords(UploadedFile $layoutFile): array
+    {
+        if ($this->layoutFormat($layoutFile) !== 'xlsx') {
+            return $this->readCsvRecords($layoutFile);
+        }
+
+        $path = $layoutFile->getRealPath();
+
+        if (!is_string($path) || $path === '' || !is_readable($path)) {
+            throw ValidationException::withMessages([
+                'archivo_csv' => 'El archivo XLSX no está disponible para lectura.',
+            ]);
+        }
+
+        try {
+            $rows = $this->xlsxReader->readFirstWorksheet($path, self::MAX_ROWS);
+        } catch (\DomainException|\RuntimeException $exception) {
+            throw ValidationException::withMessages([
+                'archivo_csv' => $exception->getMessage(),
+            ]);
+        }
+
+        if ($rows === []) {
+            throw ValidationException::withMessages([
+                'archivo_csv' => 'El archivo XLSX no contiene encabezados ni registros.',
+            ]);
+        }
+
+        $headers = array_shift($rows);
+
+        if (!is_array($headers) || $headers === []) {
+            throw ValidationException::withMessages([
+                'archivo_csv' => 'El archivo XLSX no contiene encabezados.',
+            ]);
+        }
+
+        $normalizedHeaders = array_map(
+            fn (mixed $header): string => $this->normalizeHeader((string) $header),
+            $headers
+        );
+        $records = [];
+
+        foreach (array_values($rows) as $index => $columns) {
+            if (!is_array($columns) || $this->rowValuesAreEmpty($columns)) {
+                continue;
+            }
+
+            if (count($records) >= self::MAX_ROWS) {
+                throw ValidationException::withMessages([
+                    'archivo_csv' => 'El layout supera el máximo de ' . self::MAX_ROWS . ' filas por lote.',
+                ]);
+            }
+
+            $expectedColumns = count($normalizedHeaders);
+            $receivedColumns = count($columns);
+            $normalizedColumns = array_values($columns);
+
+            if ($receivedColumns < $expectedColumns) {
+                $normalizedColumns = array_pad(
+                    $normalizedColumns,
+                    $expectedColumns,
+                    ''
+                );
+                $receivedColumns = $expectedColumns;
+            }
+
+            $records[] = [
+                'numero_fila' => $index + 2,
+                'columns' => $normalizedColumns,
+                'columnas_esperadas' => $expectedColumns,
+                'columnas_recibidas' => $receivedColumns,
+            ];
+        }
+
+        if ($records === []) {
+            throw ValidationException::withMessages([
+                'archivo_csv' => 'El archivo XLSX no contiene registros para previsualizar.',
+            ]);
+        }
+
+        return [
+            'headers' => $normalizedHeaders,
+            'records' => $records,
+        ];
+    }
+
+    private function layoutFormat(UploadedFile $layoutFile): string
+    {
+        return mb_strtolower((string) $layoutFile->getClientOriginalExtension()) === 'xlsx'
+            ? 'xlsx'
+            : 'csv';
+    }
+
+    /**
+     * @param array<int, mixed> $values
+     */
+    private function rowValuesAreEmpty(array $values): bool
+    {
+        foreach ($values as $value) {
+            if ($this->normalizeCell($value) !== '') {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
      * Lee el CSV conforme a RFC 4180, incluyendo campos entrecomillados con
      * comas o saltos de línea, y conserva una numeración estable por registro.
      *
@@ -1639,6 +1764,20 @@ class RegistroMasivoService
 
         if ($value === '') {
             return null;
+        }
+
+        if (preg_match('/^\d+(?:\.\d+)?$/', $value) === 1) {
+            $serial = (float) $value;
+
+            if ($serial >= 1 && $serial <= 2958465) {
+                try {
+                    return (new \DateTimeImmutable('1899-12-30'))
+                        ->modify('+' . (int) floor($serial) . ' days')
+                        ->format('Y-m-d');
+                } catch (\Throwable) {
+                    return null;
+                }
+            }
         }
 
         foreach (['!d/m/Y', '!Y-m-d', '!d-m-Y', '!m/d/Y'] as $format) {

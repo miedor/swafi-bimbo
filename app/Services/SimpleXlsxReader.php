@@ -260,7 +260,7 @@ class SimpleXlsxReader
 
                     if ($columnIndex < 0 || $columnIndex >= self::MAX_COLUMNS) {
                         throw new DomainException(
-                            'El archivo XLSX contiene más columnas de las permitidas para un layout de catálogos.'
+                            'El archivo XLSX contiene más columnas de las permitidas para un layout de SWAFI.'
                         );
                     }
 
