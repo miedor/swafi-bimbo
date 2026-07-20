@@ -5,40 +5,38 @@ namespace App\Mail;
 use Illuminate\Mail\Mailable;
 use Illuminate\Queue\SerializesModels;
 
-class SwafiObservacionAsignadaMail extends Mailable
+class SwafiObservacionRecordatorioMail extends Mailable
 {
     use SerializesModels;
 
     public function __construct(
         public string $assignedName,
-        public string $creatorName,
         public string $numeroActivo,
         public string $folioFactura,
         public string $tipoObservacion,
         public string $prioridad,
         public string $descripcion,
-        public string $urlExpediente,
-        public string $rolDestino,
-        public string $fechaCompromiso
+        public string $fechaCompromiso,
+        public string $estadoPlazo,
+        public string $urlExpediente
     ) {
     }
 
     public function build()
     {
         return $this
-            ->subject('SWAFI | Nueva observación asignada')
-            ->view('emails.observacion-asignada')
+            ->subject('SWAFI | Recordatorio de observación: ' . $this->estadoPlazo)
+            ->view('emails.observacion-recordatorio')
             ->with([
                 'assignedName' => $this->assignedName,
-                'creatorName' => $this->creatorName,
                 'numeroActivo' => $this->numeroActivo,
                 'folioFactura' => $this->folioFactura,
                 'tipoObservacion' => $this->tipoObservacion,
                 'prioridad' => $this->prioridad,
                 'descripcion' => $this->descripcion,
-                'urlExpediente' => $this->urlExpediente,
-                'rolDestino' => $this->rolDestino,
                 'fechaCompromiso' => $this->fechaCompromiso,
+                'estadoPlazo' => $this->estadoPlazo,
+                'urlExpediente' => $this->urlExpediente,
             ]);
     }
 }

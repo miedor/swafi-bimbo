@@ -1166,7 +1166,14 @@
         <div class="detail-section">
           <div class="detail-section-head">
             <h3>Seguimiento y validación cruzada</h3>
-            <span class="pill {{ ($resumenContadores['observaciones_pendientes'] ?? 0) > 0 ? 'warn' : 'ok' }}">{{ $resumenContadores['observaciones_pendientes'] ?? 0 }} pendiente(s)</span>
+            <div class="detail-badges">
+              <span class="pill {{ ($resumenContadores['observaciones_pendientes'] ?? 0) > 0 ? 'warn' : 'ok' }}">{{ $resumenContadores['observaciones_pendientes'] ?? 0 }} pendiente(s)</span>
+              @if(($resumenContadores['observaciones_vencidas'] ?? 0) > 0)
+                <span class="pill danger">{{ $resumenContadores['observaciones_vencidas'] }} vencida(s)</span>
+              @elseif(($resumenContadores['observaciones_por_vencer'] ?? 0) > 0)
+                <span class="pill warn">{{ $resumenContadores['observaciones_por_vencer'] }} por vencer</span>
+              @endif
+            </div>
           </div>
 
           <div class="detail-note" style="margin-bottom:10px;">
@@ -1220,6 +1227,17 @@
                       </select>
                     </label>
 
+                    <label class="detail-form-field">
+                      <span>Fecha compromiso</span>
+                      <input
+                        type="date"
+                        name="fecha_compromiso"
+                        min="{{ \Carbon\CarbonImmutable::now((string) config('swafi.observaciones_recordatorios.zona_horaria', 'America/Mexico_City'))->addDay()->toDateString() }}"
+                        value="{{ old('fecha_compromiso') }}"
+                        required
+                      >
+                    </label>
+
                     <label class="detail-form-field full">
                       <span>Descripción</span>
                       <textarea name="descripcion" required placeholder="Describe con claridad qué se detectó y qué debe corregirse">{{ old('descripcion') }}</textarea>
@@ -1230,6 +1248,19 @@
               </div>
             </details>
           @endif
+
+          @php
+            $observationDeadlineService = app(\App\Services\ObservationDeadlineService::class);
+            $observationReminderTimezone = (string) config(
+                'swafi.observaciones_recordatorios.zona_horaria',
+                'America/Mexico_City'
+            );
+            $observationDeadlineNow = \Carbon\CarbonImmutable::now($observationReminderTimezone);
+            $observationDueSoonDays = (int) config(
+                'swafi.observaciones_recordatorios.dias_anticipacion',
+                2
+            );
+          @endphp
 
           <div class="detail-list">
             @forelse($observaciones as $observacion)
@@ -1250,6 +1281,20 @@
                     && $estatus === 'atendida'
                     && ($isAdminSwafi || (int) $observacion->atendido_por !== $currentUserId);
                 $canCancelThis = $canValidateObservation && !in_array($estatus, ['cerrada', 'cancelada'], true);
+                $canManageDeadline = $canValidateObservation
+                    && in_array($estatus, ['abierta', 'en_atencion', 'rechazada'], true);
+                $fechaCompromiso = $observacion->fecha_compromiso ?? null;
+                $deadlineDays = $fechaCompromiso
+                    ? $observationDeadlineService->daysRemaining($fechaCompromiso, $observationDeadlineNow)
+                    : null;
+                $deadlineState = $observationDeadlineService->state(
+                    $fechaCompromiso,
+                    $estatus,
+                    $observationDeadlineNow,
+                    $observationDueSoonDays
+                );
+                $deadlineLabel = $observationDeadlineService->label($deadlineState, $deadlineDays);
+                $deadlineBadgeClass = $observationDeadlineService->badgeClass($deadlineState);
               @endphp
 
               <article class="detail-card-item">
@@ -1261,6 +1306,7 @@
                   <div class="detail-badges">
                     <span class="detail-badge {{ $obsBadgeClass($estatus) }}">{{ $estatusObservacionLabels[$estatus] ?? ucfirst($estatus) }}</span>
                     <span class="detail-badge {{ $priorityBadgeClass($observacion->prioridad) }}">{{ $prioridad }}</span>
+                    <span class="detail-badge {{ $deadlineBadgeClass }}">{{ $deadlineLabel }}</span>
                   </div>
                 </div>
 
@@ -1271,6 +1317,38 @@
                     @if($observacion->rol_destino) · {{ $observacion->rol_destino }} @endif
                     @if($observacion->fecha_notificacion) · Correo enviado {{ $observacion->fecha_notificacion }} @elseif($observacion->notificacion_error) · Correo no enviado @endif
                   </div>
+                  <div>
+                    <strong>Fecha compromiso:</strong>
+                    {{ $fechaCompromiso ? \Carbon\CarbonImmutable::parse($fechaCompromiso)->format('d/m/Y') : 'Sin fecha registrada' }}
+                  </div>
+                  @if($canManageDeadline)
+                    <form method="POST" action="{{ route('observaciones.actualizar-fecha', $observacion->id) }}" class="detail-action-row" style="margin-top:8px;">
+                      @csrf
+                      @method('PATCH')
+                      <input type="hidden" name="observacion_contexto" value="{{ $observacion->id }}">
+                      <label class="detail-form-field">
+                        <span>Nueva fecha compromiso</span>
+                        <input
+                          type="date"
+                          name="nueva_fecha_compromiso"
+                          min="{{ \Carbon\CarbonImmutable::now((string) config('swafi.observaciones_recordatorios.zona_horaria', 'America/Mexico_City'))->addDay()->toDateString() }}"
+                          value="{{ (string) old('observacion_contexto') === (string) $observacion->id ? old('nueva_fecha_compromiso') : ($fechaCompromiso ? \Carbon\CarbonImmutable::parse($fechaCompromiso)->toDateString() : '') }}"
+                          required
+                        >
+                      </label>
+                      <button type="submit" class="tab">Actualizar fecha</button>
+                    </form>
+                  @endif
+                  @if($observacion->fecha_ultimo_recordatorio)
+                    <div class="detail-muted">
+                      Último recordatorio: {{ $observacion->fecha_ultimo_recordatorio }} ·
+                      {{ (int) ($observacion->recordatorios_enviados ?? 0) }} enviado(s)
+                    </div>
+                  @elseif($observacion->recordatorio_error_referencia)
+                    <div class="detail-muted">
+                      El último recordatorio no pudo enviarse. Referencia: {{ $observacion->recordatorio_error_referencia }}.
+                    </div>
+                  @endif
                   @if($observacion->respuesta_atencion)
                     <div><strong>Respuesta:</strong> {{ $observacion->respuesta_atencion }}</div>
                     <div class="detail-muted">Atendió: {{ $observacion->atendido_por_nombre ?: ($observacion->atendido_por_email ?: 'Usuario no identificado') }} · {{ $observacion->fecha_atencion ?: $observacion->updated_at }}</div>

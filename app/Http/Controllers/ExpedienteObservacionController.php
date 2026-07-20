@@ -2,6 +2,8 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\StoreExpedienteObservacionRequest;
+use App\Http\Requests\UpdateObservationDeadlineRequest;
 use App\Mail\SwafiObservacionAsignadaMail;
 use App\Models\ExpedienteObservacion;
 use App\Models\User;
@@ -10,7 +12,6 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Mail;
 use Illuminate\Support\Facades\Schema;
-use Illuminate\Validation\Rule;
 
 class ExpedienteObservacionController extends Controller
 {
@@ -32,29 +33,10 @@ class ExpedienteObservacionController extends Controller
         'critica' => 'Crítica',
     ];
 
-    public function store(Request $request, int $expediente): RedirectResponse
+    public function store(StoreExpedienteObservacionRequest $request, int $expediente): RedirectResponse
     {
         $expedienteData = $this->findExpediente($expediente);
-
-        $validated = $request->validate([
-            'tipo_observacion' => ['required', Rule::in(array_keys($this->tipoObservacionLabels))],
-            'prioridad' => ['required', Rule::in(array_keys($this->prioridadLabels))],
-            'rol_destino' => ['required', Rule::in(['Usuario Captura', 'Usuario Planta / Inventarios'])],
-            'asignado_a' => ['required', 'integer', 'exists:users,id'],
-            'descripcion' => ['required', 'string', 'min:5', 'max:2000'],
-        ], [
-            'tipo_observacion.required' => 'Debes seleccionar el tipo de observación.',
-            'tipo_observacion.in' => 'El tipo de observación seleccionado no es válido.',
-            'prioridad.required' => 'Debes seleccionar la prioridad.',
-            'prioridad.in' => 'La prioridad seleccionada no es válida.',
-            'rol_destino.required' => 'Debes seleccionar el rol responsable de atender la observación.',
-            'rol_destino.in' => 'El rol responsable seleccionado no es válido.',
-            'asignado_a.required' => 'Debes seleccionar el usuario que atenderá la observación.',
-            'asignado_a.exists' => 'El usuario seleccionado para atender la observación no existe.',
-            'descripcion.required' => 'Debes capturar la descripción de la observación.',
-            'descripcion.min' => 'La observación debe tener al menos 5 caracteres.',
-            'descripcion.max' => 'La observación no debe superar 2000 caracteres.',
-        ]);
+        $validated = $request->validated();
 
         if (!$this->canCreateObservation()) {
             return $this->redirectDenied($expedienteData->id, 'Solo Usuario Consulta / Auditoría puede registrar observaciones. Administrador SWAFI conserva la facultad de supervisión.');
@@ -112,6 +94,7 @@ class ExpedienteObservacionController extends Controller
                 'creado_por' => $this->userId(),
                 'actualizado_por' => $this->userId(),
                 'fecha_asignacion' => now(),
+                'fecha_compromiso' => $validated['fecha_compromiso'],
             ]);
 
             $this->markExpedienteObserved($expedienteData->id, $expedienteData->numero_activo);
@@ -132,6 +115,91 @@ class ExpedienteObservacionController extends Controller
         return redirect()
             ->route('expediente', ['expediente' => $expedienteData->id, 'tab' => 'observaciones'])
             ->with('success', 'La observación fue registrada, asignada y el expediente quedó observado. ' . $notificationMessage);
+    }
+
+    public function updateDeadline(
+        UpdateObservationDeadlineRequest $request,
+        int $observacion
+    ): RedirectResponse {
+        $observacionData = ExpedienteObservacion::findOrFail($observacion);
+        $expedienteData = $this->findExpediente($observacionData->expediente_id);
+
+        if (!$this->canValidateObservation()) {
+            return $this->redirectDenied(
+                $expedienteData->id,
+                'Tu perfil no puede actualizar la fecha compromiso de observaciones.'
+            );
+        }
+
+        if (!in_array($observacionData->estatus, ['abierta', 'en_atencion', 'rechazada'], true)) {
+            return $this->redirectDenied(
+                $expedienteData->id,
+                'Solo las observaciones pendientes de atención pueden reprogramarse.'
+            );
+        }
+
+        $requiredRole = $observacionData->rol_destino
+            ?: $this->requiredRoleForObservationType((string) $observacionData->tipo_observacion);
+        $assignedUser = $this->findAssignableUser(
+            (int) $observacionData->asignado_a,
+            $requiredRole
+        );
+
+        if (!$assignedUser) {
+            return redirect()
+                ->route('expediente', [
+                    'expediente' => $expedienteData->id,
+                    'tab' => 'observaciones',
+                ])
+                ->withErrors([
+                    'observaciones' => 'La fecha no puede actualizarse porque el responsable ya no está activo o autorizado.',
+                ])
+                ->withInput();
+        }
+
+        $validated = $request->validated();
+        $before = $observacionData->toArray();
+
+        DB::transaction(function () use (
+            $observacionData,
+            $validated,
+            $before,
+            $request
+        ): void {
+            $observacionData->update([
+                'fecha_compromiso' => $validated['nueva_fecha_compromiso'],
+                'ultimo_intento_recordatorio_at' => null,
+                'recordatorio_error_referencia' => null,
+                'actualizado_por' => $this->userId(),
+            ]);
+
+            $this->registrarBitacora(
+                numeroActivo: $observacionData->numero_activo,
+                accion: 'OBSERVACION_PLAZO_ACTUALIZADO',
+                tablaAfectada: 'expediente_observaciones',
+                registroClave: (string) $observacionData->id,
+                antes: $before,
+                despues: $observacionData->fresh()->toArray(),
+                ip: $request->ip()
+            );
+        }, 3);
+
+        $notificationMessage = $this->notifyAssignedUser(
+            $observacionData->fresh(),
+            $assignedUser,
+            $expedienteData,
+            $request
+        );
+
+        return redirect()
+            ->route('expediente', [
+                'expediente' => $expedienteData->id,
+                'tab' => 'observaciones',
+            ])
+            ->with(
+                'success',
+                'La fecha compromiso fue actualizada. ' . $notificationMessage
+            );
     }
 
     public function tomar(Request $request, int $observacion): RedirectResponse
@@ -397,7 +465,9 @@ class ExpedienteObservacionController extends Controller
                     prioridad: $this->prioridadLabels[$observacion->prioridad] ?? $observacion->prioridad,
                     descripcion: $observacion->descripcion,
                     urlExpediente: $urlExpediente,
-                    rolDestino: $observacion->rol_destino ?: $assignedUser->rol_nombre
+                    rolDestino: $observacion->rol_destino ?: $assignedUser->rol_nombre,
+                    fechaCompromiso: $observacion->fecha_compromiso?->format('d/m/Y')
+                        ?? (string) $observacion->fecha_compromiso
                 )
             );
 

@@ -4,8 +4,10 @@ namespace App\Http\Controllers;
 
 use App\Models\BusquedaGuardada;
 use App\Services\AssetStatusCatalogService;
+use App\Services\ObservationDeadlineService;
 use App\Services\SimplePdfTableExporter;
 use App\Services\SimpleXlsxExporter;
+use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Facades\DB;
@@ -253,6 +255,20 @@ class BusquedaController extends Controller
             tab: 'bitacora'
         );
 
+        $hasObservationDeadlines = Schema::hasTable('expediente_observaciones')
+            && Schema::hasColumn('expediente_observaciones', 'fecha_compromiso');
+        $observationDueSoonDays = min(
+            30,
+            max(
+                0,
+                (int) config('swafi.observaciones_recordatorios.dias_anticipacion', 2)
+            )
+        );
+        $observationToday = CarbonImmutable::now((string) config(
+            'swafi.observaciones_recordatorios.zona_horaria',
+            'America/Mexico_City'
+        ))->startOfDay();
+
         $resumenContadores = [
             'documentos' => DB::table('documentos_expediente')
                 ->where('expediente_id', $detalle->expediente_id)
@@ -290,6 +306,25 @@ class BusquedaController extends Controller
                 ? DB::table('expediente_observaciones')
                     ->where('expediente_id', $detalle->expediente_id)
                     ->whereIn('estatus', ['abierta', 'en_atencion', 'atendida', 'rechazada'])
+                    ->count()
+                : 0,
+            'observaciones_vencidas' => $hasObservationDeadlines
+                ? DB::table('expediente_observaciones')
+                    ->where('expediente_id', $detalle->expediente_id)
+                    ->whereIn('estatus', ObservationDeadlineService::REMINDER_STATUSES)
+                    ->where('fecha_compromiso', '<', $observationToday->toDateString())
+                    ->count()
+                : 0,
+            'observaciones_por_vencer' => $hasObservationDeadlines
+                ? DB::table('expediente_observaciones')
+                    ->where('expediente_id', $detalle->expediente_id)
+                    ->whereIn('estatus', ObservationDeadlineService::REMINDER_STATUSES)
+                    ->where('fecha_compromiso', '>=', $observationToday->toDateString())
+                    ->whereDate(
+                        'fecha_compromiso',
+                        '<=',
+                        $observationToday->addDays($observationDueSoonDays)->toDateString()
+                    )
                     ->count()
                 : 0,
             'inventarios' => DB::table('inventarios_activo')
@@ -335,6 +370,23 @@ class BusquedaController extends Controller
         $hasFechaAsignacion = Schema::hasColumn('expediente_observaciones', 'fecha_asignacion');
         $hasFechaNotificacion = Schema::hasColumn('expediente_observaciones', 'fecha_notificacion');
         $hasNotificacionError = Schema::hasColumn('expediente_observaciones', 'notificacion_error');
+        $hasFechaCompromiso = Schema::hasColumn('expediente_observaciones', 'fecha_compromiso');
+        $hasUltimoIntentoRecordatorio = Schema::hasColumn(
+            'expediente_observaciones',
+            'ultimo_intento_recordatorio_at'
+        );
+        $hasFechaUltimoRecordatorio = Schema::hasColumn(
+            'expediente_observaciones',
+            'fecha_ultimo_recordatorio'
+        );
+        $hasRecordatoriosEnviados = Schema::hasColumn(
+            'expediente_observaciones',
+            'recordatorios_enviados'
+        );
+        $hasRecordatorioErrorReferencia = Schema::hasColumn(
+            'expediente_observaciones',
+            'recordatorio_error_referencia'
+        );
 
         $query = DB::table('expediente_observaciones as o')
             ->leftJoin('users as uc', 'uc.id', '=', 'o.creado_por')
@@ -386,8 +438,34 @@ class BusquedaController extends Controller
             $selects[] = DB::raw('NULL as notificacion_error');
         }
 
+        if (!$hasFechaCompromiso) {
+            $selects[] = DB::raw('NULL as fecha_compromiso');
+        }
+
+        if (!$hasUltimoIntentoRecordatorio) {
+            $selects[] = DB::raw('NULL as ultimo_intento_recordatorio_at');
+        }
+
+        if (!$hasFechaUltimoRecordatorio) {
+            $selects[] = DB::raw('NULL as fecha_ultimo_recordatorio');
+        }
+
+        if (!$hasRecordatoriosEnviados) {
+            $selects[] = DB::raw('0 as recordatorios_enviados');
+        }
+
+        if (!$hasRecordatorioErrorReferencia) {
+            $selects[] = DB::raw('NULL as recordatorio_error_referencia');
+        }
+
         $query->select($selects)
             ->orderByRaw("FIELD(o.estatus, 'rechazada', 'abierta', 'en_atencion', 'atendida', 'cerrada', 'cancelada')")
+            ->when($hasFechaCompromiso, static function ($query): void {
+                $query->orderByRaw(
+                    "CASE WHEN o.estatus IN ('abierta', 'en_atencion', 'rechazada') "
+                    . "THEN o.fecha_compromiso IS NULL ELSE 1 END"
+                )->orderBy('o.fecha_compromiso');
+            })
             ->orderByRaw("FIELD(o.prioridad, 'critica', 'alta', 'media', 'baja')")
             ->orderByDesc('o.updated_at');
 

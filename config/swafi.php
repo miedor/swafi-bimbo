@@ -26,6 +26,34 @@ return [
         ),
     ],
 
+    'observaciones_recordatorios' => [
+        /*
+         * HU-014: las observaciones nuevas requieren fecha compromiso. El
+         * scheduler envía como máximo un intento diario cuando la fecha está
+         * próxima o vencida y registra únicamente referencias técnicas seguras.
+         */
+        'habilitados' => (bool) env('SWAFI_OBSERVATION_REMINDERS_ENABLED', true),
+        'zona_horaria' => env(
+            'SWAFI_OBSERVATION_REMINDERS_TIMEZONE',
+            'America/Mexico_City'
+        ),
+        'hora' => env('SWAFI_OBSERVATION_REMINDERS_TIME', '08:00'),
+        'dias_anticipacion' => min(
+            30,
+            max(
+                0,
+                (int) env('SWAFI_OBSERVATION_DUE_SOON_DAYS', 2)
+            )
+        ),
+        'limite_lote' => min(
+            100,
+            max(
+                1,
+                (int) env('SWAFI_OBSERVATION_REMINDERS_BATCH_LIMIT', 50)
+            )
+        ),
+    ],
+
     'importaciones' => [
         /*
          * Ventana máxima para solicitar la reversión controlada de un lote

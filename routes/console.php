@@ -43,3 +43,28 @@ if (config('swafi.reportes_programados.habilitados', true)) {
         ->withoutOverlapping(10)
         ->onOneServer();
 }
+
+/*
+|--------------------------------------------------------------------------
+| Recordatorios de observaciones de expediente (HU-014)
+|--------------------------------------------------------------------------
+|
+| Se ejecuta una vez al día en la zona horaria configurada. El servicio
+| reclama cada observación antes de enviar para evitar duplicados durante
+| el mismo día y conserva referencias seguras cuando el correo falla.
+|
+*/
+if (config('swafi.observaciones_recordatorios.habilitados', true)) {
+    Schedule::command(
+        'swafi:dispatch-observation-reminders --limit=' .
+        (int) config('swafi.observaciones_recordatorios.limite_lote', 50)
+    )
+        ->dailyAt((string) config('swafi.observaciones_recordatorios.hora', '08:00'))
+        ->timezone((string) config(
+            'swafi.observaciones_recordatorios.zona_horaria',
+            'America/Mexico_City'
+        ))
+        ->withoutOverlapping(30)
+        ->onOneServer();
+}
+

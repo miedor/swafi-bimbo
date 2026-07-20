@@ -181,6 +181,10 @@ Route::middleware('swafi.auth')->group(function () {
         ->whereNumber('expediente')
         ->name('observaciones.store');
 
+    Route::patch('/observaciones-expediente/{observacion}/fecha-compromiso', [ExpedienteObservacionController::class, 'updateDeadline'])
+        ->whereNumber('observacion')
+        ->name('observaciones.actualizar-fecha');
+
     Route::patch('/observaciones-expediente/{observacion}/tomar', [ExpedienteObservacionController::class, 'tomar'])
         ->whereNumber('observacion')
         ->name('observaciones.tomar');

@@ -190,7 +190,8 @@ class SwafiAuth
             'observaciones.atender' => 'observaciones.atender',
 
             'observaciones.validar',
-            'observaciones.cancelar' => 'observaciones.validar',
+            'observaciones.cancelar',
+            'observaciones.actualizar-fecha' => 'observaciones.validar',
 
             'valores',
             'valores.historial',
