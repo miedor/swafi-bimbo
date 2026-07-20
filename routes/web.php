@@ -77,7 +77,11 @@ Route::middleware('swafi.auth')->group(function () {
         ->whereUuid('lote')
         ->name('registro-masivo.incidencias-csv');
 
-    Route::get('/registro-masivo/plantilla-csv', [RegistroMasivoController::class, 'plantillaCsv'])->name('registro-masivo.plantilla');
+    Route::get('/registro-masivo/plantilla-csv', [RegistroMasivoController::class, 'plantillaCsv'])
+        ->name('registro-masivo.plantilla');
+
+    Route::get('/registro-masivo/plantilla-xlsx', [RegistroMasivoController::class, 'plantillaXlsx'])
+        ->name('registro-masivo.plantilla-xlsx');
 
     Route::get('/valores-fiscales-financieros', [ValoresActivoController::class, 'index'])->name('valores');
     Route::get('/valores-fiscales-financieros/{numeroActivo}/historial', [ValorActivoHistoryController::class, 'index'])
