@@ -161,6 +161,7 @@ class SwafiAuth
             'registro-masivo.cancelar',
             'registro-masivo.incidencias',
             'registro-masivo.incidencias-csv',
+            'registro-masivo.plantilla-xlsx',
             'registro-masivo.plantilla' => 'expedientes.crear',
 
             'registro-masivo.revertir' => 'expedientes.revertir_importacion',
