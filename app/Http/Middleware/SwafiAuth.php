@@ -154,6 +154,7 @@ class SwafiAuth
 
             'registro-individual',
             'registro-individual.activo',
+            'registro-individual.activos.buscar',
             'registro-individual.store',
             'registro-masivo',
             'registro-masivo.importar',

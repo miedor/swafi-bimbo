@@ -367,6 +367,134 @@
     font-weight: 800;
 }
 
+.ri-asset-browser {
+    margin-top: 10px;
+    border-top: 1px solid #cfe0f3;
+    padding-top: 10px;
+}
+
+.ri-asset-browser summary {
+    cursor: pointer;
+    color: #154f9b;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.ri-asset-browser summary:focus-visible {
+    outline: 3px solid rgba(21, 79, 155, 0.2);
+    outline-offset: 4px;
+    border-radius: 6px;
+}
+
+.ri-asset-browser-content {
+    margin-top: 10px;
+    padding: 12px;
+    border: 1px solid #d8e5f3;
+    border-radius: 14px;
+    background: #ffffff;
+}
+
+.ri-asset-filter-grid {
+    display: grid;
+    grid-template-columns: minmax(180px, 1.2fr) minmax(180px, 1fr) minmax(180px, 1fr) auto auto;
+    gap: 9px;
+    align-items: end;
+}
+
+.ri-asset-browser-status {
+    min-height: 18px;
+    margin: 9px 0 0;
+    color: #526a86;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.ri-asset-browser-status.is-error {
+    color: #9b1c1c;
+}
+
+.ri-asset-results[hidden] {
+    display: none;
+}
+
+.ri-asset-results {
+    margin-top: 10px;
+}
+
+.ri-asset-table-wrap {
+    overflow-x: auto;
+    border: 1px solid #d8e5f3;
+    border-radius: 12px;
+}
+
+.ri-asset-table {
+    width: 100%;
+    min-width: 780px;
+    border-collapse: collapse;
+    font-size: 12px;
+}
+
+.ri-asset-table th,
+.ri-asset-table td {
+    padding: 9px 10px;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid #e4edf7;
+}
+
+.ri-asset-table th {
+    background: #edf4ff;
+    color: #274b73;
+    font-size: 10px;
+    letter-spacing: .03em;
+    text-transform: uppercase;
+}
+
+.ri-asset-table tbody tr:last-child td {
+    border-bottom: 0;
+}
+
+.ri-asset-table td strong,
+.ri-asset-table td small {
+    display: block;
+}
+
+.ri-asset-table td small {
+    margin-top: 2px;
+    color: #64748b;
+    line-height: 1.35;
+}
+
+.ri-result-select {
+    min-height: 34px;
+    padding: 7px 12px;
+    white-space: nowrap;
+}
+
+.ri-asset-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    margin-top: 9px;
+}
+
+.ri-asset-pagination-info {
+    color: #526a86;
+    font-size: 11px;
+    font-weight: 800;
+}
+
+.ri-asset-pagination-actions {
+    display: flex;
+    gap: 7px;
+}
+
+.ri-asset-pagination button:disabled {
+    cursor: not-allowed;
+    opacity: .5;
+}
+
 .ri-existing-notice {
     margin: 0 0 9px;
     padding: 9px 10px;
@@ -403,6 +531,12 @@
 
     .ri-panel-control .ri-field-wide {
         grid-column: span 2;
+    }
+}
+
+@media (max-width: 1180px) {
+    .ri-asset-filter-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 }
 
@@ -454,8 +588,14 @@
     }
 
     .ri-asset-search-row,
-    .ri-asset-summary {
+    .ri-asset-summary,
+    .ri-asset-filter-grid {
         grid-template-columns: 1fr;
+    }
+
+    .ri-asset-pagination {
+        align-items: flex-start;
+        flex-direction: column;
     }
 
     .ri-asset-selector-head {
@@ -522,6 +662,7 @@
             class="ri-asset-selector"
             data-asset-selector
             data-lookup-url="{{ route('registro-individual.activo') }}"
+            data-search-url="{{ route('registro-individual.activos.buscar') }}"
         >
             <div class="ri-asset-selector-head">
                 <div>
@@ -557,6 +698,85 @@
             <p class="ri-asset-status" data-asset-status role="status" aria-live="polite">
                 Captura el número y selecciona una opción.
             </p>
+
+            <details class="ri-asset-browser" data-asset-browser>
+                <summary>¿No recuerdas el número exacto? Buscar por criterios</summary>
+
+                <div class="ri-asset-browser-content">
+                    <div class="ri-asset-filter-grid">
+                        <label class="ri-field">
+                            <span>Inicio del número de activo</span>
+                            <input
+                                type="search"
+                                autocomplete="off"
+                                maxlength="30"
+                                placeholder="Ej. BIM-00"
+                                data-asset-filter-query
+                            >
+                        </label>
+
+                        <label class="ri-field">
+                            <span>Proveedor</span>
+                            <select data-asset-filter-provider>
+                                <option value="">Todos los proveedores</option>
+                                @foreach ($proveedores as $item)
+                                    <option value="{{ $item->id }}">{{ $item->label }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+
+                        <label class="ri-field">
+                            <span>Planta</span>
+                            <select data-asset-filter-plant>
+                                <option value="">Todas las plantas</option>
+                                @foreach ($plantas as $item)
+                                    <option value="{{ $item->id }}">{{ $item->label }}</option>
+                                @endforeach
+                            </select>
+                        </label>
+
+                        <button type="button" class="ri-btn ri-btn-primary" data-asset-filter-search>
+                            Buscar
+                        </button>
+
+                        <button type="button" class="ri-btn ri-btn-soft" data-asset-filter-clear>
+                            Limpiar
+                        </button>
+                    </div>
+
+                    <p
+                        class="ri-asset-browser-status"
+                        data-asset-browser-status
+                        role="status"
+                        aria-live="polite"
+                    >
+                        Captura al menos dos caracteres o selecciona un proveedor o una planta.
+                    </p>
+
+                    <div class="ri-asset-results" data-asset-results hidden>
+                        <div class="ri-asset-table-wrap">
+                            <table class="ri-asset-table">
+                                <thead>
+                                    <tr>
+                                        <th>Activo</th>
+                                        <th>Descripción</th>
+                                        <th>Proveedor</th>
+                                        <th>Planta</th>
+                                        <th>Expedientes</th>
+                                        <th>Acción</th>
+                                    </tr>
+                                </thead>
+                                <tbody data-asset-results-body></tbody>
+                            </table>
+                        </div>
+
+                        <div class="ri-asset-pagination">
+                            <span class="ri-asset-pagination-info" data-asset-pagination-info></span>
+                            <div class="ri-asset-pagination-actions" data-asset-pagination-actions></div>
+                        </div>
+                    </div>
+                </div>
+            </details>
 
             <div class="ri-asset-summary" data-asset-summary hidden>
                 <div class="ri-asset-summary-item">

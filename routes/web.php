@@ -52,6 +52,8 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/registro-individual', [RegistroIndividualController::class, 'create'])->name('registro-individual');
     Route::get('/registro-individual/activo-existente', [RegistroIndividualController::class, 'showExistingAsset'])
         ->name('registro-individual.activo');
+    Route::get('/registro-individual/activos', [RegistroIndividualController::class, 'searchExistingAssets'])
+        ->name('registro-individual.activos.buscar');
     Route::post('/registro-individual', [RegistroIndividualController::class, 'store'])->name('registro-individual.store');
 
     Route::get('/registro-masivo', [RegistroMasivoController::class, 'index'])->name('registro-masivo');

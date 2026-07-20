@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\LookupExistingAssetRequest;
+use App\Http\Requests\SearchExistingAssetsRequest;
 use App\Http\Requests\StoreRegistroIndividualRequest;
 use App\Models\DocumentoExpediente;
 use App\Models\Expediente;
@@ -57,6 +58,13 @@ class RegistroIndividualController extends Controller
         return response()->json([
             'data' => $asset,
         ]);
+    }
+
+    public function searchExistingAssets(SearchExistingAssetsRequest $request): JsonResponse
+    {
+        return response()->json(
+            $this->assets->searchActive($request->validated())
+        );
     }
 
     public function store(StoreRegistroIndividualRequest $request): RedirectResponse
