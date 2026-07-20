@@ -69,7 +69,7 @@ class SensitiveValueAccessConfigurationTest extends TestCase
     {
         $migration = $this->read('database/migrations/2026_07_13_000400_sync_swafi_role_permissions.php');
         $plantStart = strpos($migration, "'Usuario Planta / Inventarios' => [");
-        $plantEnd = strpos($migration, "        ];", $plantStart ?: 0);
+        $plantEnd = strpos($migration, '        ];', $plantStart ?: 0);
 
         self::assertNotFalse($plantStart);
         self::assertNotFalse($plantEnd);
@@ -106,15 +106,44 @@ class SensitiveValueAccessConfigurationTest extends TestCase
     public function test_bulk_import_does_not_expose_internal_exception_messages(): void
     {
         $controller = $this->read('app/Http/Controllers/ValoresActivoController.php');
+        $technicalCatch = $this->catchBody($controller, '\\Throwable $exception');
 
         self::assertStringContainsString('SafeExceptionReporter', $controller);
-        self::assertStringContainsString('asset_values_bulk_import', $controller);
-        self::assertStringNotContainsString('report($exception);', $controller);
-        self::assertStringNotContainsString('$exception->getMessage()', $controller);
+        self::assertStringContainsString('$this->safeExceptions->warning(', $technicalCatch);
+        self::assertStringContainsString("'asset_values_bulk_import'", $technicalCatch);
+        self::assertStringNotContainsString('report($exception);', $technicalCatch);
+        self::assertStringNotContainsString('$exception->getMessage()', $technicalCatch);
         self::assertStringContainsString(
             'La importación fue revertida. Referencia: {$reference}.',
-            $controller
+            $technicalCatch
         );
+    }
+
+    private function catchBody(string $contents, string $signature): string
+    {
+        $needle = 'catch (' . $signature . ') {';
+        $start = strpos($contents, $needle);
+
+        self::assertNotFalse($start, "No se encontró el bloque {$needle}");
+
+        $openingBrace = (int) $start + strlen($needle) - 1;
+        $depth = 1;
+        $cursor = $openingBrace + 1;
+        $length = strlen($contents);
+
+        while ($cursor < $length && $depth > 0) {
+            if ($contents[$cursor] === '{') {
+                $depth++;
+            } elseif ($contents[$cursor] === '}') {
+                $depth--;
+            }
+
+            $cursor++;
+        }
+
+        self::assertSame(0, $depth, "El bloque {$needle} no tiene llaves balanceadas.");
+
+        return substr($contents, $openingBrace + 1, max(0, $cursor - $openingBrace - 2));
     }
 
     private function read(string $relativePath): string

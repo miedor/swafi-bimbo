@@ -3,10 +3,9 @@
 namespace Tests\Unit;
 
 use App\Http\Controllers\ValoresActivoController;
-use App\Services\SafeExceptionReporter;
-use App\Services\SwafiAuthorizationService;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
+use ReflectionClass;
 use ReflectionMethod;
 
 class ValoresActivoControllerParsingTest extends TestCase
@@ -43,22 +42,51 @@ class ValoresActivoControllerParsingTest extends TestCase
         self::assertNull($method->invoke($controller, '31/02/2026'));
     }
 
-    public function test_rejects_unknown_accounting_status_instead_of_converting_it_to_vigente(): void
+    public function test_unknown_accounting_status_is_preserved_for_catalog_validation_and_rejected(): void
     {
         $controller = $this->controller();
-        $method = new ReflectionMethod($controller, 'normalizeStatus');
+        $normalize = new ReflectionMethod($controller, 'normalizeStatus');
 
-        self::assertSame('vigente', $method->invoke($controller, 'Vigente'));
-        self::assertSame('en_revision', $method->invoke($controller, 'En revisión'));
-        self::assertSame('baja', $method->invoke($controller, 'Baja'));
-        self::assertNull($method->invoke($controller, 'vigentee'));
+        self::assertSame('vigente', $normalize->invoke($controller, 'Vigente'));
+        self::assertSame('en_revision', $normalize->invoke($controller, 'En revisión'));
+        self::assertSame('baja', $normalize->invoke($controller, 'Baja'));
+        self::assertSame('vigentee', $normalize->invoke($controller, 'vigentee'));
+        self::assertNull($normalize->invoke($controller, ''));
+
+        $validate = new ReflectionMethod($controller, 'validateImportPayload');
+        $error = $validate->invoke(
+            $controller,
+            [
+                'estatus_contable' => 'vigentee',
+                'fecha_corte' => '2026-06-25',
+                'vida_util_meses' => 60,
+                'valor_fiscal' => 1000.0,
+                'valor_financiero' => 1000.0,
+                'depreciacion_acumulada' => 0.0,
+                'valor_en_libros' => 1000.0,
+                'moneda' => 'MXN',
+                'tipo_cambio' => 1.0,
+                'fecha_tipo_cambio' => null,
+                'origen_tipo_cambio' => null,
+                'metodo_depreciacion' => null,
+                'fecha_inicio_depreciacion' => null,
+                'valor_residual' => null,
+            ],
+            ['MXN' => false],
+            ['vigente', 'en_revision', 'baja'],
+            ['linea_recta']
+        );
+
+        self::assertSame('el estatus contable no existe o se encuentra inactivo.', $error);
     }
 
     private function controller(): ValoresActivoController
     {
-        return new ValoresActivoController(
-            new SwafiAuthorizationService(),
-            new SafeExceptionReporter()
-        );
+        $reflection = new ReflectionClass(ValoresActivoController::class);
+        $controller = $reflection->newInstanceWithoutConstructor();
+
+        self::assertInstanceOf(ValoresActivoController::class, $controller);
+
+        return $controller;
     }
 }
