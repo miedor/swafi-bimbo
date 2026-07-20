@@ -153,6 +153,7 @@ class SwafiAuth
             'dashboard' => 'dashboard.ver',
 
             'registro-individual',
+            'registro-individual.activo',
             'registro-individual.store',
             'registro-masivo',
             'registro-masivo.importar',

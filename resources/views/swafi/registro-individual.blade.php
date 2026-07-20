@@ -272,6 +272,122 @@
     line-height: 1.35;
 }
 
+
+.ri-asset-selector {
+    margin: 0 0 14px;
+    padding: 14px;
+    border: 1px solid #bfd5ef;
+    border-radius: 17px;
+    background: linear-gradient(135deg, #f7fbff 0%, #eef6ff 100%);
+}
+
+.ri-asset-selector-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 10px;
+}
+
+.ri-asset-selector-head h3 {
+    margin: 0;
+    color: #12345a;
+    font-size: 15px;
+    font-weight: 900;
+}
+
+.ri-asset-selector-head p {
+    margin: 4px 0 0;
+    color: #526a86;
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.ri-asset-search-row {
+    display: grid;
+    grid-template-columns: minmax(220px, 1fr) auto auto;
+    gap: 9px;
+    align-items: end;
+}
+
+.ri-asset-status {
+    min-height: 18px;
+    margin: 9px 0 0;
+    color: #526a86;
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.ri-asset-status.is-success {
+    color: #1f6b2a;
+}
+
+.ri-asset-status.is-error {
+    color: #9b1c1c;
+}
+
+.ri-asset-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 11px;
+    padding-top: 11px;
+    border-top: 1px solid #cfe0f3;
+}
+
+.ri-asset-summary[hidden] {
+    display: none;
+}
+
+.ri-asset-summary-item {
+    min-width: 0;
+    padding: 8px 9px;
+    border-radius: 11px;
+    background: #ffffff;
+    border: 1px solid #d8e5f3;
+}
+
+.ri-asset-summary-item strong,
+.ri-asset-summary-item span {
+    display: block;
+}
+
+.ri-asset-summary-item strong {
+    margin-bottom: 3px;
+    color: #506987;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+}
+
+.ri-asset-summary-item span {
+    overflow-wrap: anywhere;
+    color: #17385e;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.ri-existing-notice {
+    margin: 0 0 9px;
+    padding: 9px 10px;
+    border-radius: 12px;
+    background: #fff8df;
+    border: 1px solid #efd98b;
+    color: #6d5715;
+    font-size: 12px;
+    line-height: 1.4;
+}
+
+.ri-field input:disabled,
+.ri-field select:disabled,
+.ri-field textarea:disabled {
+    cursor: not-allowed;
+    background: #edf2f7;
+    color: #44566c;
+    border-color: #d7e0ea;
+    opacity: 1;
+}
+
 @media (max-width: 1280px) {
     .ri-grid {
         grid-template-columns: 1fr 1fr;
@@ -291,6 +407,10 @@
 }
 
 @media (max-width: 980px) {
+    .ri-asset-summary {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .ri-header {
         grid-template-columns: 1fr;
     }
@@ -333,6 +453,15 @@
         padding-right: 10px;
     }
 
+    .ri-asset-search-row,
+    .ri-asset-summary {
+        grid-template-columns: 1fr;
+    }
+
+    .ri-asset-selector-head {
+        display: block;
+    }
+
     .ri-fields-2,
     .ri-panel-control .ri-fields {
         grid-template-columns: 1fr;
@@ -348,8 +477,14 @@
 @section('content')
 
 <section class="ri-shell">
-    <form method="POST" action="{{ route('registro-individual.store') }}" enctype="multipart/form-data">
+    <form
+        method="POST"
+        action="{{ route('registro-individual.store') }}"
+        enctype="multipart/form-data"
+        data-registration-form
+    >
         @csrf
+        <input type="hidden" name="asset_mode" value="{{ old('asset_mode', 'new') }}" data-asset-mode>
 
         <div class="ri-header">
             <div>
@@ -382,6 +517,66 @@
                 </ul>
             </div>
         @endif
+
+        <section
+            class="ri-asset-selector"
+            data-asset-selector
+            data-lookup-url="{{ route('registro-individual.activo') }}"
+        >
+            <div class="ri-asset-selector-head">
+                <div>
+                    <h3>Selecciona el origen del activo</h3>
+                    <p>
+                        Busca un activo vigente para asociarle otro expediente sin modificar sus datos maestros,
+                        o captura un número nuevo para darlo de alta.
+                    </p>
+                </div>
+            </div>
+
+            <div class="ri-asset-search-row">
+                <label class="ri-field">
+                    <span>Número de activo <b>*</b></span>
+                    <input
+                        name="numero_activo"
+                        value="{{ old('numero_activo') }}"
+                        placeholder="Ej. BIM-000001"
+                        autocomplete="off"
+                        data-asset-number
+                    >
+                </label>
+
+                <button type="button" class="ri-btn ri-btn-primary" data-asset-search>
+                    Buscar activo existente
+                </button>
+
+                <button type="button" class="ri-btn ri-btn-soft" data-asset-new>
+                    Registrar activo nuevo
+                </button>
+            </div>
+
+            <p class="ri-asset-status" data-asset-status role="status" aria-live="polite">
+                Captura el número y selecciona una opción.
+            </p>
+
+            <div class="ri-asset-summary" data-asset-summary hidden>
+                <div class="ri-asset-summary-item">
+                    <strong>Activo seleccionado</strong>
+                    <span data-summary-number></span>
+                </div>
+                <div class="ri-asset-summary-item">
+                    <strong>Tipo</strong>
+                    <span data-summary-type></span>
+                </div>
+                <div class="ri-asset-summary-item">
+                    <strong>Planta</strong>
+                    <span data-summary-plant></span>
+                </div>
+                <div class="ri-asset-summary-item">
+                    <strong>Expedientes vigentes</strong>
+                    <span data-summary-expedientes></span>
+                </div>
+            </div>
+        </section>
 
         <div class="ri-grid">
 
@@ -429,7 +624,7 @@
 
                     <label class="ri-field">
                         <span>Proveedor <b>*</b></span>
-                        <select name="proveedor_id">
+                        <select name="proveedor_id" data-asset-field>
                             <option value="">Seleccione...</option>
                             @foreach ($proveedores as $item)
                                 <option value="{{ $item->id }}" @selected(old('proveedor_id') == $item->id)>
@@ -452,15 +647,14 @@
                 </div>
 
                 <div class="ri-fields">
-                    <label class="ri-field">
-                        <span>Número de activo <b>*</b></span>
-                        <input name="numero_activo" value="{{ old('numero_activo') }}" placeholder="Ej. BIM-000001">
-                    </label>
+                    <div class="ri-existing-notice" data-existing-asset-notice hidden>
+                        El activo existente se muestra en modo protegido. Al guardar se creará únicamente el nuevo expediente y no se modificarán sus datos maestros.
+                    </div>
 
                     <div class="ri-fields ri-fields-2">
                         <label class="ri-field">
                             <span>Tipo de activo <b>*</b></span>
-                            <select name="tipo_activo_id">
+                            <select name="tipo_activo_id" data-asset-field>
                                 <option value="">Seleccione...</option>
                                 @foreach ($tiposActivo as $item)
                                     <option value="{{ $item->id }}" @selected(old('tipo_activo_id') == $item->id)>
@@ -472,7 +666,7 @@
 
                         <label class="ri-field">
                             <span>Estatus <b>*</b></span>
-                            <select name="estatus_operativo" required>
+                            <select name="estatus_operativo" required data-asset-field>
                                 <option value="">Seleccione...</option>
                                 @foreach ($estatusOperativos as $estatusOperativo)
                                     <option
@@ -489,30 +683,30 @@
                     <div class="ri-fields ri-fields-2">
                         <label class="ri-field">
                             <span>Serie</span>
-                            <input name="serie" value="{{ old('serie') }}" placeholder="Serie">
+                            <input name="serie" value="{{ old('serie') }}" placeholder="Serie" data-asset-field>
                         </label>
 
                         <label class="ri-field">
                             <span>Marca</span>
-                            <input name="marca" value="{{ old('marca') }}" placeholder="Marca">
+                            <input name="marca" value="{{ old('marca') }}" placeholder="Marca" data-asset-field>
                         </label>
                     </div>
 
                     <div class="ri-fields ri-fields-2">
                         <label class="ri-field">
                             <span>Modelo</span>
-                            <input name="modelo" value="{{ old('modelo') }}" placeholder="Modelo">
+                            <input name="modelo" value="{{ old('modelo') }}" placeholder="Modelo" data-asset-field>
                         </label>
 
                         <label class="ri-field">
                             <span>Fecha adquisición</span>
-                            <input type="date" name="fecha_adquisicion" value="{{ old('fecha_adquisicion') }}">
+                            <input type="date" name="fecha_adquisicion" value="{{ old('fecha_adquisicion') }}" data-asset-field>
                         </label>
                     </div>
 
                     <label class="ri-field">
                         <span>Descripción del bien <b>*</b></span>
-                        <textarea name="descripcion" placeholder="Descripción breve del activo">{{ old('descripcion') }}</textarea>
+                        <textarea name="descripcion" placeholder="Descripción breve del activo" data-asset-field>{{ old('descripcion') }}</textarea>
                     </label>
                 </div>
             </section>
@@ -530,7 +724,7 @@
                 <div class="ri-fields">
                     <label class="ri-field">
                         <span>Centro de costo <b>*</b></span>
-                        <select name="centro_costo_id">
+                        <select name="centro_costo_id" data-asset-field>
                             <option value="">Seleccione...</option>
                             @foreach ($centrosCosto as $item)
                                 <option value="{{ $item->id }}" @selected(old('centro_costo_id') == $item->id)>
@@ -542,7 +736,7 @@
 
                     <label class="ri-field">
                         <span>Planta o sucursal <b>*</b></span>
-                        <select name="planta_id">
+                        <select name="planta_id" data-asset-field>
                             <option value="">Seleccione...</option>
                             @foreach ($plantas as $item)
                                 <option value="{{ $item->id }}" @selected(old('planta_id') == $item->id)>
@@ -554,7 +748,7 @@
 
                     <label class="ri-field">
                         <span>Ubicación física</span>
-                        <select name="ubicacion_id">
+                        <select name="ubicacion_id" data-asset-field>
                             <option value="">Seleccione...</option>
                             @foreach ($ubicaciones as $item)
                                 <option value="{{ $item->id }}" @selected(old('ubicacion_id') == $item->id)>
@@ -566,7 +760,7 @@
 
                     <label class="ri-field">
                         <span>Responsable</span>
-                        <select name="responsable_id">
+                        <select name="responsable_id" data-asset-field>
                             <option value="">Seleccione...</option>
                             @foreach ($responsables as $item)
                                 <option value="{{ $item->id }}" @selected(old('responsable_id') == $item->id)>
@@ -601,4 +795,11 @@
     </form>
 </section>
 
+@endsection
+
+@section('page_scripts')
+<script
+    nonce="{{ request()->attributes->get('csp_nonce') }}"
+    src="{{ asset('assets/swafi/js/swafi-registro-individual.js') }}?v={{ filemtime(public_path('assets/swafi/js/swafi-registro-individual.js')) }}"
+></script>
 @endsection

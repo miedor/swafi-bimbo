@@ -2,21 +2,28 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\LookupExistingAssetRequest;
 use App\Http\Requests\StoreRegistroIndividualRequest;
-use App\Models\Activo;
 use App\Models\DocumentoExpediente;
 use App\Models\Expediente;
+use App\Services\AssetRegistrationService;
 use App\Services\AssetStatusCatalogService;
 use App\Services\SwafiStorageService;
+use Illuminate\Database\QueryException;
+use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
+use Throwable;
 
 class RegistroIndividualController extends Controller
 {
     public function __construct(
         private readonly SwafiStorageService $storage,
-        private readonly AssetStatusCatalogService $statusCatalogs
+        private readonly AssetStatusCatalogService $statusCatalogs,
+        private readonly AssetRegistrationService $assets
     ) {
     }
 
@@ -33,47 +40,73 @@ class RegistroIndividualController extends Controller
         ]);
     }
 
-    public function store(StoreRegistroIndividualRequest $request)
+    public function showExistingAsset(LookupExistingAssetRequest $request): JsonResponse
     {
+        $data = $request->validated();
+        $asset = $this->assets->lookupActive((string) $data['numero_activo']);
+
+        if (!$asset) {
+            return response()->json([
+                'message' => 'No se encontró un activo vigente con ese número.',
+            ], 404);
+        }
+
+        return response()->json([
+            'data' => $asset,
+        ]);
+    }
+
+    public function store(StoreRegistroIndividualRequest $request): RedirectResponse
+    {
+        $data = $request->validated();
         $storedFiles = [];
 
         try {
-            DB::transaction(function () use ($request, &$storedFiles): void {
+            DB::transaction(function () use ($data, $request, &$storedFiles): void {
                 $userId = auth()->id();
-                $documentos = $this->prepareUploadedDocuments($request, $storedFiles);
+                $assetMode = (string) $data['asset_mode'];
+                $assetWasCreated = $assetMode === 'new';
+
+                if ($assetWasCreated) {
+                    $asset = $this->assets->createNew(
+                        data: $data,
+                        estatusDocumental: 'incompleto',
+                        userId: $userId
+                    );
+                } else {
+                    $asset = $this->assets->findActiveForUpdate((string) $data['numero_activo']);
+
+                    if (!$asset) {
+                        throw ValidationException::withMessages([
+                            'numero_activo' => 'El activo seleccionado dejó de estar disponible. Búscalo nuevamente antes de guardar el expediente.',
+                        ]);
+                    }
+                }
+
+                $documentos = $this->prepareUploadedDocuments(
+                    request: $request,
+                    numeroActivo: $asset->numero_activo,
+                    folioFactura: (string) $data['folio_factura'],
+                    storedFiles: $storedFiles
+                );
                 $estatusDocumental = $this->resolveDocumentStatus($documentos);
 
-                $activo = Activo::updateOrCreate(
-                    ['numero_activo' => $request->numero_activo],
-                    [
-                        'tipo_activo_id' => $request->tipo_activo_id,
-                        'proveedor_id' => $request->proveedor_id,
-                        'centro_costo_id' => $request->centro_costo_id,
-                        'planta_id' => $request->planta_id,
-                        'ubicacion_id' => $request->ubicacion_id,
-                        'responsable_id' => $request->responsable_id,
-                        'descripcion' => $request->descripcion,
-                        'serie' => $request->serie,
-                        'marca' => $request->marca,
-                        'modelo' => $request->modelo,
-                        'fecha_adquisicion' => $request->fecha_adquisicion,
-                        'estatus_operativo' => $request->estatus_operativo,
+                if ($assetWasCreated) {
+                    $asset->forceFill([
                         'estatus_documental' => $estatusDocumental,
-                        'activo' => true,
-                        'creado_por' => $userId,
                         'actualizado_por' => $userId,
-                    ]
-                );
+                    ])->save();
+                }
 
                 $expediente = Expediente::create([
-                    'numero_activo' => $activo->numero_activo,
-                    'folio_factura' => $request->folio_factura,
-                    'uuid_cfdi' => $request->uuid_cfdi,
-                    'fecha_factura' => $request->fecha_factura,
-                    'monto_factura' => $request->monto_factura,
-                    'moneda' => $request->moneda,
+                    'numero_activo' => $asset->numero_activo,
+                    'folio_factura' => $data['folio_factura'],
+                    'uuid_cfdi' => $data['uuid_cfdi'] ?? null,
+                    'fecha_factura' => $data['fecha_factura'],
+                    'monto_factura' => $data['monto_factura'],
+                    'moneda' => $data['moneda'],
                     'estatus' => $estatusDocumental,
-                    'observaciones' => $request->observaciones,
+                    'observaciones' => $data['observaciones'] ?? null,
                     'creado_por' => $userId,
                     'actualizado_por' => $userId,
                 ]);
@@ -93,22 +126,45 @@ class RegistroIndividualController extends Controller
                         'cargado_por' => $userId,
                     ]);
                 }
+
+                $this->registerAudit(
+                    numeroActivo: $asset->numero_activo,
+                    expedienteId: (int) $expediente->id,
+                    assetMode: $assetMode,
+                    documentStatus: $estatusDocumental,
+                    documentCount: count($documentos),
+                    userId: $userId
+                );
             });
-        } catch (\Throwable $exception) {
-            foreach ($storedFiles as $storedFile) {
-                $this->storage->delete($storedFile['disk'], $storedFile['path']);
+        } catch (QueryException $exception) {
+            $this->cleanupStoredFiles($storedFiles);
+
+            if ((string) $exception->getCode() === '23000') {
+                throw ValidationException::withMessages([
+                    'registro' => 'El activo, folio o UUID fue registrado simultáneamente por otra operación. Actualiza la página y verifica la información antes de intentarlo nuevamente.',
+                ]);
             }
+
+            throw $exception;
+        } catch (Throwable $exception) {
+            $this->cleanupStoredFiles($storedFiles);
 
             throw $exception;
         }
 
+        $message = $data['asset_mode'] === 'existing'
+            ? 'El expediente se guardó y se asoció al activo existente sin modificar sus datos maestros.'
+            : 'El activo y su expediente se guardaron correctamente con soporte documental persistente.';
+
         return redirect()
             ->route('registro-individual')
-            ->with('success', 'El expediente se guardó correctamente con su soporte documental persistente.');
+            ->with('success', $message);
     }
 
     private function prepareUploadedDocuments(
         StoreRegistroIndividualRequest $request,
+        string $numeroActivo,
+        string $folioFactura,
         array &$storedFiles
     ): array {
         if (!$request->hasFile('documentos')) {
@@ -116,9 +172,9 @@ class RegistroIndividualController extends Controller
         }
 
         $docs = [];
-        $numeroActivo = Str::slug($request->numero_activo ?: 'activo-sin-numero');
-        $folioFactura = Str::slug($request->folio_factura ?: 'factura-sin-folio');
-        $basePath = "swafi/expedientes/{$numeroActivo}/{$folioFactura}";
+        $assetPath = Str::slug($numeroActivo ?: 'activo-sin-numero');
+        $invoicePath = Str::slug($folioFactura ?: 'factura-sin-folio');
+        $basePath = "swafi/expedientes/{$assetPath}/{$invoicePath}";
 
         foreach ($request->file('documentos') as $file) {
             if (!$file || !$file->isValid()) {
@@ -177,6 +233,44 @@ class RegistroIndividualController extends Controller
             : 'incompleto';
     }
 
+    private function registerAudit(
+        string $numeroActivo,
+        int $expedienteId,
+        string $assetMode,
+        string $documentStatus,
+        int $documentCount,
+        ?int $userId
+    ): void {
+        DB::table('bitacora_auditoria')->insert([
+            'numero_activo' => $numeroActivo,
+            'user_id' => $userId,
+            'modulo' => 'M01 Gestión de expedientes',
+            'accion' => 'ALTA_EXPEDIENTE_INDIVIDUAL',
+            'tabla_afectada' => 'expedientes,documentos_expediente',
+            'registro_clave' => (string) $expedienteId,
+            'antes' => null,
+            'despues' => json_encode([
+                'modo_activo' => $assetMode,
+                'activo_creado' => $assetMode === 'new',
+                'expediente_id' => $expedienteId,
+                'estatus_documental' => $documentStatus,
+                'documentos_registrados' => $documentCount,
+                'datos_maestros_activo_modificados' => false,
+            ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+            'ip' => request()->ip(),
+            'fecha_evento' => now(),
+            'created_at' => now(),
+            'updated_at' => now(),
+        ]);
+    }
+
+    private function cleanupStoredFiles(array $storedFiles): void
+    {
+        foreach ($storedFiles as $storedFile) {
+            $this->storage->delete($storedFile['disk'], $storedFile['path']);
+        }
+    }
+
     private function catalogOptions(string $table)
     {
         if (!Schema::hasTable($table)) {
@@ -184,12 +278,12 @@ class RegistroIndividualController extends Controller
         }
 
         $rows = DB::table($table)
-            ->when(Schema::hasColumn($table, 'estatus'), function ($query) {
+            ->when(Schema::hasColumn($table, 'estatus'), function ($query): void {
                 $query->where('estatus', 'activo');
             })
             ->get();
 
-        return $rows->map(function ($row) {
+        return $rows->map(function ($row): object {
             $data = (array) $row;
 
             $label = $data['nombre']

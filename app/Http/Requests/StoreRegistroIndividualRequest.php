@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use Illuminate\Foundation\Http\FormRequest;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
 use Illuminate\Validation\Validator;
 
@@ -16,6 +17,7 @@ class StoreRegistroIndividualRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
+            'asset_mode' => strtolower(trim((string) $this->input('asset_mode', 'new'))),
             'numero_activo' => strtoupper(trim((string) $this->input('numero_activo'))),
             'folio_factura' => trim((string) $this->input('folio_factura')),
             'uuid_cfdi' => $this->filled('uuid_cfdi')
@@ -27,33 +29,70 @@ class StoreRegistroIndividualRequest extends FormRequest
 
     public function rules(): array
     {
+        $numeroActivoRules = [
+            'required',
+            'string',
+            'max:30',
+            'regex:/^[A-Z0-9][A-Z0-9\-]*$/',
+        ];
+
+        $numeroActivoRules[] = $this->isExistingAsset()
+            ? Rule::exists('activos', 'numero_activo')
+                ->where(fn ($query) => $query->where('activo', true))
+            : Rule::unique('activos', 'numero_activo');
+
         return [
-            'numero_activo' => [
-                'required',
-                'string',
-                'max:30',
-                'regex:/^[A-Z0-9][A-Z0-9\-]*$/',
-            ],
+            'asset_mode' => ['required', Rule::in(['new', 'existing'])],
+            'numero_activo' => $numeroActivoRules,
 
-            'descripcion' => ['required', 'string', 'min:3', 'max:255'],
-            'tipo_activo_id' => ['required', 'integer', 'exists:tipos_activo,id'],
-            'proveedor_id' => ['required', 'integer', 'exists:proveedores,id'],
-            'centro_costo_id' => ['required', 'integer', 'exists:centros_costo,id'],
-            'planta_id' => ['required', 'integer', 'exists:plantas,id'],
-            'ubicacion_id' => ['nullable', 'integer', 'exists:ubicaciones,id'],
-            'responsable_id' => ['nullable', 'integer', 'exists:responsables,id'],
+            'descripcion' => $this->newAssetRules(['string', 'min:3', 'max:255'], true),
+            'tipo_activo_id' => $this->newAssetRules([
+                'integer',
+                Rule::exists('tipos_activo', 'id')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ], true),
+            'proveedor_id' => $this->newAssetRules([
+                'integer',
+                Rule::exists('proveedores', 'id')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ], true),
+            'centro_costo_id' => $this->newAssetRules([
+                'integer',
+                Rule::exists('centros_costo', 'id')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ], true),
+            'planta_id' => $this->newAssetRules([
+                'integer',
+                Rule::exists('plantas', 'id')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ], true),
+            'ubicacion_id' => $this->newAssetRules([
+                'integer',
+                Rule::exists('ubicaciones', 'id')
+                    ->where(function ($query): void {
+                        $query->where('estatus', 'activo');
 
-            'serie' => ['nullable', 'string', 'max:120'],
-            'marca' => ['nullable', 'string', 'max:100'],
-            'modelo' => ['nullable', 'string', 'max:100'],
-            'fecha_adquisicion' => ['nullable', 'date'],
-            'estatus_operativo' => [
-                'required',
+                        if ($this->filled('planta_id')) {
+                            $query->where('planta_id', (int) $this->input('planta_id'));
+                        }
+                    }),
+            ]),
+            'responsable_id' => $this->newAssetRules([
+                'integer',
+                Rule::exists('responsables', 'id')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ]),
+
+            'serie' => $this->newAssetRules(['string', 'max:120']),
+            'marca' => $this->newAssetRules(['string', 'max:100']),
+            'modelo' => $this->newAssetRules(['string', 'max:100']),
+            'fecha_adquisicion' => $this->newAssetRules(['date']),
+            'estatus_operativo' => $this->newAssetRules([
                 'string',
                 'max:20',
                 Rule::exists('estatus_operativos', 'clave')
                     ->where(fn ($query) => $query->where('estatus', 'activo')),
-            ],
+            ], true),
 
             'folio_factura' => [
                 'required',
@@ -85,15 +124,10 @@ class StoreRegistroIndividualRequest extends FormRequest
 
     public function withValidator(Validator $validator): void
     {
-        $validator->after(function (Validator $validator) {
-            $fechaFactura = $this->input('fecha_factura');
-            $fechaAdquisicion = $this->input('fecha_adquisicion');
-
-            if ($fechaFactura && $fechaAdquisicion && $fechaAdquisicion > $fechaFactura) {
-                $validator->errors()->add(
-                    'fecha_adquisicion',
-                    'La fecha de adquisición no puede ser posterior a la fecha de la factura.'
-                );
+        $validator->after(function (Validator $validator): void {
+            if ($this->isNewAsset()) {
+                $this->validateAssetDates($validator);
+                $this->validateCostCenterPlant($validator);
             }
 
             $files = $this->file('documentos', []);
@@ -112,21 +146,25 @@ class StoreRegistroIndividualRequest extends FormRequest
     public function messages(): array
     {
         return [
+            'asset_mode.required' => 'Selecciona si registrarás un activo nuevo o utilizarás uno existente.',
+            'asset_mode.in' => 'El modo de registro del activo no es válido.',
             'numero_activo.required' => 'El número de activo es obligatorio.',
             'numero_activo.regex' => 'El número de activo solo puede contener letras mayúsculas, números y guiones.',
+            'numero_activo.unique' => 'El activo ya existe. Utiliza la opción “Buscar activo existente” para asociar el nuevo expediente sin modificar sus datos maestros.',
+            'numero_activo.exists' => 'El activo seleccionado no existe o se encuentra inactivo.',
             'descripcion.required' => 'La descripción del activo es obligatoria.',
             'descripcion.min' => 'La descripción debe contener al menos 3 caracteres.',
 
             'tipo_activo_id.required' => 'Debes seleccionar el tipo de activo.',
-            'tipo_activo_id.exists' => 'El tipo de activo seleccionado no existe.',
+            'tipo_activo_id.exists' => 'El tipo de activo seleccionado no existe o está inactivo.',
             'proveedor_id.required' => 'Debes seleccionar el proveedor.',
-            'proveedor_id.exists' => 'El proveedor seleccionado no existe.',
+            'proveedor_id.exists' => 'El proveedor seleccionado no existe o está inactivo.',
             'centro_costo_id.required' => 'Debes seleccionar el centro de costo.',
-            'centro_costo_id.exists' => 'El centro de costo seleccionado no existe.',
+            'centro_costo_id.exists' => 'El centro de costo seleccionado no existe o está inactivo.',
             'planta_id.required' => 'Debes seleccionar la planta.',
-            'planta_id.exists' => 'La planta seleccionada no existe.',
-            'ubicacion_id.exists' => 'La ubicación seleccionada no existe.',
-            'responsable_id.exists' => 'El responsable seleccionado no existe.',
+            'planta_id.exists' => 'La planta seleccionada no existe o está inactiva.',
+            'ubicacion_id.exists' => 'La ubicación seleccionada no existe, está inactiva o no pertenece a la planta indicada.',
+            'responsable_id.exists' => 'El responsable seleccionado no existe o está inactivo.',
 
             'estatus_operativo.required' => 'El estatus operativo es obligatorio.',
             'estatus_operativo.exists' => 'El estatus operativo seleccionado no existe o está inactivo.',
@@ -143,11 +181,79 @@ class StoreRegistroIndividualRequest extends FormRequest
             'moneda.required' => 'La moneda es obligatoria.',
             'moneda.in' => 'La moneda debe ser MXN, USD o EUR.',
 
+            'descripcion.prohibited' => 'Los datos maestros de un activo existente no pueden modificarse desde el registro de expedientes.',
+            'tipo_activo_id.prohibited' => 'Los datos maestros de un activo existente no pueden modificarse desde el registro de expedientes.',
+            'proveedor_id.prohibited' => 'El proveedor del activo existente no puede modificarse desde el registro de expedientes.',
+            'centro_costo_id.prohibited' => 'El centro de costo del activo existente no puede modificarse desde el registro de expedientes.',
+            'planta_id.prohibited' => 'La planta del activo existente no puede modificarse desde el registro de expedientes.',
+            'ubicacion_id.prohibited' => 'La ubicación del activo existente no puede modificarse desde el registro de expedientes.',
+            'responsable_id.prohibited' => 'El responsable del activo existente no puede modificarse desde el registro de expedientes.',
+            'serie.prohibited' => 'La serie del activo existente no puede modificarse desde el registro de expedientes.',
+            'marca.prohibited' => 'La marca del activo existente no puede modificarse desde el registro de expedientes.',
+            'modelo.prohibited' => 'El modelo del activo existente no puede modificarse desde el registro de expedientes.',
+            'fecha_adquisicion.prohibited' => 'La fecha de adquisición del activo existente no puede modificarse desde el registro de expedientes.',
+            'estatus_operativo.prohibited' => 'El estatus del activo existente no puede modificarse desde el registro de expedientes.',
+
             'documentos.array' => 'La selección de documentos no tiene un formato válido.',
             'documentos.max' => 'Puedes adjuntar como máximo 20 documentos por expediente.',
             'documentos.*.file' => 'Cada documento debe ser un archivo válido.',
             'documentos.*.mimes' => 'Los documentos del expediente deben ser PDF o XML.',
             'documentos.*.max' => 'Cada documento no debe superar los 10 MB.',
         ];
+    }
+
+    private function newAssetRules(array $rules, bool $required = false): array
+    {
+        if ($this->isExistingAsset()) {
+            return ['prohibited'];
+        }
+
+        return array_merge([$required ? 'required' : 'nullable'], $rules);
+    }
+
+    private function isExistingAsset(): bool
+    {
+        return $this->input('asset_mode') === 'existing';
+    }
+
+    private function isNewAsset(): bool
+    {
+        return !$this->isExistingAsset();
+    }
+
+    private function validateAssetDates(Validator $validator): void
+    {
+        $fechaFactura = $this->input('fecha_factura');
+        $fechaAdquisicion = $this->input('fecha_adquisicion');
+
+        if ($fechaFactura && $fechaAdquisicion && $fechaAdquisicion > $fechaFactura) {
+            $validator->errors()->add(
+                'fecha_adquisicion',
+                'La fecha de adquisición no puede ser posterior a la fecha de la factura.'
+            );
+        }
+    }
+
+    private function validateCostCenterPlant(Validator $validator): void
+    {
+        if (!$this->filled('centro_costo_id') || !$this->filled('planta_id')) {
+            return;
+        }
+
+        $costCenter = DB::table('centros_costo')
+            ->where('id', (int) $this->input('centro_costo_id'))
+            ->where('estatus', 'activo')
+            ->first(['id', 'planta_id']);
+
+        if (
+            $costCenter
+            && $costCenter->planta_id !== null
+            && (int) $costCenter->planta_id !== (int) $this->input('planta_id')
+        ) {
+            $validator->errors()->add(
+                'centro_costo_id',
+                'El centro de costo seleccionado no pertenece a la planta indicada.'
+            );
+        }
     }
 }
