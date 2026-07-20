@@ -2,7 +2,7 @@
 
 @section('title', 'Registro masivo | SWAFI')
 @section('page_title', 'Registro masivo')
-@section('page_subtitle', 'Carga de expedientes mediante layout CSV, ZIP documental y validación previa')
+@section('page_subtitle', 'Carga de expedientes mediante layout CSV o Excel, ZIP documental y validación previa')
 @section('breadcrumb', 'Registro masivo')
 
 @section('page_styles')
@@ -389,22 +389,23 @@
     <div class="card">
         <div class="section-title">
             <h2>Carga masiva por layout</h2>
-            <span class="pill ok">CSV + ZIP documental</span>
+            <span class="pill ok">CSV/XLSX + ZIP documental</span>
         </div>
 
         <div class="rm-box">
             <h3>Previsualizar expedientes antes de aplicar</h3>
             <p>
-                Carga un CSV y su ZIP documental. SWAFI validará la estructura, los catálogos,
-                las reglas de negocio y los documentos sin modificar todavía activos o expedientes.
+                Carga un layout CSV o Excel y su ZIP documental. SWAFI validará la estructura,
+                los catálogos, las reglas de negocio y los documentos sin modificar todavía
+                activos o expedientes.
             </p>
 
             <form method="POST" action="{{ route('registro-masivo.importar') }}" enctype="multipart/form-data">
                 @csrf
 
                 <label>
-                    <span>Archivo CSV de datos</span>
-                    <input type="file" name="archivo_csv" accept=".csv,.txt" required>
+                    <span>Layout de datos CSV o Excel</span>
+                    <input type="file" name="archivo_csv" accept=".csv,.txt,.xlsx" required>
                 </label>
 
                 <label style="margin-top:12px">
@@ -413,8 +414,9 @@
                 </label>
 
                 <div class="rm-help">
-                    El CSV debe incluir las columnas <strong>Documento PDF</strong> y <strong>Documento XML</strong>.
-                    Los nombres capturados ahí deben existir dentro del ZIP. Ejemplo:
+                    El layout CSV o XLSX debe incluir las columnas <strong>Documento PDF</strong>
+                    y <strong>Documento XML</strong>. Los nombres capturados ahí deben existir
+                    dentro del ZIP. Ejemplo:
                     <strong>factura_184.pdf</strong> y <strong>factura_184.xml</strong>.
                     Si ambos archivos existen, el expediente quedará como completo.
                     La carga solo se confirmará después de revisar la tabla de previsualización.
@@ -422,7 +424,8 @@
 
                 <div class="action-group" style="margin-top:12px">
                     <button class="tab" type="submit">Previsualizar y validar</button>
-                    <a class="tab" href="{{ url('/registro-masivo/plantilla-csv') }}">Descargar plantilla</a>
+                    <a class="tab" href="{{ route('registro-masivo.plantilla-xlsx') }}">Descargar plantilla Excel</a>
+                    <a class="tab" href="{{ route('registro-masivo.plantilla') }}">Descargar plantilla CSV</a>
                 </div>
             </form>
         </div>
@@ -434,7 +437,7 @@
             </div>
 
             <div class="rm-kpi">
-                <strong>CSV</strong>
+                <strong>CSV/XLSX</strong>
                 <span>Datos del activo</span>
             </div>
 
@@ -505,7 +508,11 @@
     <div class="section-title">
         <div>
             <h2>Previsualización del lote</h2>
-            <small>{{ $lote->csv_nombre_original }} · {{ $lote->uuid }}</small>
+            <small>
+                {{ $lote->csv_nombre_original }}
+                · {{ strtoupper($lote->layout_formato ?? 'csv') }}
+                · {{ $lote->uuid }}
+            </small>
             @if ($canRollbackImports && $lote->usuario)
                 <small>Responsable del lote: {{ $lote->usuario->name }} · {{ $lote->usuario->email }}</small>
             @endif
