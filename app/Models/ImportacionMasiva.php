@@ -18,6 +18,7 @@ class ImportacionMasiva extends Model
         'csv_storage_disk',
         'csv_ruta',
         'csv_hash_sha256',
+        'layout_formato',
         'zip_nombre_original',
         'zip_storage_disk',
         'zip_ruta',
