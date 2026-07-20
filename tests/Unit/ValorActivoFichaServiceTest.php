@@ -26,8 +26,12 @@ class ValorActivoFichaServiceTest extends TestCase
         self::assertSame(602700.0, $payload['rows'][0][10]);
         self::assertSame(580000.0, $payload['rows'][0][12]);
         self::assertSame(120, $payload['rows'][0][20]);
-        self::assertSame('Vigente', $payload['rows'][0][22]);
-        self::assertSame('Coincidente', $payload['rows'][0][23]);
+        self::assertSame('Linea Recta', $payload['rows'][0][21]);
+        self::assertSame(10000.0, $payload['rows'][0][23]);
+        self::assertSame(240000.0, $payload['rows'][0][24]);
+        self::assertSame(350000.0, $payload['rows'][0][25]);
+        self::assertSame('Vigente', $payload['rows'][0][28]);
+        self::assertSame('Coincidente', $payload['rows'][0][29]);
     }
 
     public function test_pdf_payload_groups_identification_invoice_values_and_traceability(): void
@@ -40,6 +44,7 @@ class ValorActivoFichaServiceTest extends TestCase
         self::assertContains('Identificación', $sections);
         self::assertContains('Factura', $sections);
         self::assertContains('Valores', $sections);
+        self::assertContains('Depreciación referencial', $sections);
         self::assertContains('Conciliación CFDI', $sections);
         self::assertContains('Trazabilidad', $sections);
         self::assertContains(
@@ -48,6 +53,10 @@ class ValorActivoFichaServiceTest extends TestCase
         );
         self::assertContains(
             ['Factura', 'Monto', 'MXN 602,700.00'],
+            $payload['rows']
+        );
+        self::assertContains(
+            ['Depreciación referencial', 'Valor en libros estimado', 'MXN 350,000.00'],
             $payload['rows']
         );
     }
@@ -66,6 +75,12 @@ class ValorActivoFichaServiceTest extends TestCase
             'depreciacion_acumulada' => '100000.00',
             'valor_en_libros' => '480000.00',
             'vida_util_meses' => 120,
+            'metodo_depreciacion' => 'linea_recta',
+            'fecha_inicio_depreciacion' => '2021-07-19',
+            'valor_residual' => '10000.00',
+            'depreciacion_estimada' => '240000.00',
+            'valor_en_libros_estimado' => '350000.00',
+            'calculo_depreciacion_at' => '2026-07-19 10:30:00',
             'estatus_contable' => 'vigente',
             'motivo_cambio' => 'Registro inicial conciliado.',
             'conciliacion_cfdi' => 'coincidente',

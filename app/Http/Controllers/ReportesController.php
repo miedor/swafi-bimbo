@@ -53,9 +53,17 @@ class ReportesController extends Controller
                 Rule::exists('estatus_operativos', 'clave')
                     ->where(fn ($query) => $query->where('estatus', 'activo')),
             ],
+            'estatus_contable' => [
+                'nullable',
+                'string',
+                'max:30',
+                Rule::exists('estatus_contables', 'clave')
+                    ->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
         ], [
             'estatus_documental.exists' => 'El estatus documental seleccionado no existe o está inactivo.',
             'estatus_operativo.exists' => 'El estatus operativo seleccionado no existe o está inactivo.',
+            'estatus_contable.exists' => 'El estatus contable seleccionado no existe o está inactivo.',
         ]);
 
         $availableReportTypes = $this->availableReportTypes();
@@ -524,6 +532,12 @@ class ReportesController extends Controller
                 'v.valor_en_libros',
                 'v.valor_financiero',
                 'v.vida_util_meses',
+                'v.metodo_depreciacion',
+                'v.fecha_inicio_depreciacion',
+                'v.valor_residual',
+                'v.depreciacion_estimada',
+                'v.valor_en_libros_estimado',
+                'v.calculo_depreciacion_at',
                 'v.fecha_corte',
                 'v.estatus_contable',
                 'a.estatus_operativo',
@@ -984,6 +998,12 @@ class ReportesController extends Controller
                 'valor_en_libros' => 'Valor en libros',
                 'valor_financiero' => 'Valor financiero',
                 'vida_util_meses' => 'Vida útil meses',
+                'metodo_depreciacion' => 'Método de depreciación referencial',
+                'fecha_inicio_depreciacion' => 'Inicio de depreciación',
+                'valor_residual' => 'Valor residual',
+                'depreciacion_estimada' => 'Depreciación estimada',
+                'valor_en_libros_estimado' => 'Valor en libros estimado',
+                'calculo_depreciacion_at' => 'Fecha de cálculo referencial',
                 'fecha_corte' => 'Fecha de corte',
                 'estatus_contable' => 'Estatus contable',
             ],
@@ -1358,6 +1378,11 @@ class ReportesController extends Controller
 
             'estatusDocumentales' => $this->statusCatalogs->documentaryOptions(),
             'estatusOperativos' => $this->statusCatalogs->operationalOptions(),
+            'estatusContables' => DB::table('estatus_contables')
+                ->where('estatus', 'activo')
+                ->orderBy('orden')
+                ->orderBy('nombre')
+                ->get(),
         ];
     }
 

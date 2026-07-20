@@ -231,9 +231,11 @@
             <label class="edit-field">
               <span>Moneda <b>*</b></span>
               <select name="moneda">
-                <option value="MXN" {{ old('moneda', $expediente->moneda) == 'MXN' ? 'selected' : '' }}>MXN</option>
-                <option value="USD" {{ old('moneda', $expediente->moneda) == 'USD' ? 'selected' : '' }}>USD</option>
-                <option value="EUR" {{ old('moneda', $expediente->moneda) == 'EUR' ? 'selected' : '' }}>EUR</option>
+                @foreach($monedas as $moneda)
+                  <option value="{{ $moneda->clave }}" {{ old('moneda', $expediente->moneda) === $moneda->clave ? 'selected' : '' }}>
+                    {{ $moneda->clave }} — {{ $moneda->nombre }}
+                  </option>
+                @endforeach
               </select>
             </label>
           </div>

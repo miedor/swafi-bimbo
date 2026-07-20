@@ -110,7 +110,13 @@ class StoreRegistroIndividualRequest extends FormRequest
             ],
             'fecha_factura' => ['required', 'date'],
             'monto_factura' => ['required', 'numeric', 'gt:0'],
-            'moneda' => ['required', Rule::in(['MXN', 'USD', 'EUR'])],
+            'moneda' => [
+                'required',
+                'string',
+                'size:3',
+                'regex:/^[A-Z]{3}$/',
+                Rule::exists('monedas', 'clave')->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
             'observaciones' => ['nullable', 'string', 'max:2000'],
 
             'documentos' => ['nullable', 'array', 'max:20'],
@@ -179,7 +185,9 @@ class StoreRegistroIndividualRequest extends FormRequest
             'monto_factura.numeric' => 'El monto de la factura debe ser numérico.',
             'monto_factura.gt' => 'El monto de la factura debe ser mayor a cero.',
             'moneda.required' => 'La moneda es obligatoria.',
-            'moneda.in' => 'La moneda debe ser MXN, USD o EUR.',
+            'moneda.size' => 'La moneda debe capturarse con tres letras.',
+            'moneda.regex' => 'La moneda solo puede contener letras mayúsculas.',
+            'moneda.exists' => 'La moneda seleccionada no existe o se encuentra inactiva.',
 
             'descripcion.prohibited' => 'Los datos maestros de un activo existente no pueden modificarse desde el registro de expedientes.',
             'tipo_activo_id.prohibited' => 'Los datos maestros de un activo existente no pueden modificarse desde el registro de expedientes.',

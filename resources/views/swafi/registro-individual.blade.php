@@ -615,9 +615,11 @@
                         <label class="ri-field">
                             <span>Moneda <b>*</b></span>
                             <select name="moneda">
-                                <option value="MXN" @selected(old('moneda', 'MXN') == 'MXN')>MXN</option>
-                                <option value="USD" @selected(old('moneda') == 'USD')>USD</option>
-                                <option value="EUR" @selected(old('moneda') == 'EUR')>EUR</option>
+                                @foreach($monedas as $moneda)
+                                    <option value="{{ $moneda->clave }}" @selected(old('moneda', 'MXN') === $moneda->clave)>
+                                        {{ $moneda->clave }} — {{ $moneda->nombre }}
+                                    </option>
+                                @endforeach
                             </select>
                         </label>
                     </div>

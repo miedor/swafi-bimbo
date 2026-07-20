@@ -8,6 +8,7 @@ use App\Models\DocumentoExpediente;
 use App\Models\Expediente;
 use App\Services\AssetRegistrationService;
 use App\Services\AssetStatusCatalogService;
+use App\Services\FinancialCatalogService;
 use App\Services\SwafiStorageService;
 use Illuminate\Database\QueryException;
 use Illuminate\Http\JsonResponse;
@@ -23,7 +24,8 @@ class RegistroIndividualController extends Controller
     public function __construct(
         private readonly SwafiStorageService $storage,
         private readonly AssetStatusCatalogService $statusCatalogs,
-        private readonly AssetRegistrationService $assets
+        private readonly AssetRegistrationService $assets,
+        private readonly FinancialCatalogService $financialCatalogs
     ) {
     }
 
@@ -37,6 +39,7 @@ class RegistroIndividualController extends Controller
             'ubicaciones' => $this->catalogOptions('ubicaciones'),
             'responsables' => $this->catalogOptions('responsables'),
             'estatusOperativos' => $this->statusCatalogs->operationalOptions(),
+            'monedas' => $this->financialCatalogs->currencies(),
         ]);
     }
 

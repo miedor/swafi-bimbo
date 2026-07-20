@@ -22,6 +22,9 @@ class RegistroMasivoService
     private const MAX_ZIP_FILES = 5000;
     private const MAX_ZIP_UNCOMPRESSED_BYTES = 209715200;
 
+    /** @var array<int, string>|null */
+    private ?array $activeCurrencyCodes = null;
+
     private const REQUIRED_HEADERS = [
         'numero_activo',
         'descripcion',
@@ -588,7 +591,7 @@ class RegistroMasivoService
         $moneda = $this->normalizeMoneda($data['moneda']);
 
         if (!$moneda) {
-            $errors[] = 'La moneda debe ser MXN, USD o EUR.';
+            $errors[] = 'La moneda no existe o se encuentra inactiva en el catálogo financiero.';
         }
 
         $estatusOperativo = $this->normalizeEstatusOperativo($data['estatus_operativo']);
@@ -1796,7 +1799,21 @@ class RegistroMasivoService
     {
         $value = Str::upper($this->normalizeCell($value));
 
-        return in_array($value, ['MXN', 'USD', 'EUR'], true)
+        if ($value === '') {
+            return null;
+        }
+
+        if ($this->activeCurrencyCodes === null) {
+            $this->activeCurrencyCodes = DB::table('monedas')
+                ->where('estatus', 'activo')
+                ->orderBy('clave')
+                ->pluck('clave')
+                ->map(fn (mixed $code): string => Str::upper(trim((string) $code)))
+                ->values()
+                ->all();
+        }
+
+        return in_array($value, $this->activeCurrencyCodes, true)
             ? $value
             : null;
     }

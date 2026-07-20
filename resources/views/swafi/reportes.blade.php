@@ -413,6 +413,9 @@
         'depreciacion_acumulada',
         'valor_en_libros',
         'valor_financiero',
+        'valor_residual',
+        'depreciacion_estimada',
+        'valor_en_libros_estimado',
     ];
 
     $statusKeys = [
@@ -421,6 +424,7 @@
         'estatus_operativo',
         'estatus_localizacion',
         'ultimo_estatus_localizacion',
+        'metodo_depreciacion',
     ];
 
     $selectedColumnKeys = array_keys($columnasSeleccionadas);
@@ -584,9 +588,11 @@
                                 <span>Estatus contable</span>
                                 <select name="estatus_contable">
                                     <option value="">Todos</option>
-                                    <option value="vigente" {{ ($filtros['estatus_contable'] ?? '') === 'vigente' ? 'selected' : '' }}>Vigente</option>
-                                    <option value="en_revision" {{ ($filtros['estatus_contable'] ?? '') === 'en_revision' ? 'selected' : '' }}>En revisión</option>
-                                    <option value="baja" {{ ($filtros['estatus_contable'] ?? '') === 'baja' ? 'selected' : '' }}>Baja</option>
+                                    @foreach($catalogos['estatusContables'] as $estatusContable)
+                                        <option value="{{ $estatusContable->clave }}" {{ ($filtros['estatus_contable'] ?? '') === $estatusContable->clave ? 'selected' : '' }}>
+                                            {{ $estatusContable->nombre }}
+                                        </option>
+                                    @endforeach
                                 </select>
                             </label>
 

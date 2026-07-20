@@ -606,6 +606,30 @@
           <strong>{{ $valorActual->vida_util_meses ? ((int) $valorActual->vida_util_meses).' meses' : 'Sin definir' }}</strong>
         </div>
         <div class="vh-current-item">
+          <span>Método / inicio referencial</span>
+          <strong>
+            {{ $valorActual->metodo_depreciacion ? \Illuminate\Support\Str::headline($valorActual->metodo_depreciacion) : 'Sin cálculo' }}
+            @if($valorActual->fecha_inicio_depreciacion)
+              · {{ \Illuminate\Support\Carbon::parse($valorActual->fecha_inicio_depreciacion)->format('d/m/Y') }}
+            @endif
+          </strong>
+        </div>
+        <div class="vh-current-item">
+          <span>Depreciación / libros estimados</span>
+          <strong>
+            @if($valorActual->depreciacion_estimada !== null)
+              $ {{ number_format((float) $valorActual->depreciacion_estimada, 2) }} /
+              $ {{ number_format((float) $valorActual->valor_en_libros_estimado, 2) }}
+            @else
+              Sin cálculo referencial
+            @endif
+          </strong>
+        </div>
+        <div class="vh-current-item">
+          <span>Valor residual</span>
+          <strong>$ {{ number_format((float) ($valorActual->valor_residual ?? 0), 2) }}</strong>
+        </div>
+        <div class="vh-current-item">
           <span>Estado del registro</span>
           <strong>{{ $valorActual->deleted_at ? 'Baja lógica' : 'Vigente' }}</strong>
         </div>

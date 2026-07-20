@@ -65,6 +65,41 @@ class ValorActivoHistoryServiceTest extends TestCase
         self::assertSame([], $changes);
     }
 
+    public function test_reference_depreciation_fields_are_formatted_as_business_changes(): void
+    {
+        $changes = $this->service->buildChanges(
+            [
+                'metodo_depreciacion' => null,
+                'fecha_inicio_depreciacion' => null,
+                'valor_residual' => '0.00',
+                'depreciacion_estimada' => null,
+                'valor_en_libros_estimado' => null,
+            ],
+            [
+                'metodo_depreciacion' => 'linea_recta',
+                'fecha_inicio_depreciacion' => '2026-01-31',
+                'valor_residual' => '10000.00',
+                'depreciacion_estimada' => '20000.00',
+                'valor_en_libros_estimado' => '80000.00',
+            ]
+        );
+
+        self::assertSame('Método de depreciación referencial', $changes[0]['label']);
+        self::assertSame('Linea Recta', $changes[0]['after']);
+        self::assertContains([
+            'field' => 'valor_residual',
+            'label' => 'Valor residual',
+            'before' => '$ 0.00',
+            'after' => '$ 10,000.00',
+        ], $changes);
+        self::assertContains([
+            'field' => 'valor_en_libros_estimado',
+            'label' => 'Valor en libros estimado',
+            'before' => 'Sin valor',
+            'after' => '$ 80,000.00',
+        ], $changes);
+    }
+
     public function test_malformed_json_is_handled_without_throwing(): void
     {
         self::assertSame([], $this->service->decodePayload('{json-invalido'));

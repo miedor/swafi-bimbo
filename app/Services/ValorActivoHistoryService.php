@@ -28,6 +28,12 @@ class ValorActivoHistoryService
         'depreciacion_acumulada' => 'Depreciación acumulada',
         'valor_en_libros' => 'Valor en libros',
         'vida_util_meses' => 'Vida útil',
+        'metodo_depreciacion' => 'Método de depreciación referencial',
+        'fecha_inicio_depreciacion' => 'Fecha de inicio de depreciación',
+        'valor_residual' => 'Valor residual',
+        'depreciacion_estimada' => 'Depreciación estimada',
+        'valor_en_libros_estimado' => 'Valor en libros estimado',
+        'calculo_depreciacion_at' => 'Fecha del cálculo referencial',
         'estatus_contable' => 'Estatus contable',
         'motivo_cambio' => 'Motivo del cambio',
         'conciliacion_cfdi' => 'Conciliación CFDI',
@@ -271,12 +277,21 @@ class ValorActivoHistoryService
             'valor_financiero',
             'depreciacion_acumulada',
             'valor_en_libros',
+            'valor_residual',
+            'depreciacion_estimada',
+            'valor_en_libros_estimado',
             'tipo_cambio',
         ], true) && is_numeric($before) && is_numeric($after)) {
             return abs((float) $before - (float) $after) < 0.000001;
         }
 
-        if (in_array($field, ['fecha_tipo_cambio', 'fecha_corte', 'deleted_at'], true)) {
+        if (in_array($field, [
+            'fecha_tipo_cambio',
+            'fecha_inicio_depreciacion',
+            'fecha_corte',
+            'calculo_depreciacion_at',
+            'deleted_at',
+        ], true)) {
             return $this->normalizeDate($before) === $this->normalizeDate($after);
         }
 
@@ -298,6 +313,9 @@ class ValorActivoHistoryService
             'valor_financiero',
             'depreciacion_acumulada',
             'valor_en_libros',
+            'valor_residual',
+            'depreciacion_estimada',
+            'valor_en_libros_estimado',
         ], true) && is_numeric($value)) {
             return '$ '.number_format((float) $value, 2, '.', ',');
         }
@@ -310,13 +328,21 @@ class ValorActivoHistoryService
             return ((int) $value).' meses';
         }
 
-        if (in_array($field, ['fecha_tipo_cambio', 'fecha_corte', 'deleted_at'], true)) {
+        if (in_array($field, [
+            'fecha_tipo_cambio',
+            'fecha_inicio_depreciacion',
+            'fecha_corte',
+            'calculo_depreciacion_at',
+            'deleted_at',
+        ], true)) {
             $normalized = $this->normalizeDate($value);
 
             if ($normalized !== null) {
                 try {
                     return Carbon::parse($normalized)->format(
-                        $field === 'deleted_at' ? 'd/m/Y H:i' : 'd/m/Y'
+                        in_array($field, ['deleted_at', 'calculo_depreciacion_at'], true)
+                            ? 'd/m/Y H:i'
+                            : 'd/m/Y'
                     );
                 } catch (Throwable $exception) {
                     app(SafeExceptionReporter::class)->warning(
@@ -330,7 +356,7 @@ class ValorActivoHistoryService
             }
         }
 
-        if (in_array($field, ['estatus_contable', 'conciliacion_cfdi'], true)) {
+        if (in_array($field, ['estatus_contable', 'conciliacion_cfdi', 'metodo_depreciacion'], true)) {
             return Str::headline(mb_strtolower(str_replace('_', ' ', (string) $value), 'UTF-8'));
         }
 

@@ -23,6 +23,17 @@
   $selectedAsset = old('numero_activo', $valorEdit->numero_activo ?? request('numero_activo', ''));
   $selectedCurrency = strtoupper((string) old('moneda', $valorEdit->moneda ?? 'MXN'));
   $selectedStatus = old('estatus_contable', $valorEdit->estatus_contable ?? 'vigente');
+  $selectedDepreciationMethod = old('metodo_depreciacion', $valorEdit->metodo_depreciacion ?? '');
+  $selectedDepreciationStart = old(
+    'fecha_inicio_depreciacion',
+    !empty($valorEdit->fecha_inicio_depreciacion)
+      ? \Illuminate\Support\Carbon::parse($valorEdit->fecha_inicio_depreciacion)->format('Y-m-d')
+      : ''
+  );
+  $selectedResidualValue = old(
+    'valor_residual',
+    $valorEdit && $valorEdit->metodo_depreciacion ? ($valorEdit->valor_residual ?? '0.00') : ''
+  );
 @endphp
 
 @section('page_styles')
@@ -424,6 +435,66 @@
     color: #b42318;
   }
 
+  .vf-reference-box {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    padding: 13px;
+    border: 1px solid #cfe0f5;
+    border-radius: 14px;
+    background: #f7fbff;
+  }
+
+  .vf-reference-box h3,
+  .vf-reference-box p {
+    grid-column: 1 / -1;
+    margin: 0;
+  }
+
+  .vf-reference-box h3 {
+    color: #174f9a;
+    font-size: 14px;
+    font-weight: 950;
+  }
+
+  .vf-reference-box p {
+    color: #64748b;
+    font-size: 11px;
+    line-height: 1.45;
+  }
+
+  .vf-reference-value {
+    padding: 10px;
+    border-radius: 11px;
+    background: #ffffff;
+    border: 1px solid #dbe7f6;
+  }
+
+  .vf-reference-value span,
+  .vf-reference-value strong {
+    display: block;
+  }
+
+  .vf-reference-value span {
+    color: #64748b;
+    font-size: 10px;
+    font-weight: 850;
+  }
+
+  .vf-reference-value strong {
+    margin-top: 4px;
+    color: #153d73;
+    font-size: 14px;
+    font-weight: 950;
+  }
+
+  .vf-reference-message {
+    min-height: 18px;
+    color: #8a4b00 !important;
+    font-weight: 800;
+  }
+
   .vf-footer {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
@@ -483,8 +554,9 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
-    .vf-import-box {
-      grid-template-columns: minmax(0, 1fr);
+    .vf-import-box,
+    .vf-reference-box {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
     .vf-footer {
@@ -527,6 +599,10 @@
     .vf-field.span-2,
     .vf-field.full {
       grid-column: auto;
+    }
+
+    .vf-reference-box {
+      grid-template-columns: minmax(0, 1fr);
     }
   }
 </style>
@@ -698,9 +774,11 @@
           <span>Estatus contable</span>
           <select name="estatus_contable">
             <option value="">Todos</option>
-            <option value="vigente" {{ ($filtros['estatus_contable'] ?? '') === 'vigente' ? 'selected' : '' }}>Vigente</option>
-            <option value="en_revision" {{ ($filtros['estatus_contable'] ?? '') === 'en_revision' ? 'selected' : '' }}>En revisión</option>
-            <option value="baja" {{ ($filtros['estatus_contable'] ?? '') === 'baja' ? 'selected' : '' }}>Baja</option>
+            @foreach($catalogos['estatusContables'] as $estatus)
+              <option value="{{ $estatus->clave }}" {{ ($filtros['estatus_contable'] ?? '') === $estatus->clave ? 'selected' : '' }}>
+                {{ $estatus->nombre }}
+              </option>
+            @endforeach
           </select>
         </label>
 
@@ -717,7 +795,14 @@
         @if($canViewSensitiveValues)
         <label class="vf-field">
           <span>Moneda</span>
-          <input name="moneda" maxlength="3" value="{{ $filtros['moneda'] ?? '' }}">
+          <select name="moneda">
+            <option value="">Todas</option>
+            @foreach($catalogos['monedas'] as $moneda)
+              <option value="{{ $moneda->clave }}" {{ ($filtros['moneda'] ?? '') === $moneda->clave ? 'selected' : '' }}>
+                {{ $moneda->clave }} — {{ $moneda->nombre }}
+              </option>
+            @endforeach
+          </select>
         </label>
 
         <label class="vf-field">
@@ -822,7 +907,11 @@
                 <td>
                   Fiscal: ${{ number_format((float)$row->valor_fiscal, 2) }}<br>
                   Financiero: ${{ number_format((float)$row->valor_financiero, 2) }}<br>
-                  <small>Libros: ${{ number_format((float)$row->valor_en_libros, 2) }}</small>
+                  <small>Libros oficial: ${{ number_format((float)$row->valor_en_libros, 2) }}</small>
+                  @if($row->depreciacion_estimada !== null)
+                    <br><small>Dep. estimada: ${{ number_format((float)$row->depreciacion_estimada, 2) }}</small>
+                    <br><small>Libros estimado: ${{ number_format((float)$row->valor_en_libros_estimado, 2) }}</small>
+                  @endif
                 </td>
                 <td>
                   {{ $row->moneda ?: 'MXN' }}<br>
@@ -955,7 +1044,7 @@
         <span class="pill ok">Edición autorizada</span>
       </div>
 
-      <form method="POST" action="{{ route('valores.store') }}">
+      <form method="POST" action="{{ route('valores.store') }}" data-vf-value-form>
         @csrf
 
         @if($valorEdit)
@@ -980,27 +1069,37 @@
 
           <label class="vf-field">
             <span>Valor financiero</span>
-            <input type="number" step="0.01" min="0" name="valor_financiero" value="{{ old('valor_financiero', $valorEdit->valor_financiero ?? '') }}" required>
+            <input type="number" step="0.01" min="0" name="valor_financiero" data-vf-financial-value value="{{ old('valor_financiero', $valorEdit->valor_financiero ?? '') }}" required>
           </label>
 
           <label class="vf-field">
             <span>Moneda</span>
-            <input name="moneda" maxlength="3" value="{{ $selectedCurrency }}" placeholder="MXN" required>
+            <select name="moneda" data-vf-currency required>
+              @foreach($catalogos['monedas'] as $moneda)
+                <option
+                  value="{{ $moneda->clave }}"
+                  data-requires-exchange="{{ $moneda->requiere_tipo_cambio ? '1' : '0' }}"
+                  {{ $selectedCurrency === $moneda->clave ? 'selected' : '' }}
+                >
+                  {{ $moneda->clave }} — {{ $moneda->nombre }}
+                </option>
+              @endforeach
+            </select>
           </label>
 
           <label class="vf-field">
             <span>Tipo de cambio</span>
-            <input type="number" step="0.000001" min="0" name="tipo_cambio" value="{{ old('tipo_cambio', $valorEdit->tipo_cambio ?? ($selectedCurrency === 'MXN' ? '1' : '')) }}">
+            <input type="number" step="0.000001" min="0" name="tipo_cambio" data-vf-exchange-rate value="{{ old('tipo_cambio', $valorEdit->tipo_cambio ?? ($selectedCurrency === 'MXN' ? '1' : '')) }}">
           </label>
 
           <label class="vf-field">
             <span>Fecha tipo de cambio</span>
-            <input type="date" name="fecha_tipo_cambio" value="{{ old('fecha_tipo_cambio', !empty($valorEdit->fecha_tipo_cambio) ? \Illuminate\Support\Carbon::parse($valorEdit->fecha_tipo_cambio)->format('Y-m-d') : '') }}">
+            <input type="date" name="fecha_tipo_cambio" data-vf-exchange-date value="{{ old('fecha_tipo_cambio', !empty($valorEdit->fecha_tipo_cambio) ? \Illuminate\Support\Carbon::parse($valorEdit->fecha_tipo_cambio)->format('Y-m-d') : '') }}">
           </label>
 
           <label class="vf-field">
             <span>Origen tipo de cambio</span>
-            <input name="origen_tipo_cambio" value="{{ old('origen_tipo_cambio', $valorEdit->origen_tipo_cambio ?? '') }}" placeholder="Ej. CFDI / fuente corporativa">
+            <input name="origen_tipo_cambio" data-vf-exchange-origin value="{{ old('origen_tipo_cambio', $valorEdit->origen_tipo_cambio ?? '') }}" placeholder="Ej. CFDI / fuente corporativa">
           </label>
 
           <label class="vf-field">
@@ -1015,22 +1114,78 @@
 
           <label class="vf-field">
             <span>Vida útil (meses)</span>
-            <input type="number" min="1" max="1200" name="vida_util_meses" value="{{ old('vida_util_meses', $valorEdit->vida_util_meses ?? '') }}">
+            <input type="number" min="1" max="1200" name="vida_util_meses" data-vf-useful-life value="{{ old('vida_util_meses', $valorEdit->vida_util_meses ?? '') }}">
+          </label>
+
+          <label class="vf-field">
+            <span>Método de depreciación referencial</span>
+            <select name="metodo_depreciacion" data-vf-depreciation-method>
+              <option value="">Sin cálculo referencial</option>
+              @foreach($catalogos['metodosDepreciacion'] as $clave => $metodo)
+                <option value="{{ $clave }}" {{ $selectedDepreciationMethod === $clave ? 'selected' : '' }}>
+                  {{ $metodo['label'] }}
+                </option>
+              @endforeach
+            </select>
+          </label>
+
+          <label class="vf-field">
+            <span>Fecha de inicio de depreciación</span>
+            <input type="date" name="fecha_inicio_depreciacion" data-vf-depreciation-start value="{{ $selectedDepreciationStart }}">
+          </label>
+
+          <label class="vf-field">
+            <span>Valor residual</span>
+            <input type="number" step="0.01" min="0" name="valor_residual" data-vf-residual-value value="{{ $selectedResidualValue }}">
           </label>
 
           <label class="vf-field">
             <span>Fecha de corte</span>
-            <input type="date" name="fecha_corte" value="{{ old('fecha_corte', !empty($valorEdit->fecha_corte) ? \Illuminate\Support\Carbon::parse($valorEdit->fecha_corte)->format('Y-m-d') : now()->format('Y-m-d')) }}" required>
+            <input type="date" name="fecha_corte" data-vf-cutoff-date value="{{ old('fecha_corte', !empty($valorEdit->fecha_corte) ? \Illuminate\Support\Carbon::parse($valorEdit->fecha_corte)->format('Y-m-d') : now()->format('Y-m-d')) }}" required>
           </label>
 
           <label class="vf-field">
             <span>Estatus contable</span>
             <select name="estatus_contable" required>
-              <option value="vigente" {{ $selectedStatus === 'vigente' ? 'selected' : '' }}>Vigente</option>
-              <option value="en_revision" {{ $selectedStatus === 'en_revision' ? 'selected' : '' }}>En revisión</option>
-              <option value="baja" {{ $selectedStatus === 'baja' ? 'selected' : '' }}>Baja</option>
+              @foreach($catalogos['estatusContables'] as $estatus)
+                <option value="{{ $estatus->clave }}" {{ $selectedStatus === $estatus->clave ? 'selected' : '' }}>
+                  {{ $estatus->nombre }}
+                </option>
+              @endforeach
             </select>
           </label>
+
+          <div class="vf-reference-box" data-vf-reference-box>
+            <h3>Estimación referencial de depreciación</h3>
+            <p>
+              El cálculo utiliza el valor financiero, valor residual, vida útil, fecha de inicio y fecha de corte.
+              Es informativo y no sustituye la depreciación oficial proveniente del ERP o de Contabilidad.
+            </p>
+            <div class="vf-reference-value">
+              <span>Depreciación estimada</span>
+              <strong data-vf-estimated-depreciation>
+                {{ $valorEdit && $valorEdit->depreciacion_estimada !== null ? '$'.number_format((float)$valorEdit->depreciacion_estimada, 2) : 'Sin calcular' }}
+              </strong>
+            </div>
+            <div class="vf-reference-value">
+              <span>Valor en libros estimado</span>
+              <strong data-vf-estimated-book>
+                {{ $valorEdit && $valorEdit->valor_en_libros_estimado !== null ? '$'.number_format((float)$valorEdit->valor_en_libros_estimado, 2) : 'Sin calcular' }}
+              </strong>
+            </div>
+            <div class="vf-reference-value">
+              <span>Porcentaje transcurrido</span>
+              <strong data-vf-estimated-percent>Sin calcular</strong>
+            </div>
+            <div class="vf-reference-value">
+              <span>Fin estimado de vida útil</span>
+              <strong data-vf-estimated-end>Sin calcular</strong>
+            </div>
+            <p class="vf-reference-message" data-vf-reference-message aria-live="polite"></p>
+            <div class="vf-actions">
+              <button class="vf-button" type="button" data-vf-calculate-reference>Calcular estimación</button>
+            </div>
+          </div>
 
           <label class="vf-field full">
             <span>Motivo del cambio {{ $valorEdit ? '(obligatorio)' : '' }}</span>
@@ -1062,7 +1217,7 @@
       <div class="vf-import-box">
         <div class="vf-import-guide">
           <h3>Reglas de importación</h3>
-          <p>SWAFI valida moneda, tipo de cambio, montos, fechas, estatus, duplicidad y consistencia contra el XML vigente.</p>
+          <p>SWAFI valida catálogos financieros, tipo de cambio, montos, fechas, depreciación referencial, duplicidad y consistencia contra el XML vigente.</p>
           <ul>
             <li>Las filas rechazadas no alteran registros correctos.</li>
             <li>Un activo existente se actualiza; no se duplica.</li>
@@ -1143,6 +1298,170 @@
         window.scrollTo({ top: 0, behavior: 'smooth' });
       });
     });
+
+    const valueForm = page.querySelector('[data-vf-value-form]');
+
+    if (valueForm) {
+      const currency = valueForm.querySelector('[data-vf-currency]');
+      const exchangeRate = valueForm.querySelector('[data-vf-exchange-rate]');
+      const exchangeDate = valueForm.querySelector('[data-vf-exchange-date]');
+      const exchangeOrigin = valueForm.querySelector('[data-vf-exchange-origin]');
+      const calculateButton = valueForm.querySelector('[data-vf-calculate-reference]');
+      const financialValue = valueForm.querySelector('[data-vf-financial-value]');
+      const usefulLife = valueForm.querySelector('[data-vf-useful-life]');
+      const method = valueForm.querySelector('[data-vf-depreciation-method]');
+      const depreciationStart = valueForm.querySelector('[data-vf-depreciation-start]');
+      const residualValue = valueForm.querySelector('[data-vf-residual-value]');
+      const cutoffDate = valueForm.querySelector('[data-vf-cutoff-date]');
+      const estimatedDepreciation = valueForm.querySelector('[data-vf-estimated-depreciation]');
+      const estimatedBook = valueForm.querySelector('[data-vf-estimated-book]');
+      const estimatedPercent = valueForm.querySelector('[data-vf-estimated-percent]');
+      const estimatedEnd = valueForm.querySelector('[data-vf-estimated-end]');
+      const referenceMessage = valueForm.querySelector('[data-vf-reference-message]');
+
+      function syncExchangeFields() {
+        if (!currency) {
+          return;
+        }
+
+        const option = currency.options[currency.selectedIndex];
+        const requiresExchange = option && option.dataset.requiresExchange === '1';
+
+        [exchangeRate, exchangeDate, exchangeOrigin].forEach(function (field) {
+          if (!field) {
+            return;
+          }
+
+          field.required = requiresExchange;
+          field.disabled = !requiresExchange;
+        });
+
+        if (!requiresExchange) {
+          if (exchangeRate) {
+            exchangeRate.value = '1';
+          }
+          if (exchangeDate) {
+            exchangeDate.value = '';
+          }
+          if (exchangeOrigin) {
+            exchangeOrigin.value = '';
+          }
+        }
+      }
+
+      function parseIsoDate(value) {
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(value || '')) {
+          return null;
+        }
+
+        const parts = value.split('-').map(Number);
+        const date = new Date(Date.UTC(parts[0], parts[1] - 1, parts[2]));
+
+        return Number.isNaN(date.getTime()) ? null : date;
+      }
+
+      function addMonthsNoOverflow(date, months) {
+        const year = date.getUTCFullYear();
+        const month = date.getUTCMonth();
+        const day = date.getUTCDate();
+        const firstTarget = new Date(Date.UTC(year, month + months, 1));
+        const lastTarget = new Date(Date.UTC(
+          firstTarget.getUTCFullYear(),
+          firstTarget.getUTCMonth() + 1,
+          0
+        ));
+
+        return new Date(Date.UTC(
+          firstTarget.getUTCFullYear(),
+          firstTarget.getUTCMonth(),
+          Math.min(day, lastTarget.getUTCDate())
+        ));
+      }
+
+      function formatDate(date) {
+        return new Intl.DateTimeFormat('es-MX', { timeZone: 'UTC' }).format(date);
+      }
+
+      function formatMoney(value) {
+        return new Intl.NumberFormat('es-MX', {
+          style: 'currency',
+          currency: currency && currency.value ? currency.value : 'MXN',
+          minimumFractionDigits: 2,
+          maximumFractionDigits: 2
+        }).format(value);
+      }
+
+      function showReferenceError(message) {
+        if (referenceMessage) {
+          referenceMessage.textContent = message;
+        }
+      }
+
+      function calculateReference() {
+        const base = Number(financialValue ? financialValue.value : NaN);
+        const residual = Number(residualValue && residualValue.value !== '' ? residualValue.value : 0);
+        const months = Number(usefulLife ? usefulLife.value : NaN);
+        const start = parseIsoDate(depreciationStart ? depreciationStart.value : '');
+        const cutoff = parseIsoDate(cutoffDate ? cutoffDate.value : '');
+
+        showReferenceError('');
+
+        if (!method || method.value !== 'linea_recta') {
+          showReferenceError('Selecciona el método Línea recta para calcular la estimación.');
+          return;
+        }
+
+        if (!Number.isFinite(base) || base < 0 || !Number.isFinite(residual) || residual < 0 || residual > base) {
+          showReferenceError('Revisa el valor financiero y el valor residual.');
+          return;
+        }
+
+        if (!Number.isInteger(months) || months < 1 || months > 1200 || !start || !cutoff) {
+          showReferenceError('Captura vida útil, fecha de inicio y fecha de corte válidas.');
+          return;
+        }
+
+        if (start.getTime() > cutoff.getTime()) {
+          showReferenceError('La fecha de inicio no puede ser posterior a la fecha de corte.');
+          return;
+        }
+
+        const end = addMonthsNoOverflow(start, months);
+        const totalDays = Math.max(1, Math.floor((end.getTime() - start.getTime()) / 86400000));
+        const effectiveCutoff = cutoff.getTime() < end.getTime() ? cutoff : end;
+        const elapsedDays = cutoff.getTime() <= start.getTime()
+          ? 0
+          : Math.min(totalDays, Math.floor((effectiveCutoff.getTime() - start.getTime()) / 86400000));
+        const ratio = Math.min(1, Math.max(0, elapsedDays / totalDays));
+        const depreciation = Math.round(Math.max(base - residual, 0) * ratio * 100) / 100;
+        const book = Math.round(Math.max(base - depreciation, residual) * 100) / 100;
+
+        if (estimatedDepreciation) {
+          estimatedDepreciation.textContent = formatMoney(depreciation);
+        }
+        if (estimatedBook) {
+          estimatedBook.textContent = formatMoney(book);
+        }
+        if (estimatedPercent) {
+          estimatedPercent.textContent = (ratio * 100).toFixed(2) + '%';
+        }
+        if (estimatedEnd) {
+          estimatedEnd.textContent = formatDate(end);
+        }
+
+        showReferenceError('Estimación actualizada. El servidor volverá a calcularla al guardar.');
+      }
+
+      if (currency) {
+        currency.addEventListener('change', syncExchangeFields);
+      }
+
+      if (calculateButton) {
+        calculateButton.addEventListener('click', calculateReference);
+      }
+
+      syncExchangeFields();
+    }
 
     activatePanel(page.dataset.activePanel || 'consulta', false);
   });

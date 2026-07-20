@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\AssetStatusCatalogService;
+use App\Services\FinancialCatalogService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -12,8 +13,10 @@ use Illuminate\View\View;
 
 class ExpedienteGestionController extends Controller
 {
-    public function __construct(private readonly AssetStatusCatalogService $statusCatalogs)
-    {
+    public function __construct(
+        private readonly AssetStatusCatalogService $statusCatalogs,
+        private readonly FinancialCatalogService $financialCatalogs
+    ) {
     }
 
     public function edit(int $expediente): View
@@ -29,6 +32,7 @@ class ExpedienteGestionController extends Controller
             'ubicaciones' => $this->catalogOptions('ubicaciones'),
             'responsables' => $this->catalogOptions('responsables'),
             'estatusOperativos' => $this->statusCatalogs->operationalOptions(),
+            'monedas' => $this->financialCatalogs->currencies(),
         ]);
     }
 
@@ -41,7 +45,13 @@ class ExpedienteGestionController extends Controller
             'uuid_cfdi' => ['nullable', 'string', 'max:50'],
             'fecha_factura' => ['required', 'date'],
             'monto_factura' => ['required', 'numeric', 'min:0'],
-            'moneda' => ['required', 'in:MXN,USD,EUR'],
+            'moneda' => [
+                'required',
+                'string',
+                'size:3',
+                'regex:/^[A-Z]{3}$/',
+                Rule::exists('monedas', 'clave')->where(fn ($query) => $query->where('estatus', 'activo')),
+            ],
             'proveedor_id' => ['required', 'integer', 'exists:proveedores,id'],
             'tipo_activo_id' => ['required', 'integer', 'exists:tipos_activo,id'],
             'centro_costo_id' => ['required', 'integer', 'exists:centros_costo,id'],
@@ -65,7 +75,9 @@ class ExpedienteGestionController extends Controller
             'folio_factura.required' => 'El folio de factura es obligatorio.',
             'fecha_factura.required' => 'La fecha de factura es obligatoria.',
             'monto_factura.required' => 'El monto de factura es obligatorio.',
-            'moneda.in' => 'La moneda debe ser MXN, USD o EUR.',
+            'moneda.size' => 'La moneda debe capturarse con tres letras.',
+            'moneda.regex' => 'La moneda solo puede contener letras mayúsculas.',
+            'moneda.exists' => 'La moneda seleccionada no existe o se encuentra inactiva.',
             'proveedor_id.required' => 'Debes seleccionar un proveedor.',
             'tipo_activo_id.required' => 'Debes seleccionar un tipo de activo.',
             'centro_costo_id.required' => 'Debes seleccionar un centro de costo.',
