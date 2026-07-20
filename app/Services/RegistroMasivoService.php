@@ -1770,13 +1770,9 @@ class RegistroMasivoService
             $serial = (float) $value;
 
             if ($serial >= 1 && $serial <= 2958465) {
-                try {
-                    return (new \DateTimeImmutable('1899-12-30'))
-                        ->modify('+' . (int) floor($serial) . ' days')
-                        ->format('Y-m-d');
-                } catch (\Throwable) {
-                    return null;
-                }
+                return (new \DateTimeImmutable('1899-12-30'))
+                    ->modify('+' . (int) floor($serial) . ' days')
+                    ->format('Y-m-d');
             }
         }
 
