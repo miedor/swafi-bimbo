@@ -61,7 +61,12 @@ class LogicalDeletionConfigurationTest extends TestCase
         self::assertStringContainsString("'deleted_at' => now()", $expedientes);
         self::assertStringContainsString("'deleted_by' => auth()->id()", $expedientes);
         self::assertStringContainsString("'delete_reason' => \$motivoBaja", $expedientes);
-        self::assertStringNotContainsString("DB::table('expedientes')\n                ->where('id', $detalle->expediente_id)\n                ->delete()", $expedientes);
+        $physicalExpedientDelete = <<<'PHP'
+DB::table('expedientes')
+                ->where('id', $detalle->expediente_id)
+                ->delete()
+PHP;
+        self::assertStringNotContainsString($physicalExpedientDelete, $expedientes);
 
         self::assertStringContainsString("'BAJA_LOGICA_VALOR'", $valores);
         self::assertStringContainsString('$record->delete();', $valores);
