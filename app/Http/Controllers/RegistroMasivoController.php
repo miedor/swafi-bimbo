@@ -106,7 +106,7 @@ class RegistroMasivoController extends Controller
     {
         try {
             $batch = $this->importService->previsualizar(
-                csvFile: $request->file('archivo_csv'),
+                layoutFile: $request->file('archivo_csv'),
                 zipFile: $request->file('archivo_zip'),
                 userId: auth()->id()
             );
@@ -452,65 +452,122 @@ class RegistroMasivoController extends Controller
             ->firstOrFail();
     }
 
-    public function plantillaCsv()
+    public function plantillaCsv(): StreamedResponse
     {
-        return response()->streamDownload(function () {
+        return response()->streamDownload(function (): void {
             $output = fopen('php://output', 'w');
 
+            if (!is_resource($output)) {
+                throw new \RuntimeException('No fue posible generar la plantilla CSV.');
+            }
+
             fwrite($output, "\xEF\xBB\xBF");
-
-            fputcsv($output, [
-                'Numero activo',
-                'Descripcion',
-                'Folio factura',
-                'UUID CFDI',
-                'Fecha factura',
-                'Monto factura',
-                'Moneda',
-                'Proveedor RFC',
-                'Tipo activo clave',
-                'Centro costo clave',
-                'Planta clave',
-                'Ubicacion codigo',
-                'Responsable correo',
-                'Serie',
-                'Marca',
-                'Modelo',
-                'Fecha adquisicion',
-                'Estatus operativo',
-                'Documento PDF',
-                'Documento XML',
-                'Observaciones',
-            ]);
-
-            fputcsv($output, [
-                'BIM-537028',
-                'ARTESA N° 1',
-                'FAC-000184',
-                'A1B2C3D4-E5F6-7890-ABCD-000000000184',
-                '25/06/2026',
-                '602700',
-                'MXN',
-                'ACM010101ABC',
-                'EQP',
-                'CC-PLA-200',
-                'PLT-SM',
-                'UBI-SM-PRO-L3-PB',
-                'jorge.mendez@bimbo.local',
-                'SER-537028',
-                'Bimbo Industrial',
-                'ART-2026',
-                '25/06/2026',
-                'en_operacion',
-                'factura_184.pdf|evidencia_recepcion_184.pdf',
-                'factura_184.xml|complemento_184.xml',
-                'Carga masiva de expediente con varios documentos PDF/XML separados por pipe.',
-            ]);
-
+            fputcsv($output, $this->templateHeaders(), ',', '"', '');
+            fputcsv($output, $this->templateExampleRow(), ',', '"', '');
             fclose($output);
         }, 'plantilla_registro_masivo_expedientes_swafi.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    public function plantillaXlsx(): RedirectResponse|StreamedResponse
+    {
+        try {
+            $bytes = $this->xlsxExporter->exportBytes(
+                'Registro masivo',
+                $this->templateHeaders(),
+                [$this->templateExampleRow()]
+            );
+        } catch (\Throwable $exception) {
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'bulk_import_xlsx_template',
+                [
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
+
+            return redirect()
+                ->route('registro-masivo')
+                ->withErrors([
+                    'archivo_csv' => "No fue posible generar la plantilla Excel. Referencia: {$reference}.",
+                ]);
+        }
+
+        return response()->streamDownload(
+            static function () use ($bytes): void {
+                echo $bytes;
+            },
+            'plantilla_registro_masivo_expedientes_swafi.xlsx',
+            [
+                'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                'X-Content-Type-Options' => 'nosniff',
+            ]
+        );
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function templateHeaders(): array
+    {
+        return [
+            'Numero activo',
+            'Descripcion',
+            'Folio factura',
+            'UUID CFDI',
+            'Fecha factura',
+            'Monto factura',
+            'Moneda',
+            'Proveedor RFC',
+            'Tipo activo clave',
+            'Centro costo clave',
+            'Planta clave',
+            'Ubicacion codigo',
+            'Responsable correo',
+            'Serie',
+            'Marca',
+            'Modelo',
+            'Fecha adquisicion',
+            'Estatus operativo',
+            'Documento PDF',
+            'Documento XML',
+            'Observaciones',
+        ];
+    }
+
+    /**
+     * @return array<int, string>
+     */
+    private function templateExampleRow(): array
+    {
+        return [
+            'BIM-537028',
+            'ARTESA N° 1',
+            'FAC-000184',
+            'A1B2C3D4-E5F6-7890-ABCD-000000000184',
+            '25/06/2026',
+            '602700',
+            'MXN',
+            'ACM010101ABC',
+            'EQP',
+            'CC-PLA-200',
+            'PLT-SM',
+            'UBI-SM-PRO-L3-PB',
+            'jorge.mendez@bimbo.local',
+            'SER-537028',
+            'Bimbo Industrial',
+            'ART-2026',
+            '25/06/2026',
+            'en_operacion',
+            'factura_184.pdf|evidencia_recepcion_184.pdf',
+            'factura_184.xml|complemento_184.xml',
+            'Carga masiva de expediente con varios documentos PDF/XML separados por pipe.',
+        ];
     }
 
     private function baseQuery()
