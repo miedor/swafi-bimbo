@@ -138,7 +138,12 @@ class SpreadsheetExportReliabilityTest extends TestCase
         $this->assertIsString($middleware);
 
         $this->assertStringContainsString('exportarIncidenciasCsv', $controller);
-        $this->assertStringContainsString('report($exception);', $controller);
+        $this->assertStringContainsString('SafeExceptionReporter::class', $controller);
+        $this->assertStringContainsString(
+            "'http_controllers_registromasivocontroller_exception_6'",
+            $controller
+        );
+        $this->assertStringNotContainsString('report($exception);', $controller);
         $this->assertStringContainsString("'registro-masivo.incidencias-csv'", $routes);
         $this->assertStringContainsString("'registro-masivo.incidencias-csv'", $middleware);
         $this->assertStringContainsString('Descargar respaldo CSV', $view);

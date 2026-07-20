@@ -156,14 +156,18 @@ class CatalogAccessAndPlantLifecycleConfigurationTest extends TestCase
             'assertCatalogCanBeDeactivated($catalog, (int) $existing->id)',
             'catch (DomainException $exception)',
             'catch (Throwable $exception)',
-            'report($exception);',
-            'No fue posible previsualizar el layout. Revisa el archivo e inténtalo nuevamente.',
+            'SafeExceptionReporter::class',
+            "'catalog_import_preview'",
+            "'catalog_import_apply'",
+            'No fue posible previsualizar el layout. Referencia: {$reference}.',
+            'No fue posible aplicar el lote. No se confirmó ningún cambio. Referencia: {$reference}.',
             '->lockForUpdate()',
             'El catálogo cambió después de la previsualización.',
         ] as $expected) {
             self::assertStringContainsString($expected, $combined);
         }
 
+        self::assertStringNotContainsString('report($exception);', $combined);
     }
 
     public function test_catalog_query_protects_like_searches_and_csv_exports(): void

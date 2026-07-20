@@ -96,10 +96,14 @@ class AuditLogConfigurationTest extends TestCase
             "'Content-Type' => 'application/pdf'",
             'catch (DomainException $exception)',
             'catch (Throwable $exception)',
-            'report($exception);',
+            'SafeExceptionReporter::class',
+            "'audit_log_export'",
+            'No fue posible generar la exportación solicitada. Referencia: {$reference}.',
         ] as $expected) {
             self::assertStringContainsString($expected, $controller);
         }
+
+        self::assertStringNotContainsString('report($exception);', $controller);
     }
 
     public function test_csv_export_prevents_spreadsheet_formula_injection(): void
@@ -121,10 +125,13 @@ class AuditLogConfigurationTest extends TestCase
             "'AUDITORIA_EXPORTA_PDF'",
             "'tabla_afectada' => 'bitacora_auditoria'",
             'catch (Throwable $exception)',
-            'report($exception);',
+            'SafeExceptionReporter::class',
+            "'services_auditlogservice_exception_1'",
         ] as $expected) {
             self::assertStringContainsString($expected, $service);
         }
+
+        self::assertStringNotContainsString('report($exception);', $service);
     }
 
     public function test_incremental_migration_adds_indexes_for_user_and_date_filters(): void

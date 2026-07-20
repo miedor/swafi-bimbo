@@ -112,7 +112,7 @@ class SensitiveValueAccessConfigurationTest extends TestCase
         self::assertStringNotContainsString('report($exception);', $controller);
         self::assertStringNotContainsString('$exception->getMessage()', $controller);
         self::assertStringContainsString(
-            'La importación fue revertida porque ocurrió un error inesperado.',
+            'La importación fue revertida. Referencia: {$reference}.',
             $controller
         );
     }
