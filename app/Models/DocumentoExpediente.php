@@ -22,6 +22,9 @@ class DocumentoExpediente extends Model
         'hash_sha256',
         'version',
         'vigente',
+        'motivo_baja',
+        'dado_baja_at',
+        'dado_baja_por',
         'cargado_por',
     ];
 
@@ -29,6 +32,8 @@ class DocumentoExpediente extends Model
         'vigente' => 'boolean',
         'tamano_bytes' => 'integer',
         'version' => 'integer',
+        'dado_baja_at' => 'datetime',
+        'dado_baja_por' => 'integer',
     ];
 
     protected static function booted(): void
@@ -52,6 +57,11 @@ class DocumentoExpediente extends Model
     public function cfdiValidacion()
     {
         return $this->hasOne(CfdiValidacion::class, 'documento_id');
+    }
+
+    public function deactivatedBy()
+    {
+        return $this->belongsTo(User::class, 'dado_baja_por');
     }
 
     private static function scheduleDocumentValidation(DocumentoExpediente $document): void

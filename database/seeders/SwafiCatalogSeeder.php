@@ -63,6 +63,7 @@ class SwafiCatalogSeeder extends Seeder
             ['clave' => 'expedientes.editar', 'descripcion' => 'Editar expedientes.'],
             ['clave' => 'expedientes.eliminar', 'descripcion' => 'Eliminar expedientes.'],
             ['clave' => 'documentos.cargar', 'descripcion' => 'Registrar documentos PDF/XML.'],
+            ['clave' => 'documentos.eliminar', 'descripcion' => 'Dar de baja lógicamente documentos del expediente. Permiso exclusivo del Administrador SWAFI.'],
             ['clave' => 'valores.administrar', 'descripcion' => 'Administrar valores fiscales y financieros.'],
             ['clave' => 'ubicaciones.administrar', 'descripcion' => 'Administrar ubicación física e inventarios.'],
             ['clave' => 'reportes.exportar', 'descripcion' => 'Exportar consultas y reportes.'],

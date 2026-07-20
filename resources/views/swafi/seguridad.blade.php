@@ -910,20 +910,32 @@
                                                 @php
                                                     $permissionId = (string) $permission->id;
                                                     $permissionMarcado = in_array($permissionId, $permisosSeleccionados, true);
+                                                    $permissionSoloAdministrador = $permission->clave === 'documentos.eliminar';
                                                 @endphp
 
-                                                <label class="sec-check">
-                                                    <input
-                                                        type="checkbox"
-                                                        name="permission_ids[]"
-                                                        value="{{ $permission->id }}"
-                                                        {{ $permissionMarcado ? 'checked' : '' }}
-                                                    >
-                                                    <span>
-                                                        <span class="sec-code">{{ $permission->clave }}</span><br>
-                                                        <small>{{ $permission->descripcion }}</small>
-                                                    </span>
-                                                </label>
+                                                @if ($permissionSoloAdministrador)
+                                                    <div class="sec-check" aria-disabled="true">
+                                                        <input type="checkbox" disabled>
+                                                        <span>
+                                                            <span class="sec-code">{{ $permission->clave }}</span><br>
+                                                            <small>{{ $permission->descripcion }}</small><br>
+                                                            <small><strong>Exclusivo del Administrador SWAFI.</strong></small>
+                                                        </span>
+                                                    </div>
+                                                @else
+                                                    <label class="sec-check">
+                                                        <input
+                                                            type="checkbox"
+                                                            name="permission_ids[]"
+                                                            value="{{ $permission->id }}"
+                                                            {{ $permissionMarcado ? 'checked' : '' }}
+                                                        >
+                                                        <span>
+                                                            <span class="sec-code">{{ $permission->clave }}</span><br>
+                                                            <small>{{ $permission->descripcion }}</small>
+                                                        </span>
+                                                    </label>
+                                                @endif
                                             @endforeach
                                         </div>
                                     </details>

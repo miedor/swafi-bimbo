@@ -541,6 +541,72 @@
     font-weight: 800;
   }
 
+
+  .document-deactivation {
+    position: relative;
+  }
+
+  .document-deactivation > summary {
+    color: #b42318;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .document-deactivation > summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .document-deactivation-form {
+    display: grid;
+    gap: 8px;
+    width: min(320px, 76vw);
+    margin-top: 8px;
+    padding: 10px;
+    border: 1px solid #fecaca;
+    border-radius: 12px;
+    background: #fff7f6;
+  }
+
+  .document-deactivation-form label {
+    display: grid;
+    gap: 5px;
+    color: #7f1d1d;
+    font-size: 11px;
+    font-weight: 900;
+  }
+
+  .document-deactivation-form textarea {
+    width: 100%;
+    min-height: 76px;
+    resize: vertical;
+    padding: 8px 9px;
+    border: 1px solid #f3b4ae;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #3f1d1d;
+    font: inherit;
+    font-size: 12px;
+  }
+
+  .document-deactivation-form button {
+    min-height: 34px;
+    border: 0;
+    border-radius: 10px;
+    background: #b42318;
+    color: #ffffff;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+  }
+
+  .document-deactivation-form button:focus-visible,
+  .document-deactivation > summary:focus-visible {
+    outline: 3px solid rgba(180, 35, 24, .24);
+    outline-offset: 2px;
+  }
+
   @media (max-width: 1280px) {
     .detail-kpis {
       grid-template-columns: repeat(3, minmax(130px, 1fr));
@@ -628,7 +694,8 @@
   $swafiPermissions = session('swafi_permissions', []);
   $currentUserId = (int) (session('swafi_user_id') ?: auth()->id());
 
-  $isAdminSwafi = in_array('Administrador SWAFI', $swafiRoles, true) || in_array('Administrador', $swafiRoles, true);
+  $isOfficialAdminSwafi = in_array('Administrador SWAFI', $swafiRoles, true);
+  $isAdminSwafi = $isOfficialAdminSwafi || in_array('Administrador', $swafiRoles, true);
   $isCaptura = in_array('Usuario Captura', $swafiRoles, true) || in_array('Capturista', $swafiRoles, true);
   $isConsultaAuditoria = in_array('Usuario Consulta / Auditoría', $swafiRoles, true)
       || in_array('Usuario Consulta / Auditoria', $swafiRoles, true)
@@ -641,6 +708,8 @@
   $canManageDocuments = $isAdminSwafi
       || in_array('documentos.cargar', $swafiPermissions, true)
       || in_array('expedientes.editar', $swafiPermissions, true);
+  $canDeactivateDocuments = $isOfficialAdminSwafi
+      && in_array('documentos.eliminar', $swafiPermissions, true);
   $canValidateCfdi = $isAdminSwafi || in_array('cfdi.validar', $swafiPermissions, true);
   $canManageValues = $isAdminSwafi || in_array('valores.administrar', $swafiPermissions, true);
   $canManageLocation = $isAdminSwafi || in_array('ubicaciones.administrar', $swafiPermissions, true);
@@ -1145,12 +1214,30 @@
                       <div class="table-actions">
                         <a href="{{ route('documentos.ver', $documento->id) }}" target="_blank" rel="noopener">Ver</a>
                         <a href="{{ route('documentos.descargar', $documento->id) }}">Descargar</a>
-                        @if($canManageDocuments)
-                          <form method="POST" action="{{ route('documentos.eliminar', $documento->id) }}" style="display:inline" data-confirm="¿Deseas dar de baja lógicamente este documento? El archivo físico y la trazabilidad se conservarán.">
-                            @csrf
-                            @method('DELETE')
-                            <button type="submit" style="border:0;background:none;color:#b42318;font-weight:900;cursor:pointer;padding:0;">Dar de baja</button>
-                          </form>
+                        @if($canDeactivateDocuments)
+                          <details class="document-deactivation">
+                            <summary>Dar de baja</summary>
+                            <form
+                              method="POST"
+                              action="{{ route('documentos.eliminar', $documento->id) }}"
+                              class="document-deactivation-form"
+                              data-confirm="¿Confirmas la baja lógica de este documento? El archivo físico, sus versiones y la trazabilidad se conservarán."
+                            >
+                              @csrf
+                              @method('DELETE')
+                              <label>
+                                Motivo de la baja
+                                <textarea
+                                  name="motivo_baja"
+                                  required
+                                  minlength="10"
+                                  maxlength="500"
+                                  placeholder="Describe por qué debe dejar de estar vigente este documento."
+                                >{{ old('motivo_baja') }}</textarea>
+                              </label>
+                              <button type="submit">Confirmar baja lógica</button>
+                            </form>
+                          </details>
                         @endif
                       </div>
                     </td>

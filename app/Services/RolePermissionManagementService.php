@@ -9,6 +9,10 @@ class RolePermissionManagementService
 {
     private const ADMIN_ROLE = 'Administrador SWAFI';
 
+    private const ADMIN_ONLY_PERMISSION_KEYS = [
+        'documentos.eliminar',
+    ];
+
     /**
      * Crea o actualiza un rol y sincroniza su matriz de permisos activos.
      *
@@ -47,6 +51,10 @@ class RolePermissionManagementService
             $permissionIds = $isAdministrator
                 ? $this->allActivePermissionIds(true)
                 : $this->assertAndReturnActivePermissionIds($requestedPermissionIds);
+
+            if (!$isAdministrator) {
+                $this->assertNoAdministratorOnlyPermissions($permissionIds);
+            }
 
             if ($requestedActive && !$isAdministrator && $permissionIds === []) {
                 throw new DomainException('Un rol activo debe conservar al menos un permiso activo.');
@@ -156,6 +164,7 @@ class RolePermissionManagementService
             if ($nextStatus === 'activo') {
                 $permissionIds = $this->permissionIdsForRole($roleId, true);
                 $activePermissionIds = $this->assertAndReturnActivePermissionIds($permissionIds);
+                $this->assertNoAdministratorOnlyPermissions($activePermissionIds);
 
                 if ($activePermissionIds === []) {
                     throw new DomainException('No puedes activar un rol sin permisos activos. Edita el rol y asigna al menos uno.');
@@ -376,6 +385,25 @@ class RolePermissionManagementService
         }
 
         return $activeIds;
+    }
+
+    private function assertNoAdministratorOnlyPermissions(array $permissionIds): void
+    {
+        if ($permissionIds === []) {
+            return;
+        }
+
+        $restrictedPermission = DB::table('permissions')
+            ->whereIn('id', $permissionIds)
+            ->whereIn('clave', self::ADMIN_ONLY_PERMISSION_KEYS)
+            ->lockForUpdate()
+            ->value('clave');
+
+        if ($restrictedPermission !== null) {
+            throw new DomainException(
+                'El permiso para dar de baja documentos es exclusivo del Administrador SWAFI y no puede asignarse a otro rol.'
+            );
+        }
     }
 
     /**

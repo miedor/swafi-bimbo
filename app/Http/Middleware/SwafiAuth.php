@@ -184,8 +184,9 @@ class SwafiAuth
             'expedientes.actualizar',
             'expedientes.eliminar' => 'expedientes.editar',
 
-            'documentos.store',
-            'documentos.eliminar' => 'documentos.cargar',
+            'documentos.store' => 'documentos.cargar',
+
+            'documentos.eliminar' => 'documentos.eliminar',
 
             'observaciones.store' => 'observaciones.crear',
 

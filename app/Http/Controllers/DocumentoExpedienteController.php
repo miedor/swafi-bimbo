@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\DeactivateExpedienteDocumentRequest;
 use App\Models\DocumentoExpediente;
 use App\Services\CfdiValidationService;
 use App\Services\SwafiStorageService;
@@ -320,27 +321,45 @@ class DocumentoExpedienteController extends Controller
             ->with('success', 'Los documentos fueron ligados correctamente al expediente. Agregados/Reemplazados: ' . count($guardados));
     }
 
-    public function destroy(int $documento): RedirectResponse
-    {
-        [$documentoData, $expediente] = $this->findDocumentContext($documento);
+    public function destroy(
+        DeactivateExpedienteDocumentRequest $request,
+        int $documento
+    ): RedirectResponse {
+        $motivoBaja = trim((string) $request->validated('motivo_baja'));
 
-        if (!(bool) $documentoData->vigente) {
-            return redirect()
-                ->route('expediente', ['expediente' => $expediente->id, 'tab' => 'documentos'])
-                ->withErrors([
-                    'documentos' => 'El documento seleccionado ya se encuentra dado de baja lógicamente.',
-                ]);
-        }
+        $result = DB::transaction(function () use ($documento, $motivoBaja): array {
+            [$documentoData, $expediente] = $this->findDocumentContext(
+                documento: $documento,
+                lockForUpdate: true
+            );
 
-        DB::transaction(function () use ($documentoData, $expediente): void {
+            if (!(bool) $documentoData->vigente) {
+                return [
+                    'changed' => false,
+                    'expediente_id' => (int) $expediente->id,
+                ];
+            }
+
+            $userId = (int) (auth()->id() ?: session('swafi_user_id'));
+            abort_if($userId <= 0, 403, 'No fue posible validar al Administrador SWAFI que solicita la baja.');
+
+            $deactivatedAt = now();
+
             DB::table('documentos_expediente')
                 ->where('id', $documentoData->id)
+                ->where('vigente', true)
                 ->update([
                     'vigente' => false,
-                    'updated_at' => now(),
+                    'motivo_baja' => $motivoBaja,
+                    'dado_baja_at' => $deactivatedAt,
+                    'dado_baja_por' => $userId,
+                    'updated_at' => $deactivatedAt,
                 ]);
 
-            $this->updateDocumentalStatus((int) $expediente->id, $expediente->numero_activo);
+            $this->updateDocumentalStatus(
+                (int) $expediente->id,
+                (string) $expediente->numero_activo
+            );
 
             $this->registrarBitacora(
                 numeroActivo: $expediente->numero_activo,
@@ -352,15 +371,38 @@ class DocumentoExpedienteController extends Controller
                     'folio_factura' => $expediente->folio_factura,
                     'tipo_documento' => $documentoData->tipo_documento,
                     'nombre_archivo' => $documentoData->nombre_archivo,
+                    'version' => (int) ($documentoData->version ?? 1),
                     'storage_disk' => $documentoData->storage_disk ?? 'local',
-                    'eliminacion' => 'Baja lógica. El archivo físico se conserva para trazabilidad.',
+                    'motivo_baja' => $motivoBaja,
+                    'dado_baja_por' => $userId,
+                    'dado_baja_at' => $deactivatedAt->toIso8601String(),
+                    'eliminacion' => 'Baja lógica administrativa. El archivo físico y las versiones previas se conservan para trazabilidad.',
                 ]
             );
-        });
+
+            return [
+                'changed' => true,
+                'expediente_id' => (int) $expediente->id,
+            ];
+        }, 3);
+
+        if ($result['changed'] !== true) {
+            return redirect()
+                ->route('expediente', [
+                    'expediente' => $result['expediente_id'],
+                    'tab' => 'documentos',
+                ])
+                ->withErrors([
+                    'documentos' => 'El documento seleccionado ya se encuentra dado de baja lógicamente.',
+                ]);
+        }
 
         return redirect()
-            ->route('expediente', ['expediente' => $expediente->id, 'tab' => 'documentos'])
-            ->with('success', 'El documento fue dado de baja lógicamente. El archivo físico y la trazabilidad se conservan.');
+            ->route('expediente', [
+                'expediente' => $result['expediente_id'],
+                'tab' => 'documentos',
+            ])
+            ->with('success', 'El documento fue dado de baja lógicamente por el Administrador SWAFI. El archivo físico, las versiones y la trazabilidad se conservan.');
     }
 
     /**
@@ -469,11 +511,18 @@ class DocumentoExpedienteController extends Controller
         );
     }
 
-    private function findDocumentContext(int $documento): array
-    {
-        $documentoData = DB::table('documentos_expediente')
-            ->where('id', $documento)
-            ->first();
+    private function findDocumentContext(
+        int $documento,
+        bool $lockForUpdate = false
+    ): array {
+        $documentQuery = DB::table('documentos_expediente')
+            ->where('id', $documento);
+
+        if ($lockForUpdate) {
+            $documentQuery->lockForUpdate();
+        }
+
+        $documentoData = $documentQuery->first();
 
         abort_if(!$documentoData, 404, 'El documento solicitado no existe.');
 
