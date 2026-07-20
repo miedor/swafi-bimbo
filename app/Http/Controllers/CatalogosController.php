@@ -9,6 +9,7 @@ use App\Http\Requests\StoreCatalogRequest;
 use App\Http\Requests\UpdateCatalogStatusRequest;
 use App\Services\CatalogImportService;
 use App\Services\CatalogManagementService;
+use App\Services\CatalogVisibilityService;
 use App\Services\SimpleXlsxExporter;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -23,6 +24,7 @@ class CatalogosController extends Controller
     public function __construct(
         private readonly CatalogManagementService $catalogManagement,
         private readonly CatalogImportService $catalogImports,
+        private readonly CatalogVisibilityService $catalogVisibility,
         private readonly SimpleXlsxExporter $xlsxExporter
     ) {
     }
@@ -30,6 +32,14 @@ class CatalogosController extends Controller
     {
         $validated = $request->validated();
         $catalogoActivo = (string) ($validated['catalogo'] ?? 'proveedores');
+        $catalogosDisponibles = $this->catalogVisibility->visibleCatalogs($request);
+
+        abort_unless(
+            array_key_exists($catalogoActivo, $catalogosDisponibles),
+            403,
+            'No cuentas con permiso para consultar el catálogo solicitado.'
+        );
+
         $canAdminCatalogs = $this->canAdministerCatalogs($request);
         $importBatch = null;
         $importRows = null;
@@ -96,7 +106,7 @@ class CatalogosController extends Controller
 
         return view('swafi.catalogos', [
             'catalogoActivo' => $catalogoActivo,
-            'catalogosDisponibles' => $this->catalogs(),
+            'catalogosDisponibles' => $catalogosDisponibles,
             'columnas' => $this->columnsFor($catalogoActivo),
             'resultados' => $resultados,
             'registroEdit' => $registroEdit,
@@ -759,11 +769,7 @@ class CatalogosController extends Controller
 
     private function canAdministerCatalogs(Request $request): bool
     {
-        $roles = collect($request->session()->get('swafi_roles', []));
-        $permissions = collect($request->session()->get('swafi_permissions', []));
-
-        return $roles->contains('Administrador SWAFI')
-            || $permissions->contains('catalogos.administrar');
+        return $this->catalogVisibility->canAdminister($request);
     }
 
     private function options(): array

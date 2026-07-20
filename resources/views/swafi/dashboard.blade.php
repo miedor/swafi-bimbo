@@ -575,6 +575,16 @@
         return in_array($permission, $permissions, true);
     };
 
+    $catalogVisibility = app(\App\Services\CatalogVisibilityService::class);
+    $canAccessCatalogs = $can('catalogos.ver')
+        && $catalogVisibility->canAccessAny(request());
+    $firstVisibleCatalog = $canAccessCatalogs
+        ? $catalogVisibility->firstVisible(request())
+        : null;
+    $catalogosUrl = $firstVisibleCatalog !== null
+        ? route('catalogos', ['catalogo' => $firstVisibleCatalog])
+        : route('catalogos');
+
     $estatusClass = function (?string $estatus): string {
         $estatus = (string) $estatus;
 
@@ -1096,8 +1106,8 @@
             </a>
           @endif
 
-          @if ($can('catalogos.ver') || $can('catalogos.administrar'))
-            <a class="dash-quick-link" href="{{ route('catalogos') }}">
+          @if ($canAccessCatalogs || $can('catalogos.administrar'))
+            <a class="dash-quick-link" href="{{ $catalogosUrl }}">
               <strong>Catálogos base</strong>
               <span>Consulta de proveedores, plantas y datos maestros.</span>
             </a>

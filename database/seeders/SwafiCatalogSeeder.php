@@ -43,7 +43,20 @@ class SwafiCatalogSeeder extends Seeder
         |--------------------------------------------------------------------------
         */
 
-        $permissions = [
+        $catalogReadPermissions = [
+            ['clave' => 'catalogos.proveedores.ver', 'descripcion' => 'Consultar el catálogo de proveedores.'],
+            ['clave' => 'catalogos.plantas.ver', 'descripcion' => 'Consultar el catálogo de plantas.'],
+            ['clave' => 'catalogos.centros_costo.ver', 'descripcion' => 'Consultar el catálogo de centros de costo.'],
+            ['clave' => 'catalogos.categorias_activo.ver', 'descripcion' => 'Consultar el catálogo de categorías de activo.'],
+            ['clave' => 'catalogos.tipos_activo.ver', 'descripcion' => 'Consultar el catálogo de tipos de activo.'],
+            ['clave' => 'catalogos.estatus_documentales.ver', 'descripcion' => 'Consultar el catálogo de estatus documentales.'],
+            ['clave' => 'catalogos.estatus_operativos.ver', 'descripcion' => 'Consultar el catálogo de estatus operativos.'],
+            ['clave' => 'catalogos.areas.ver', 'descripcion' => 'Consultar el catálogo de áreas.'],
+            ['clave' => 'catalogos.ubicaciones.ver', 'descripcion' => 'Consultar el catálogo de ubicaciones.'],
+            ['clave' => 'catalogos.responsables.ver', 'descripcion' => 'Consultar el catálogo de responsables.'],
+        ];
+
+        $permissions = array_merge([
             ['clave' => 'dashboard.ver', 'descripcion' => 'Visualizar dashboard principal.'],
             ['clave' => 'expedientes.ver', 'descripcion' => 'Consultar expedientes.'],
             ['clave' => 'expedientes.crear', 'descripcion' => 'Crear expedientes.'],
@@ -57,7 +70,7 @@ class SwafiCatalogSeeder extends Seeder
             ['clave' => 'catalogos.administrar', 'descripcion' => 'Administrar catálogos base.'],
             ['clave' => 'seguridad.administrar', 'descripcion' => 'Administrar usuarios, roles y permisos.'],
             ['clave' => 'bitacora.ver', 'descripcion' => 'Consultar bitácora de auditoría.'],
-        ];
+        ], $catalogReadPermissions);
 
         foreach ($permissions as $permission) {
             DB::table('permissions')->updateOrInsert(
@@ -92,7 +105,9 @@ class SwafiCatalogSeeder extends Seeder
             ]);
         }
 
-        $capturaPermisos = [
+        $catalogReadPermissionKeys = array_column($catalogReadPermissions, 'clave');
+
+        $capturaPermisos = array_merge([
             'dashboard.ver',
             'expedientes.ver',
             'expedientes.crear',
@@ -100,22 +115,22 @@ class SwafiCatalogSeeder extends Seeder
             'documentos.cargar',
             'valores.administrar',
             'catalogos.ver',
-        ];
+        ], $catalogReadPermissionKeys);
 
-        $consultaPermisos = [
+        $consultaPermisos = array_merge([
             'dashboard.ver',
             'expedientes.ver',
             'reportes.exportar',
             'bitacora.ver',
             'catalogos.ver',
-        ];
+        ], $catalogReadPermissionKeys);
 
-        $plantaPermisos = [
+        $plantaPermisos = array_merge([
             'dashboard.ver',
             'expedientes.ver',
             'ubicaciones.administrar',
             'catalogos.ver',
-        ];
+        ], $catalogReadPermissionKeys);
 
         $this->attachPermissions($capturaRoleId, $capturaPermisos);
         $this->attachPermissions($consultaRoleId, $consultaPermisos);

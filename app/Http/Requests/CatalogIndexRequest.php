@@ -3,6 +3,7 @@
 namespace App\Http\Requests;
 
 use App\Services\CatalogManagementService;
+use App\Services\CatalogVisibilityService;
 use Illuminate\Foundation\Http\FormRequest;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Validation\Rule;
@@ -12,20 +13,10 @@ class CatalogIndexRequest extends FormRequest
 {
     public function authorize(): bool
     {
-        $roles = collect($this->session()->get('swafi_roles', []))
-            ->filter(fn ($role) => is_scalar($role))
-            ->map(fn ($role) => mb_strtolower(trim((string) $role)));
+        $visibility = app(CatalogVisibilityService::class);
+        $catalog = trim((string) $this->input('catalogo', ''));
 
-        $permissions = collect($this->session()->get('swafi_permissions', []))
-            ->filter(fn ($permission) => is_scalar($permission))
-            ->map(fn ($permission) => trim((string) $permission));
-
-        $isAdministrator = $roles->contains('administrador swafi')
-            || $permissions->contains('catalogos.administrar');
-
-        $canView = $isAdministrator || $permissions->contains('catalogos.ver');
-
-        if (!$canView) {
+        if (!$visibility->canView($this, $catalog)) {
             return false;
         }
 
@@ -34,7 +25,7 @@ class CatalogIndexRequest extends FormRequest
             || $this->filled('export')
             || $this->filled('lote')
             || $this->filled('import_status')
-        ) && !$isAdministrator) {
+        ) && !$visibility->canAdminister($this)) {
             return false;
         }
 
@@ -148,8 +139,15 @@ class CatalogIndexRequest extends FormRequest
 
     protected function prepareForValidation(): void
     {
+        $catalog = trim((string) $this->input('catalogo', ''));
+
+        if ($catalog === '') {
+            $catalog = app(CatalogVisibilityService::class)->firstVisible($this)
+                ?? 'proveedores';
+        }
+
         $normalized = [
-            'catalogo' => trim((string) $this->input('catalogo', 'proveedores')) ?: 'proveedores',
+            'catalogo' => $catalog,
         ];
 
         foreach (['buscar', 'estatus', 'export', 'swafi_focus', 'lote', 'import_status'] as $field) {
