@@ -89,7 +89,7 @@ class InitialAssetLocationConfigurationTest extends TestCase
             '@disabled($ubicacionesIniciales->isEmpty())',
             "'ubicacionesIniciales' => \$locationOptions['ubicaciones']",
             "'responsablesUbicacion' => \$locationOptions['responsables']",
-            'if (\$detalle->ubicacion_id === null)',
+            "if (\$detalle->ubicacion_id === null)",
         ] as $expected) {
             self::assertStringContainsString($expected, $view.$controller);
         }
