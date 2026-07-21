@@ -68,16 +68,39 @@ class ValoresActivoControllerParsingTest extends TestCase
                 'tipo_cambio' => 1.0,
                 'fecha_tipo_cambio' => null,
                 'origen_tipo_cambio' => null,
-                'metodo_depreciacion' => null,
-                'fecha_inicio_depreciacion' => null,
-                'valor_residual' => null,
             ],
             ['MXN' => false],
-            ['vigente', 'en_revision', 'baja'],
-            ['linea_recta']
+            ['vigente', 'en_revision', 'baja']
         );
 
         self::assertSame('el estatus contable no existe o se encuentra inactivo.', $error);
+    }
+
+    public function test_oracle_values_are_not_recalculated_or_cross_compared(): void
+    {
+        $controller = $this->controller();
+        $validate = new ReflectionMethod($controller, 'validateImportPayload');
+
+        $error = $validate->invoke(
+            $controller,
+            [
+                'estatus_contable' => 'vigente',
+                'fecha_corte' => '2026-06-25',
+                'vida_util_meses' => 60,
+                'valor_fiscal' => 1000.0,
+                'valor_financiero' => 1000.0,
+                'depreciacion_acumulada' => 1200.0,
+                'valor_en_libros' => 1500.0,
+                'moneda' => 'MXN',
+                'tipo_cambio' => 1.0,
+                'fecha_tipo_cambio' => null,
+                'origen_tipo_cambio' => null,
+            ],
+            ['MXN' => false],
+            ['vigente', 'en_revision', 'baja']
+        );
+
+        self::assertNull($error, 'SWAFI debe resguardar los valores oficiales de Oracle ERP sin recalcularlos.');
     }
 
     private function controller(): ValoresActivoController

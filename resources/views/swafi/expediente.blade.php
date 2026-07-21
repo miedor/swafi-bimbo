@@ -969,12 +969,8 @@
           <div class="detail-grid">
             <div class="detail-field"><strong>Valor fiscal</strong><div>{{ $valor ? '$ ' . number_format((float) $valor->valor_fiscal, 2) : 'Pendiente' }}</div></div>
             <div class="detail-field"><strong>Valor financiero</strong><div>{{ $valor ? '$ ' . number_format((float) $valor->valor_financiero, 2) : 'Pendiente' }}</div></div>
-            <div class="detail-field"><strong>Depreciación acumulada</strong><div>{{ $valor ? '$ ' . number_format((float) $valor->depreciacion_acumulada, 2) : 'Pendiente' }}</div></div>
-            <div class="detail-field"><strong>Valor en libros oficial</strong><div>{{ $valor ? '$ ' . number_format((float) $valor->valor_en_libros, 2) : 'Pendiente' }}</div></div>
-            <div class="detail-field"><strong>Depreciación estimada</strong><div>{{ $valor && $valor->depreciacion_estimada !== null ? '$ ' . number_format((float) $valor->depreciacion_estimada, 2) : 'Sin cálculo referencial' }}</div></div>
-            <div class="detail-field"><strong>Valor en libros estimado</strong><div>{{ $valor && $valor->valor_en_libros_estimado !== null ? '$ ' . number_format((float) $valor->valor_en_libros_estimado, 2) : 'Sin cálculo referencial' }}</div></div>
-            <div class="detail-field"><strong>Método / inicio</strong><div>{{ $valor && $valor->metodo_depreciacion ? \Illuminate\Support\Str::headline($valor->metodo_depreciacion) . ' / ' . ($valor->fecha_inicio_depreciacion ?: 'Sin fecha') : 'Sin cálculo referencial' }}</div></div>
-            <div class="detail-field"><strong>Valor residual</strong><div>{{ $valor ? '$ ' . number_format((float) ($valor->valor_residual ?? 0), 2) : 'Pendiente' }}</div></div>
+            <div class="detail-field"><strong>Depreciación acumulada (Oracle ERP)</strong><div>{{ $valor ? '$ ' . number_format((float) $valor->depreciacion_acumulada, 2) : 'Pendiente' }}</div></div>
+            <div class="detail-field"><strong>Valor en libros (Oracle ERP)</strong><div>{{ $valor ? '$ ' . number_format((float) $valor->valor_en_libros, 2) : 'Pendiente' }}</div></div>
             <div class="detail-field"><strong>Moneda / tipo de cambio</strong><div>{{ $valor ? (($valor->moneda ?? 'MXN') . ' / ' . ($valor->tipo_cambio ? number_format((float) $valor->tipo_cambio, 6) : 'N/A')) : 'Pendiente' }}</div></div>
             <div class="detail-field"><strong>Fecha de corte</strong><div>{{ $valor->fecha_corte ?? 'Pendiente' }}</div></div>
             <div class="detail-field"><strong>Estatus contable</strong><div>{{ $valor ? ucfirst(str_replace('_', ' ', $valor->estatus_contable)) : 'Pendiente' }}</div></div>

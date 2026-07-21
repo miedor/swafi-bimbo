@@ -54,21 +54,6 @@ return [
         ),
     ],
 
-    'depreciacion' => [
-        /*
-         * HU-036/HU-037: los métodos disponibles se mantienen en configuración
-         * porque cada opción requiere una fórmula implementada y probada. Los
-         * resultados son referenciales y no sustituyen los cálculos oficiales
-         * del ERP corporativo.
-         */
-        'metodos' => [
-            'linea_recta' => [
-                'label' => 'Línea recta',
-                'description' => 'Distribuye la base depreciable de forma uniforme durante la vida útil.',
-            ],
-        ],
-    ],
-
     'documentos_expediente' => [
         /*
          * HU-012: catálogo controlado para clasificar documentos base y

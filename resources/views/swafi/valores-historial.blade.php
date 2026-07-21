@@ -2,7 +2,7 @@
 
 @section('title', 'Histórico de valores | SWAFI')
 @section('page_title', 'Histórico fiscal y financiero')
-@section('page_subtitle', 'Trazabilidad de altas, cambios, conciliaciones, bajas lógicas y restauraciones')
+@section('page_subtitle', 'Trazabilidad de valores oficiales, soporte XML, bajas lógicas y restauraciones')
 @section('breadcrumb', 'Valores fiscales y financieros / Histórico')
 
 @section('page_styles')
@@ -586,7 +586,7 @@
           <strong>$ {{ number_format((float) $valorActual->valor_financiero, 2) }} {{ $valorActual->moneda ?: 'MXN' }}</strong>
         </div>
         <div class="vh-current-item">
-          <span>Depreciación / valor en libros</span>
+          <span>Depreciación / valor en libros (Oracle ERP)</span>
           <strong>$ {{ number_format((float) $valorActual->depreciacion_acumulada, 2) }} / $ {{ number_format((float) $valorActual->valor_en_libros, 2) }}</strong>
         </div>
         <div class="vh-current-item">
@@ -604,30 +604,6 @@
         <div class="vh-current-item">
           <span>Vida útil</span>
           <strong>{{ $valorActual->vida_util_meses ? ((int) $valorActual->vida_util_meses).' meses' : 'Sin definir' }}</strong>
-        </div>
-        <div class="vh-current-item">
-          <span>Método / inicio referencial</span>
-          <strong>
-            {{ $valorActual->metodo_depreciacion ? \Illuminate\Support\Str::headline($valorActual->metodo_depreciacion) : 'Sin cálculo' }}
-            @if($valorActual->fecha_inicio_depreciacion)
-              · {{ \Illuminate\Support\Carbon::parse($valorActual->fecha_inicio_depreciacion)->format('d/m/Y') }}
-            @endif
-          </strong>
-        </div>
-        <div class="vh-current-item">
-          <span>Depreciación / libros estimados</span>
-          <strong>
-            @if($valorActual->depreciacion_estimada !== null)
-              $ {{ number_format((float) $valorActual->depreciacion_estimada, 2) }} /
-              $ {{ number_format((float) $valorActual->valor_en_libros_estimado, 2) }}
-            @else
-              Sin cálculo referencial
-            @endif
-          </strong>
-        </div>
-        <div class="vh-current-item">
-          <span>Valor residual</span>
-          <strong>$ {{ number_format((float) ($valorActual->valor_residual ?? 0), 2) }}</strong>
         </div>
         <div class="vh-current-item">
           <span>Estado del registro</span>

@@ -7,22 +7,19 @@ use App\Http\Requests\ImportValoresActivoRequest;
 use App\Http\Requests\StoreValorActivoRequest;
 use App\Models\ValorActivo;
 use App\Services\CfdiValidationService;
-use App\Services\DepreciacionReferencialService;
 use App\Services\FinancialCatalogService;
 use App\Services\SafeExceptionReporter;
 use App\Services\SwafiAuthorizationService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
-use DomainException;
 
 class ValoresActivoController extends Controller
 {
     public function __construct(
         private readonly SwafiAuthorizationService $authorization,
         private readonly SafeExceptionReporter $safeExceptions,
-        private readonly FinancialCatalogService $financialCatalogs,
-        private readonly DepreciacionReferencialService $depreciation
+        private readonly FinancialCatalogService $financialCatalogs
     ) {
     }
 
@@ -99,21 +96,8 @@ class ValoresActivoController extends Controller
             }
         }
 
-        $valueInBooks = $this->resolveValorEnLibros(
-            (float) $data['valor_fiscal'],
-            (float) $data['depreciacion_acumulada'],
-            $data['valor_en_libros'] ?? null
-        );
-
         $currency = strtoupper((string) $data['moneda']);
         $requiresExchangeRate = $this->financialCatalogs->currencyRequiresExchangeRate($currency);
-        try {
-            $depreciationReference = $this->resolveDepreciationReference($data);
-        } catch (DomainException $exception) {
-            return back()->withInput()->withErrors([
-                'depreciacion_referencial' => $exception->getMessage(),
-            ]);
-        }
         $payload = [
             'numero_activo' => $data['numero_activo'],
             'valor_fiscal' => $data['valor_fiscal'],
@@ -123,14 +107,8 @@ class ValoresActivoController extends Controller
             'fecha_tipo_cambio' => $requiresExchangeRate ? ($data['fecha_tipo_cambio'] ?? null) : null,
             'origen_tipo_cambio' => $requiresExchangeRate ? ($data['origen_tipo_cambio'] ?? null) : null,
             'depreciacion_acumulada' => $data['depreciacion_acumulada'],
-            'valor_en_libros' => $valueInBooks,
+            'valor_en_libros' => $data['valor_en_libros'],
             'vida_util_meses' => $data['vida_util_meses'] ?? null,
-            'metodo_depreciacion' => $depreciationReference['metodo_depreciacion'],
-            'fecha_inicio_depreciacion' => $depreciationReference['fecha_inicio_depreciacion'],
-            'valor_residual' => $depreciationReference['valor_residual'],
-            'depreciacion_estimada' => $depreciationReference['depreciacion_estimada'],
-            'valor_en_libros_estimado' => $depreciationReference['valor_en_libros_estimado'],
-            'calculo_depreciacion_at' => $depreciationReference['calculo_depreciacion_at'],
             'estatus_contable' => $data['estatus_contable'],
             'motivo_cambio' => $data['motivo_cambio'] ?: ($existing ? null : 'Registro inicial de valores.'),
             'fecha_corte' => $data['fecha_corte'],
@@ -177,8 +155,8 @@ class ValoresActivoController extends Controller
         return redirect()
             ->route('valores')
             ->with('success', $existing
-                ? 'Los valores se actualizaron y conciliaron contra el CFDI vigente.'
-                : 'Los valores se registraron y conciliaron contra el CFDI vigente.');
+                ? 'Los valores oficiales provenientes de Oracle ERP se actualizaron correctamente.'
+                : 'Los valores oficiales provenientes de Oracle ERP se registraron correctamente.');
     }
 
     public function importar(ImportValoresActivoRequest $request, CfdiValidationService $cfdiService)
@@ -197,6 +175,7 @@ class ValoresActivoController extends Controller
             'numero_activo',
             'valor_fiscal',
             'depreciacion_acumulada',
+            'valor_en_libros',
             'valor_financiero',
             'vida_util_meses',
             'fecha_corte',
@@ -223,8 +202,6 @@ class ValoresActivoController extends Controller
             ->pluck('clave')
             ->map(fn (mixed $key): string => mb_strtolower((string) $key, 'UTF-8'))
             ->all();
-        $methodKeys = array_keys($this->financialCatalogs->depreciationMethods());
-
         DB::beginTransaction();
 
         try {
@@ -252,9 +229,6 @@ class ValoresActivoController extends Controller
                     'valor_en_libros' => $this->toDecimal($get('valor_en_libros')),
                     'valor_financiero' => $this->toDecimal($get('valor_financiero')),
                     'vida_util_meses' => $this->toInteger($get('vida_util_meses')),
-                    'metodo_depreciacion' => $this->normalizeHeader($get('metodo_depreciacion')) ?: null,
-                    'fecha_inicio_depreciacion' => $this->parseDate($get('fecha_inicio_depreciacion')),
-                    'valor_residual' => $this->toDecimal($get('valor_residual')),
                     'fecha_corte' => $this->parseDate($get('fecha_corte')),
                     'estatus_contable' => $this->normalizeStatus($get('estatus_contable')),
                     'moneda' => mb_strtoupper($get('moneda') ?: 'MXN', 'UTF-8'),
@@ -271,24 +245,24 @@ class ValoresActivoController extends Controller
                     $payload['origen_tipo_cambio'] = null;
                 }
 
-                if ($payload['valor_fiscal'] === null || $payload['valor_financiero'] === null || $payload['depreciacion_acumulada'] === null) {
-                    $this->rejectRow($summary, $lineNumber, 'los importes obligatorios deben ser numéricos.');
-                    continue;
-                }
-
-                if ($payload['valor_en_libros'] === null) {
-                    $payload['valor_en_libros'] = $this->resolveValorEnLibros(
-                        $payload['valor_fiscal'],
-                        $payload['depreciacion_acumulada'],
-                        null
+                if (
+                    $payload['valor_fiscal'] === null
+                    || $payload['valor_financiero'] === null
+                    || $payload['depreciacion_acumulada'] === null
+                    || $payload['valor_en_libros'] === null
+                ) {
+                    $this->rejectRow(
+                        $summary,
+                        $lineNumber,
+                        'los importes oficiales obligatorios deben ser numéricos.'
                     );
+                    continue;
                 }
 
                 $validationError = $this->validateImportPayload(
                     $payload,
                     $currencyRules,
-                    $statusKeys,
-                    $methodKeys
+                    $statusKeys
                 );
 
                 if ($validationError) {
@@ -296,14 +270,6 @@ class ValoresActivoController extends Controller
                     continue;
                 }
 
-                try {
-                    $reference = $this->resolveDepreciationReference($payload);
-                } catch (DomainException $exception) {
-                    $this->rejectRow($summary, $lineNumber, $exception->getMessage());
-                    continue;
-                }
-
-                $payload = array_merge($payload, $reference);
                 $reconciliation = $cfdiService->reconcileValuePayload($numeroActivo, $payload);
 
                 $payload['cfdi_validacion_id'] = $reconciliation['validation_id'];
@@ -371,16 +337,15 @@ class ValoresActivoController extends Controller
             $output = fopen('php://output', 'w');
             fwrite($output, "\xEF\xBB\xBF");
             fputcsv($output, [
-                'Numero activo', 'Valor fiscal', 'Depreciacion acumulada', 'Valor en libros',
+                'Numero activo', 'Valor fiscal', 'Depreciacion acumulada Oracle ERP', 'Valor en libros Oracle ERP',
                 'Valor financiero', 'Moneda', 'Tipo cambio', 'Fecha tipo cambio',
-                'Origen tipo cambio', 'Vida util meses', 'Metodo depreciacion',
-                'Fecha inicio depreciacion', 'Valor residual', 'Fecha corte',
+                'Origen tipo cambio', 'Vida util oficial meses', 'Fecha corte',
                 'Estatus contable', 'Motivo cambio',
             ]);
             fputcsv($output, [
                 'BIM-537028', '602700', '10045', '592655', '602700', 'MXN', '1', '', '',
-                '60', 'linea_recta', '25/06/2026', '0', '25/06/2027', 'vigente',
-                'Carga inicial validada contra CFDI.',
+                '60', '25/06/2027', 'vigente',
+                'Carga de valores oficiales provenientes de Oracle ERP.',
             ]);
             fclose($output);
         }, 'plantilla_valores_activo_swafi.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
@@ -480,12 +445,6 @@ class ValoresActivoController extends Controller
             'v.depreciacion_acumulada',
             'v.valor_en_libros',
             'v.vida_util_meses',
-            'v.metodo_depreciacion',
-            'v.fecha_inicio_depreciacion',
-            'v.valor_residual',
-            'v.depreciacion_estimada',
-            'v.valor_en_libros_estimado',
-            'v.calculo_depreciacion_at',
             'v.motivo_cambio',
             'v.conciliacion_detalle',
             'v.created_at',
@@ -561,7 +520,6 @@ class ValoresActivoController extends Controller
             'tiposActivo' => DB::table('tipos_activo')->where('estatus', 'activo')->orderBy('descripcion')->get(),
             'monedas' => $this->financialCatalogs->currencies(),
             'estatusContables' => $this->financialCatalogs->accountingStatuses(),
-            'metodosDepreciacion' => $this->financialCatalogs->depreciationMethods(),
         ];
     }
 
@@ -579,11 +537,9 @@ class ValoresActivoController extends Controller
             fwrite($output, "\xEF\xBB\xBF");
             fputcsv($output, [
                 'Numero activo', 'Folio factura', 'Proveedor', 'Planta', 'Centro costo',
-                'Tipo activo', 'Valor fiscal', 'Depreciacion acumulada', 'Valor en libros',
+                'Tipo activo', 'Valor fiscal', 'Depreciacion acumulada Oracle ERP', 'Valor en libros Oracle ERP',
                 'Valor financiero', 'Moneda', 'Tipo cambio', 'Fecha tipo cambio',
-                'Vida util meses', 'Metodo depreciacion', 'Fecha inicio depreciacion',
-                'Valor residual', 'Depreciacion estimada', 'Valor en libros estimado',
-                'Fecha corte', 'Estatus contable', 'Estado tecnico XML',
+                'Vida util oficial meses', 'Fecha corte', 'Estatus contable', 'Estado tecnico XML',
                 'Total CFDI', 'Moneda CFDI',
             ]);
 
@@ -593,9 +549,7 @@ class ValoresActivoController extends Controller
                     $row->planta_nombre, $row->centro_costo_clave, $row->tipo_activo,
                     $row->valor_fiscal, $row->depreciacion_acumulada, $row->valor_en_libros,
                     $row->valor_financiero, $row->moneda, $row->tipo_cambio,
-                    $row->fecha_tipo_cambio, $row->vida_util_meses, $row->metodo_depreciacion,
-                    $row->fecha_inicio_depreciacion, $row->valor_residual,
-                    $row->depreciacion_estimada, $row->valor_en_libros_estimado, $row->fecha_corte,
+                    $row->fecha_tipo_cambio, $row->vida_util_meses, $row->fecha_corte,
                     $row->estatus_contable, $row->conciliacion_cfdi, $row->cfdi_total,
                     $row->cfdi_moneda,
                 ]);
@@ -607,13 +561,11 @@ class ValoresActivoController extends Controller
     /**
      * @param array<string, bool> $currencyRules
      * @param array<int, string> $statusKeys
-     * @param array<int, string> $methodKeys
      */
     private function validateImportPayload(
         array $payload,
         array $currencyRules,
-        array $statusKeys,
-        array $methodKeys
+        array $statusKeys
     ): ?string {
         if (!in_array((string) $payload['estatus_contable'], $statusKeys, true)) {
             return 'el estatus contable no existe o se encuentra inactivo.';
@@ -645,20 +597,6 @@ class ValoresActivoController extends Controller
             return 'un activo vigente o en revisión requiere valor fiscal y valor financiero mayores a cero.';
         }
 
-        if (
-            $payload['estatus_contable'] !== 'baja'
-            && (float) $payload['depreciacion_acumulada'] > (float) $payload['valor_fiscal']
-        ) {
-            return 'la depreciación acumulada no puede superar el valor fiscal.';
-        }
-
-        if (
-            $payload['estatus_contable'] !== 'baja'
-            && (float) $payload['valor_en_libros'] > (float) $payload['valor_fiscal']
-        ) {
-            return 'el valor en libros no puede superar el valor fiscal.';
-        }
-
         $currency = (string) $payload['moneda'];
 
         if (!array_key_exists($currency, $currencyRules)) {
@@ -674,35 +612,6 @@ class ValoresActivoController extends Controller
             )
         ) {
             return 'la moneda seleccionada requiere tipo de cambio, fecha y origen.';
-        }
-
-        $method = trim((string) ($payload['metodo_depreciacion'] ?? ''));
-        $startDate = $payload['fecha_inicio_depreciacion'] ?? null;
-        $residualValue = $payload['valor_residual'] ?? null;
-        $hasReferenceData = $method !== '' || $startDate !== null || $residualValue !== null;
-
-        if (!$hasReferenceData) {
-            return null;
-        }
-
-        if ($method === '' || !in_array($method, $methodKeys, true)) {
-            return 'el método de depreciación no está implementado o no es válido.';
-        }
-
-        if (!$startDate) {
-            return 'la fecha de inicio de depreciación no es válida.';
-        }
-
-        if ($residualValue === null || (float) $residualValue < 0) {
-            return 'el valor residual debe ser numérico y no puede ser negativo.';
-        }
-
-        if ((float) $residualValue > (float) $payload['valor_financiero']) {
-            return 'el valor residual no puede superar el valor financiero.';
-        }
-
-        if ((string) $startDate > (string) $payload['fecha_corte']) {
-            return 'la fecha de inicio de depreciación no puede ser posterior a la fecha de corte.';
         }
 
         return null;
@@ -808,58 +717,6 @@ class ValoresActivoController extends Controller
             'baja', 'dado_de_baja' => 'baja',
             default => $value !== '' ? $value : null,
         };
-    }
-
-    private function resolveValorEnLibros(float $fiscal, float $depreciation, mixed $book): float
-    {
-        return $book === null || $book === '' ? max(round($fiscal - $depreciation, 2), 0) : round((float) $book, 2);
-    }
-
-    /**
-     * @return array{
-     *     metodo_depreciacion:?string,
-     *     fecha_inicio_depreciacion:?string,
-     *     valor_residual:float,
-     *     depreciacion_estimada:?float,
-     *     valor_en_libros_estimado:?float,
-     *     calculo_depreciacion_at:mixed
-     * }
-     */
-    private function resolveDepreciationReference(array $data): array
-    {
-        $method = trim((string) ($data['metodo_depreciacion'] ?? ''));
-        $startDate = $data['fecha_inicio_depreciacion'] ?? null;
-        $residualValue = $data['valor_residual'] ?? null;
-        $hasReferenceData = $method !== '' || $startDate !== null || $residualValue !== null;
-
-        if (!$hasReferenceData) {
-            return [
-                'metodo_depreciacion' => null,
-                'fecha_inicio_depreciacion' => null,
-                'valor_residual' => 0.0,
-                'depreciacion_estimada' => null,
-                'valor_en_libros_estimado' => null,
-                'calculo_depreciacion_at' => null,
-            ];
-        }
-
-        $result = $this->depreciation->calculate(
-            method: $method,
-            financialValue: (float) ($data['valor_financiero'] ?? 0),
-            residualValue: (float) ($residualValue ?? 0),
-            usefulLifeMonths: (int) ($data['vida_util_meses'] ?? 0),
-            startDate: (string) $startDate,
-            cutoffDate: (string) ($data['fecha_corte'] ?? '')
-        );
-
-        return [
-            'metodo_depreciacion' => $result['metodo'],
-            'fecha_inicio_depreciacion' => $result['fecha_inicio'],
-            'valor_residual' => $result['valor_residual'],
-            'depreciacion_estimada' => $result['depreciacion_estimada'],
-            'valor_en_libros_estimado' => $result['valor_en_libros_estimado'],
-            'calculo_depreciacion_at' => now(),
-        ];
     }
 
     private function rejectRow(array &$summary, int $line, string $message): void

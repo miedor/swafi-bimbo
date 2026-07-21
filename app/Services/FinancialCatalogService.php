@@ -25,16 +25,6 @@ class FinancialCatalogService
             ->get();
     }
 
-    /**
-     * @return array<string, array{label:string,description:string}>
-     */
-    public function depreciationMethods(): array
-    {
-        $methods = config('swafi.depreciacion.metodos', []);
-
-        return is_array($methods) ? $methods : [];
-    }
-
     public function currencyRequiresExchangeRate(string $currency): bool
     {
         $value = DB::table('monedas')

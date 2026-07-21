@@ -413,9 +413,6 @@
         'depreciacion_acumulada',
         'valor_en_libros',
         'valor_financiero',
-        'valor_residual',
-        'depreciacion_estimada',
-        'valor_en_libros_estimado',
     ];
 
     $statusKeys = [
@@ -424,7 +421,6 @@
         'estatus_operativo',
         'estatus_localizacion',
         'ultimo_estatus_localizacion',
-        'metodo_depreciacion',
     ];
 
     $selectedColumnKeys = array_keys($columnasSeleccionadas);
