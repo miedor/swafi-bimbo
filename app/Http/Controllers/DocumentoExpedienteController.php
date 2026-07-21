@@ -3,11 +3,12 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\DeactivateExpedienteDocumentRequest;
+use App\Http\Requests\StoreExpedienteDocumentsRequest;
 use App\Models\DocumentoExpediente;
 use App\Services\CfdiValidationService;
+use App\Services\ExpedienteDocumentCatalogService;
 use App\Services\SwafiStorageService;
 use Illuminate\Http\RedirectResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\File;
 use Illuminate\Support\Str;
@@ -17,8 +18,10 @@ use ZipArchive;
 
 class DocumentoExpedienteController extends Controller
 {
-    public function __construct(private readonly SwafiStorageService $storage)
-    {
+    public function __construct(
+        private readonly SwafiStorageService $storage,
+        private readonly ExpedienteDocumentCatalogService $documentTypes
+    ) {
     }
 
     public function show(int $documento): StreamedResponse|RedirectResponse
@@ -242,8 +245,10 @@ class DocumentoExpedienteController extends Controller
         }
     }
 
-    public function store(Request $request, int $expediente): RedirectResponse
-    {
+    public function store(
+        StoreExpedienteDocumentsRequest $request,
+        int $expediente
+    ): RedirectResponse {
         $expedienteData = DB::table('expedientes')
             ->where('id', $expediente)
             ->whereNull('deleted_at')
@@ -251,26 +256,30 @@ class DocumentoExpedienteController extends Controller
 
         abort_if(!$expedienteData, 404, 'El expediente solicitado no existe.');
 
-        $request->validate([
-            'documentos' => ['required', 'array', 'min:1', 'max:20'],
-            'documentos.*' => ['required', 'file', 'mimes:pdf,xml', 'max:20480'],
-        ], [
-            'documentos.required' => 'Debes seleccionar al menos un documento PDF o XML.',
-            'documentos.array' => 'La carga de documentos no tiene un formato válido.',
-            'documentos.*.file' => 'Uno de los documentos seleccionados no es válido.',
-            'documentos.*.mimes' => 'Solo se permiten archivos PDF o XML.',
-            'documentos.*.max' => 'Cada documento no debe superar los 20 MB.',
-        ]);
-
+        $requestedType = $this->documentTypes->normalizeRequestedType(
+            $request->validated('tipo_documento')
+        );
         $guardados = [];
         $storedFiles = [];
 
         try {
-            DB::transaction(function () use ($request, $expedienteData, &$guardados, &$storedFiles): void {
+            DB::transaction(function () use (
+                $request,
+                $requestedType,
+                $expedienteData,
+                &$guardados,
+                &$storedFiles
+            ): void {
                 foreach ($request->file('documentos', []) as $file) {
-                    $extension = strtolower($file->getClientOriginalExtension());
-                    $tipoDocumento = strtoupper($extension);
-                    $originalName = $file->getClientOriginalName();
+                    $tipoDocumento = $this->documentTypes->resolveStoredType(
+                        $requestedType,
+                        $file
+                    );
+                    $originalName = basename(str_replace(
+                        '\\',
+                        '/',
+                        $file->getClientOriginalName()
+                    ));
 
                     $stored = $this->storeUploadedDocumentFile(
                         file: $file,
@@ -289,25 +298,37 @@ class DocumentoExpedienteController extends Controller
                     );
 
                     $guardados[] = $resultado;
+                    $isAdditional = $this->documentTypes->isAdditional($requestedType);
+                    $auditAction = match (true) {
+                        $isAdditional && $resultado['accion'] === 'reemplazado' => 'EVIDENCIA_ADICIONAL_REEMPLAZADA',
+                        $isAdditional => 'EVIDENCIA_ADICIONAL_AGREGADA',
+                        $resultado['accion'] === 'reemplazado' => 'DOCUMENTO_REEMPLAZADO',
+                        default => 'DOCUMENTO_AGREGADO',
+                    };
 
                     $this->registrarBitacora(
                         numeroActivo: $expedienteData->numero_activo,
-                        accion: $resultado['accion'] === 'reemplazado' ? 'DOCUMENTO_REEMPLAZADO' : 'DOCUMENTO_AGREGADO',
+                        accion: $auditAction,
                         tablaAfectada: 'documentos_expediente',
                         registroClave: (string) $resultado['documento_id'],
                         detalle: [
                             'expediente_id' => $expedienteData->id,
                             'folio_factura' => $expedienteData->folio_factura,
                             'tipo_documento' => $tipoDocumento,
+                            'categoria_documental' => $isAdditional ? 'adicional' : 'factura_cfdi',
                             'nombre_archivo' => $originalName,
                             'version' => $resultado['version'],
+                            'hash_sha256' => $resultado['hash_sha256'],
                             'storage_disk' => $stored['disk'],
                         ]
                     );
                 }
 
-                $this->updateDocumentalStatus((int) $expedienteData->id, $expedienteData->numero_activo);
-            });
+                $this->updateDocumentalStatus(
+                    (int) $expedienteData->id,
+                    $expedienteData->numero_activo
+                );
+            }, 3);
         } catch (\Throwable $exception) {
             foreach ($storedFiles as $storedFile) {
                 $this->storage->delete($storedFile['disk'], $storedFile['path']);
@@ -316,9 +337,19 @@ class DocumentoExpedienteController extends Controller
             throw $exception;
         }
 
+        $message = $this->documentTypes->isAdditional($requestedType)
+            ? 'La evidencia adicional fue ligada correctamente al expediente.'
+            : 'Los documentos de factura fueron ligados correctamente al expediente.';
+
         return redirect()
-            ->route('expediente', ['expediente' => $expedienteData->id, 'tab' => 'documentos'])
-            ->with('success', 'Los documentos fueron ligados correctamente al expediente. Agregados/Reemplazados: ' . count($guardados));
+            ->route('expediente', [
+                'expediente' => $expedienteData->id,
+                'tab' => 'documentos',
+            ])
+            ->with(
+                'success',
+                $message . ' Agregados/Reemplazados: ' . count($guardados)
+            );
     }
 
     public function destroy(
@@ -608,6 +639,9 @@ class DocumentoExpedienteController extends Controller
         return match (strtolower($extension)) {
             'pdf' => 'application/pdf',
             'xml' => 'application/xml',
+            'jpg', 'jpeg' => 'image/jpeg',
+            'png' => 'image/png',
+            'webp' => 'image/webp',
             default => 'application/octet-stream',
         };
     }

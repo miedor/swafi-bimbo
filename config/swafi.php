@@ -69,6 +69,60 @@ return [
         ],
     ],
 
+    'documentos_expediente' => [
+        /*
+         * HU-012: catálogo controlado para clasificar documentos base y
+         * evidencias complementarias sin permitir HTML, SVG o ejecutables.
+         * AUTO_FACTURA conserva la compatibilidad del flujo previo, donde el
+         * tipo PDF/XML se determina por el archivo cargado.
+         */
+        'max_archivos_por_carga' => 10,
+        'tipos' => [
+            'AUTO_FACTURA' => [
+                'label' => 'Factura PDF o CFDI XML',
+                'category' => 'base',
+                'extensions' => ['pdf', 'xml'],
+                'max_kb' => 20480,
+            ],
+            'EVIDENCIA_RECEPCION' => [
+                'label' => 'Evidencia de recepción o entrega',
+                'category' => 'additional',
+                'extensions' => ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+                'max_kb' => 10240,
+            ],
+            'ACTA_ALTA' => [
+                'label' => 'Acta o evidencia de alta del activo',
+                'category' => 'additional',
+                'extensions' => ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+                'max_kb' => 10240,
+            ],
+            'ORDEN_COMPRA' => [
+                'label' => 'Orden de compra',
+                'category' => 'additional',
+                'extensions' => ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+                'max_kb' => 10240,
+            ],
+            'MANUAL_TECNICO' => [
+                'label' => 'Manual o documento técnico',
+                'category' => 'additional',
+                'extensions' => ['pdf'],
+                'max_kb' => 20480,
+            ],
+            'NOTA_SOPORTE' => [
+                'label' => 'Nota o soporte administrativo',
+                'category' => 'additional',
+                'extensions' => ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+                'max_kb' => 10240,
+            ],
+            'OTRO_SOPORTE' => [
+                'label' => 'Otro documento de soporte',
+                'category' => 'additional',
+                'extensions' => ['pdf', 'jpg', 'jpeg', 'png', 'webp'],
+                'max_kb' => 10240,
+            ],
+        ],
+    ],
+
     'importaciones' => [
         /*
          * Ventana máxima para solicitar la reversión controlada de un lote

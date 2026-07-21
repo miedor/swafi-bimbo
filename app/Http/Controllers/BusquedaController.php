@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BusquedaGuardada;
 use App\Services\AssetStatusCatalogService;
+use App\Services\ExpedienteDocumentCatalogService;
 use App\Services\InitialAssetLocationService;
 use App\Services\ObservationDeadlineService;
 use App\Services\SimplePdfTableExporter;
@@ -19,7 +20,8 @@ class BusquedaController extends Controller
 {
     public function __construct(
         private readonly AssetStatusCatalogService $statusCatalogs,
-        private readonly InitialAssetLocationService $initialAssetLocation
+        private readonly InitialAssetLocationService $initialAssetLocation,
+        private readonly ExpedienteDocumentCatalogService $documentTypes
     ) {
     }
 
@@ -133,6 +135,9 @@ class BusquedaController extends Controller
                     'movimientos' => $this->emptyPaginator('mov_page'),
                     'ubicacionesIniciales' => collect(),
                     'responsablesUbicacion' => collect(),
+                    'tiposDocumentoAdicional' => $this->documentTypes->additionalOptions(),
+                    'tiposDocumentoEtiquetas' => $this->documentTypes->storedTypeLabels(),
+                    'documentosAdicionalesAccept' => $this->documentTypes->additionalAcceptAttribute(),
                     'activeTab' => $activeTab,
                     'resumenContadores' => [],
                 ]);
@@ -374,6 +379,9 @@ class BusquedaController extends Controller
             'movimientos' => $movimientos,
             'ubicacionesIniciales' => $locationOptions['ubicaciones'],
             'responsablesUbicacion' => $locationOptions['responsables'],
+            'tiposDocumentoAdicional' => $this->documentTypes->additionalOptions(),
+            'tiposDocumentoEtiquetas' => $this->documentTypes->storedTypeLabels(),
+            'documentosAdicionalesAccept' => $this->documentTypes->additionalAcceptAttribute(),
             'activeTab' => $activeTab,
             'resumenContadores' => $resumenContadores,
         ]);

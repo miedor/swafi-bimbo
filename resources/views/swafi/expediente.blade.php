@@ -728,6 +728,17 @@
   $usuariosAsignablesObservacion = $usuariosAsignablesObservacion ?? collect();
   $ubicacionesIniciales = $ubicacionesIniciales ?? collect();
   $responsablesUbicacion = $responsablesUbicacion ?? collect();
+  $tiposDocumentoAdicional = $tiposDocumentoAdicional ?? [];
+  $tiposDocumentoEtiquetas = $tiposDocumentoEtiquetas ?? [];
+  $documentosAdicionalesAccept = $documentosAdicionalesAccept ?? '.pdf,.jpg,.jpeg,.png,.webp';
+  $documentUploadType = (string) old('tipo_documento', 'AUTO_FACTURA');
+  $documentUploadHasErrors = $errors->has('tipo_documento')
+      || $errors->has('documentos')
+      || $errors->has('documentos.*');
+  $baseDocumentUploadHasErrors = $documentUploadHasErrors
+      && $documentUploadType === 'AUTO_FACTURA';
+  $additionalDocumentUploadHasErrors = $documentUploadHasErrors
+      && $documentUploadType !== 'AUTO_FACTURA';
   $initialLocationHasErrors = $errors->has('ubicacion_id')
       || $errors->has('responsable_id')
       || $errors->has('fecha_asignacion')
@@ -1251,19 +1262,52 @@
           </div>
 
           @if($canManageDocuments)
-            <details class="detail-collapsible" style="margin-bottom:10px;">
-              <summary>Agregar o reemplazar documentos PDF/XML</summary>
+            <details class="detail-collapsible" style="margin-bottom:10px;" @if($baseDocumentUploadHasErrors) open @endif>
+              <summary>Agregar o reemplazar factura PDF/XML</summary>
               <div class="detail-collapsible-content">
                 <form method="POST" action="{{ route('documentos.store', $expediente->expediente_id) }}" enctype="multipart/form-data">
                   @csrf
+                  <input type="hidden" name="tipo_documento" value="AUTO_FACTURA">
                   <label class="detail-form-field">
-                    <span>Seleccionar documentos</span>
+                    <span>Seleccionar factura PDF o CFDI XML</span>
                     <input type="file" name="documentos[]" accept=".pdf,.xml" multiple required>
                   </label>
                   <div class="detail-note" style="margin:9px 0;">
                     Un archivo con el mismo nombre o contenido se registra como nueva versión; un documento diferente se suma al expediente. El activo {{ $expediente->numero_activo }} no se duplica.
                   </div>
-                  <button class="tab" type="submit">Ligar documentos al expediente</button>
+                  <button class="tab" type="submit">Ligar factura al expediente</button>
+                </form>
+              </div>
+            </details>
+
+            <details class="detail-collapsible" style="margin-bottom:10px;" @if($additionalDocumentUploadHasErrors) open @endif>
+              <summary>Adjuntar evidencia adicional</summary>
+              <div class="detail-collapsible-content">
+                <form method="POST" action="{{ route('documentos.store', $expediente->expediente_id) }}" enctype="multipart/form-data">
+                  @csrf
+                  <div class="detail-form-grid">
+                    <label class="detail-form-field">
+                      <span>Tipo de evidencia</span>
+                      <select name="tipo_documento" required>
+                        <option value="">Seleccione...</option>
+                        @foreach($tiposDocumentoAdicional as $documentTypeKey => $documentTypeLabel)
+                          <option value="{{ $documentTypeKey }}" @selected($documentUploadType === $documentTypeKey)>
+                            {{ $documentTypeLabel }}
+                          </option>
+                        @endforeach
+                      </select>
+                    </label>
+
+                    <label class="detail-form-field full">
+                      <span>Archivos de evidencia</span>
+                      <input type="file" name="documentos[]" accept="{{ $documentosAdicionalesAccept }}" multiple required>
+                    </label>
+                  </div>
+
+                  <div class="detail-note" style="margin:9px 0;">
+                    Se permiten PDF e imágenes JPG, PNG o WEBP según el tipo seleccionado. La evidencia adicional conserva hash SHA-256, versión, usuario y fecha de carga, pero no sustituye la factura PDF ni el CFDI XML requeridos para completar el expediente.
+                  </div>
+                  <button class="tab" type="submit">Adjuntar evidencia adicional</button>
                 </form>
               </div>
             </details>
@@ -1285,7 +1329,7 @@
                 @forelse($documentos as $documento)
                   <tr>
                     <td><strong>{{ $documento->nombre_archivo }}</strong><br><small>{{ $documento->mime_type ?: 'MIME no registrado' }}</small></td>
-                    <td>{{ $documento->tipo_documento }}</td>
+                    <td>{{ $tiposDocumentoEtiquetas[$documento->tipo_documento] ?? $documento->tipo_documento }}</td>
                     <td>v{{ $documento->version }}</td>
                     <td>{{ $documento->tamano_bytes ? number_format(((float) $documento->tamano_bytes) / 1024, 2) . ' KB' : 'No registrado' }}</td>
                     <td>
