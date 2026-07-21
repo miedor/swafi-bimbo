@@ -31,7 +31,7 @@ class ValorActivoFichaServiceTest extends TestCase
         self::assertSame(240000.0, $payload['rows'][0][24]);
         self::assertSame(350000.0, $payload['rows'][0][25]);
         self::assertSame('Vigente', $payload['rows'][0][28]);
-        self::assertSame('Coincidente', $payload['rows'][0][29]);
+        self::assertSame('Validado', $payload['rows'][0][29]);
     }
 
     public function test_pdf_payload_groups_identification_invoice_values_and_traceability(): void
@@ -45,7 +45,7 @@ class ValorActivoFichaServiceTest extends TestCase
         self::assertContains('Factura', $sections);
         self::assertContains('Valores', $sections);
         self::assertContains('Depreciación referencial', $sections);
-        self::assertContains('Conciliación CFDI', $sections);
+        self::assertContains('Estado técnico del XML', $sections);
         self::assertContains('Trazabilidad', $sections);
         self::assertContains(
             ['Valores', 'Valor fiscal', 'MXN 580,000.00'],
@@ -83,7 +83,7 @@ class ValorActivoFichaServiceTest extends TestCase
             'calculo_depreciacion_at' => '2026-07-19 10:30:00',
             'estatus_contable' => 'vigente',
             'motivo_cambio' => 'Registro inicial conciliado.',
-            'conciliacion_cfdi' => 'coincidente',
+            'conciliacion_cfdi' => 'validado',
             'conciliacion_detalle' => [],
             'fecha_corte' => '2026-07-19',
             'created_at' => '2026-07-19 10:00:00',

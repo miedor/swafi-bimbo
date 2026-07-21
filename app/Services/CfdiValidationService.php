@@ -18,9 +18,6 @@ class CfdiValidationService
     {
     }
 
-    private const MONEY_TOLERANCE = 0.01;
-    private const EXCHANGE_TOLERANCE = 0.000001;
-
     public function validateDocument(DocumentoExpediente $document, ?int $userId = null): CfdiValidacion
     {
         if (strtoupper((string) $document->tipo_documento) !== 'XML') {
@@ -33,8 +30,6 @@ class CfdiValidationService
 
         $context = DB::table('documentos_expediente as d')
             ->join('expedientes as e', 'e.id', '=', 'd.expediente_id')
-            ->join('activos as a', 'a.numero_activo', '=', 'e.numero_activo')
-            ->leftJoin('proveedores as p', 'p.id', '=', 'a.proveedor_id')
             ->where('d.id', $document->id)
             ->whereNull('e.deleted_at')
             ->select([
@@ -46,11 +41,6 @@ class CfdiValidationService
                 'd.vigente',
                 'e.id as expediente_id',
                 'e.numero_activo',
-                'e.uuid_cfdi as expediente_uuid',
-                'e.fecha_factura',
-                'e.monto_factura',
-                'e.moneda as expediente_moneda',
-                'p.rfc as proveedor_rfc',
             ])
             ->first();
 
@@ -88,42 +78,18 @@ class CfdiValidationService
         );
 
         $extracted = $this->extractFromString($xml);
-        $comparison = $this->compareAgainstExpediente($extracted, $context);
-        $informational = [];
-
-        if (empty($context->expediente_uuid) && !empty($extracted['uuid_cfdi'])) {
-            $duplicate = DB::table('expedientes')
-                ->where('uuid_cfdi', $extracted['uuid_cfdi'])
-                ->where('id', '<>', $context->expediente_id)
-                ->exists();
-
-            if ($duplicate) {
-                $comparison['errors'][] = 'El UUID extraído ya pertenece a otro expediente de SWAFI.';
-                $comparison['coincide_uuid'] = false;
-            } else {
-                DB::table('expedientes')
-                    ->where('id', $context->expediente_id)
-                    ->whereNull('deleted_at')
-                    ->update([
-                        'uuid_cfdi' => $extracted['uuid_cfdi'],
-                        'actualizado_por' => $userId,
-                        'updated_at' => now(),
-                    ]);
-
-                $comparison['coincide_uuid'] = true;
-                $informational[] = 'SWAFI completó automáticamente el UUID del expediente con el valor extraído del XML.';
-            }
-        }
-
         $structuralErrors = $extracted['errors'];
-        $errors = array_values(array_unique(array_merge($structuralErrors, $comparison['errors'])));
-        $warnings = array_values(array_unique(array_merge($extracted['warnings'], $comparison['warnings'])));
+        $errors = array_values(array_unique($structuralErrors));
+        $warnings = array_values(array_unique($extracted['warnings']));
+        $informational = [
+            'Los datos extraídos del XML se conservan como referencia documental. SWAFI no los compara contra el activo, el proveedor, el folio, el UUID, la fecha, el monto, la moneda ni los valores fiscales o financieros registrados.',
+        ];
 
         $status = 'valido';
 
         if (!$extracted['xml_bien_formado'] || !empty($structuralErrors)) {
             $status = 'invalido';
-        } elseif (!empty($errors) || !empty($warnings)) {
+        } elseif (!empty($warnings)) {
             $status = 'observado';
         }
 
@@ -151,12 +117,12 @@ class CfdiValidationService
                 'sello_presente' => $extracted['sello_presente'],
                 'certificado_presente' => $extracted['certificado_presente'],
                 'timbre_presente' => $extracted['timbre_presente'],
-                'coincide_uuid' => $comparison['coincide_uuid'],
-                'coincide_rfc' => $comparison['coincide_rfc'],
-                'coincide_fecha' => $comparison['coincide_fecha'],
-                'coincide_monto' => $comparison['coincide_monto'],
-                'coincide_moneda' => $comparison['coincide_moneda'],
-                'diferencia_monto' => $comparison['diferencia_monto'],
+                'coincide_uuid' => null,
+                'coincide_rfc' => null,
+                'coincide_fecha' => null,
+                'coincide_monto' => null,
+                'coincide_moneda' => null,
+                'diferencia_monto' => null,
                 'estatus_validacion' => $status,
                 'errores' => $errors ?: null,
                 'advertencias' => $warnings ?: null,
@@ -229,7 +195,7 @@ class CfdiValidationService
 
     /**
      * Extrae datos básicos de CFDI 3.3/4.0 sin resolver entidades externas.
-     * Esta validación es técnica y de consistencia; no sustituye la validación en línea ante SAT.
+     * Esta validación es técnica, de integridad y seguridad; no compara el XML contra los datos del activo ni sustituye la validación en línea ante SAT.
      */
     public function extractFromString(string $xml): array
     {
@@ -367,81 +333,33 @@ class CfdiValidationService
     public function reconcileValuePayload(string $numeroActivo, array $payload): array
     {
         $validation = $this->latestValidationForAsset($numeroActivo);
-        $status = 'sin_xml';
-        $details = [];
-        $blockingErrors = [];
-        $accountingStatus = (string) ($payload['estatus_contable'] ?? 'vigente');
 
         if (!$validation) {
-            $details[] = 'No existe una validación CFDI vigente para conciliar los valores.';
-
-            if ($accountingStatus === 'vigente') {
-                $blockingErrors[] = 'Para registrar valores con estatus vigente, el activo debe contar con un XML CFDI validado. Usa En revisión mientras se integra o corrige el XML.';
-            }
-
-            return compact('status', 'details', 'blockingErrors') + ['validation_id' => null];
+            return [
+                'status' => 'sin_xml',
+                'details' => [
+                    'No existe un XML CFDI técnico vigente para este activo. La captura de valores permanece permitida porque SWAFI no compara los datos del XML contra el registro del activo.',
+                ],
+                'blockingErrors' => [],
+                'validation_id' => null,
+            ];
         }
 
-        $status = 'validado';
-
-        if ($validation->estatus_validacion !== 'valido') {
-            $status = 'observado';
-            $details[] = 'El XML CFDI está ' . $validation->estatus_validacion . '.';
-
-            if ($accountingStatus === 'vigente') {
-                $blockingErrors[] = 'No se puede mantener el estatus contable vigente mientras el XML CFDI esté observado o inválido.';
-            }
-        }
-
-        $currency = strtoupper((string) ($payload['moneda'] ?? 'MXN'));
-        $cfdiCurrency = strtoupper((string) $validation->moneda);
-
-        if ($cfdiCurrency !== '' && $currency !== $cfdiCurrency) {
-            $status = 'observado';
-            $details[] = "La moneda capturada ({$currency}) no coincide con la del CFDI ({$cfdiCurrency}).";
-
-            if ($accountingStatus === 'vigente') {
-                $blockingErrors[] = 'La moneda de los valores debe coincidir con la moneda del CFDI para mantenerlos vigentes.';
-            }
-        }
-
-        $valueFiscal = (float) ($payload['valor_fiscal'] ?? 0);
-        $cfdiTotal = $validation->total !== null ? (float) $validation->total : null;
-
-        if ($cfdiTotal !== null && $valueFiscal - $cfdiTotal > self::MONEY_TOLERANCE) {
-            $status = 'observado';
-            $details[] = 'El valor fiscal supera el total del CFDI por $' . number_format($valueFiscal - $cfdiTotal, 2) . '.';
-
-            if ($accountingStatus === 'vigente') {
-                $blockingErrors[] = 'El valor fiscal no puede superar el total del CFDI asociado.';
-            }
-        }
-
-        $exchangeRate = $payload['tipo_cambio'] ?? null;
-
-        if ($currency !== 'MXN') {
-            if ($exchangeRate === null || (float) $exchangeRate <= 0) {
-                $status = 'observado';
-                $details[] = 'Falta el tipo de cambio para la moneda extranjera.';
-                $blockingErrors[] = 'Captura un tipo de cambio mayor a cero para moneda extranjera.';
-            } elseif ($validation->tipo_cambio !== null && abs((float) $validation->tipo_cambio - (float) $exchangeRate) > self::EXCHANGE_TOLERANCE) {
-                $status = 'observado';
-                $details[] = 'El tipo de cambio capturado no coincide con el indicado en el CFDI.';
-
-                if ($accountingStatus === 'vigente') {
-                    $blockingErrors[] = 'El tipo de cambio debe coincidir con el CFDI para mantener el registro vigente.';
-                }
-            }
-        }
-
-        if (empty($details)) {
-            $details[] = 'Los valores son consistentes con el XML CFDI vigente.';
-        }
+        $status = $validation->estatus_validacion === 'valido'
+            ? 'validado'
+            : 'observado';
+        $details = $validation->estatus_validacion === 'valido'
+            ? [
+                'Existe un XML CFDI que superó la validación técnica de estructura e integridad. Sus datos se muestran únicamente como referencia documental.',
+            ]
+            : [
+                'El XML CFDI presenta incidencias técnicas de estructura o integridad. Esta condición no bloquea ni compara los valores fiscales o financieros del activo.',
+            ];
 
         return [
             'status' => $status,
-            'details' => array_values(array_unique($details)),
-            'blockingErrors' => array_values(array_unique($blockingErrors)),
+            'details' => $details,
+            'blockingErrors' => [],
             'validation_id' => $validation->id,
         ];
     }
@@ -527,65 +445,6 @@ class CfdiValidationService
             ->first();
     }
 
-    private function compareAgainstExpediente(array $extracted, object $context): array
-    {
-        $errors = [];
-        $warnings = [];
-        $expedienteUuid = $this->upper((string) $context->expediente_uuid);
-        $providerRfc = $this->upper((string) $context->proveedor_rfc);
-        $extractedUuid = $this->upper((string) $extracted['uuid_cfdi']);
-        $extractedRfc = $this->upper((string) $extracted['rfc_emisor']);
-        $expedienteCurrency = $this->upper((string) $context->expediente_moneda);
-        $extractedCurrency = $this->upper((string) $extracted['moneda']);
-
-        $uuidMatch = $expedienteUuid === '' ? null : ($expedienteUuid === $extractedUuid);
-        $rfcMatch = $providerRfc === '' || $extractedRfc === '' ? null : ($providerRfc === $extractedRfc);
-        $amountDiff = $extracted['total'] === null
-            ? null
-            : round((float) $context->monto_factura - (float) $extracted['total'], 2);
-        $amountMatch = $amountDiff === null ? null : abs($amountDiff) <= self::MONEY_TOLERANCE;
-        $currencyMatch = $expedienteCurrency === '' || $extractedCurrency === ''
-            ? null
-            : ($expedienteCurrency === $extractedCurrency);
-
-        $dateMatch = null;
-
-        if ($extracted['fecha_emision'] && $context->fecha_factura) {
-            $dateMatch = Carbon::parse($extracted['fecha_emision'])->toDateString()
-                === Carbon::parse($context->fecha_factura)->toDateString();
-        }
-
-        if ($uuidMatch === false) {
-            $errors[] = 'El UUID del XML no coincide con el UUID registrado en el expediente.';
-        }
-
-        if ($rfcMatch === false) {
-            $errors[] = 'El RFC del emisor del XML no coincide con el RFC del proveedor asignado al activo.';
-        }
-
-        if ($amountMatch === false) {
-            $errors[] = 'El total del XML no coincide con el monto de la factura registrado en el expediente.';
-        }
-
-        if ($currencyMatch === false) {
-            $errors[] = 'La moneda del XML no coincide con la moneda registrada en el expediente.';
-        }
-
-        if ($dateMatch === false) {
-            $warnings[] = 'La fecha del XML no coincide con la fecha de factura registrada.';
-        }
-
-        return [
-            'coincide_uuid' => $uuidMatch,
-            'coincide_rfc' => $rfcMatch,
-            'coincide_fecha' => $dateMatch,
-            'coincide_monto' => $amountMatch,
-            'coincide_moneda' => $currencyMatch,
-            'diferencia_monto' => $amountDiff,
-            'errors' => $errors,
-            'warnings' => $warnings,
-        ];
-    }
 
     private function persistInvalidValidation(object $context, ?int $userId, array $errors, array $extracted): CfdiValidacion
     {
@@ -598,6 +457,12 @@ class CfdiValidationService
                 'sello_presente' => false,
                 'certificado_presente' => false,
                 'timbre_presente' => false,
+                'coincide_uuid' => null,
+                'coincide_rfc' => null,
+                'coincide_fecha' => null,
+                'coincide_monto' => null,
+                'coincide_moneda' => null,
+                'diferencia_monto' => null,
                 'estatus_validacion' => 'invalido',
                 'errores' => $errors,
                 'advertencias' => null,
@@ -651,7 +516,7 @@ class CfdiValidationService
         $this->registerAudit(
             numeroActivo: $numeroActivo,
             userId: $userId,
-            action: 'CONCILIACION_VALOR_CFDI',
+            action: 'ACTUALIZACION_SOPORTE_XML',
             table: 'valores_activo',
             key: (string) $value->id,
             after: ['estatus' => $result['status'], 'detalle' => $result['details']]

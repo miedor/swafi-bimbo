@@ -139,12 +139,6 @@ class ValoresActivoController extends Controller
 
         $reconciliation = $cfdiService->reconcileValuePayload($data['numero_activo'], $payload);
 
-        if (!empty($reconciliation['blockingErrors'])) {
-            return back()->withInput()->withErrors([
-                'conciliacion_cfdi' => implode(' ', $reconciliation['blockingErrors']),
-            ]);
-        }
-
         $payload['cfdi_validacion_id'] = $reconciliation['validation_id'];
         $payload['conciliacion_cfdi'] = $reconciliation['status'];
         $payload['conciliacion_detalle'] = $reconciliation['details'];
@@ -311,11 +305,6 @@ class ValoresActivoController extends Controller
 
                 $payload = array_merge($payload, $reference);
                 $reconciliation = $cfdiService->reconcileValuePayload($numeroActivo, $payload);
-
-                if ($reconciliation['blockingErrors']) {
-                    $this->rejectRow($summary, $lineNumber, implode(' ', $reconciliation['blockingErrors']));
-                    continue;
-                }
 
                 $payload['cfdi_validacion_id'] = $reconciliation['validation_id'];
                 $payload['conciliacion_cfdi'] = $reconciliation['status'];
@@ -594,7 +583,7 @@ class ValoresActivoController extends Controller
                 'Valor financiero', 'Moneda', 'Tipo cambio', 'Fecha tipo cambio',
                 'Vida util meses', 'Metodo depreciacion', 'Fecha inicio depreciacion',
                 'Valor residual', 'Depreciacion estimada', 'Valor en libros estimado',
-                'Fecha corte', 'Estatus contable', 'Conciliacion CFDI',
+                'Fecha corte', 'Estatus contable', 'Estado tecnico XML',
                 'Total CFDI', 'Moneda CFDI',
             ]);
 

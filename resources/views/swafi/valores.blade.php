@@ -2,7 +2,7 @@
 
 @section('title', 'Valores fiscales y financieros | SWAFI')
 @section('page_title', 'Valores fiscales y financieros')
-@section('page_subtitle', 'Control contable, moneda, tipo de cambio y conciliación contra CFDI')
+@section('page_subtitle', 'Control contable, moneda, tipo de cambio y referencia técnica del XML')
 @section('breadcrumb', 'Valores fiscales y financieros')
 
 @php
@@ -709,7 +709,7 @@
         <h2>Filtros de consulta</h2>
         <p>
           @if($canViewSensitiveValues)
-            Localiza activos por estructura organizacional, estatus, conciliación, moneda, fecha o valor.
+            Localiza activos por estructura organizacional, estatus, soporte XML, moneda, fecha o valor.
           @else
             Localiza activos por estructura organizacional y estatus, sin exponer información fiscal o financiera sensible.
           @endif
@@ -783,7 +783,7 @@
         </label>
 
         <label class="vf-field">
-          <span>Conciliación CFDI</span>
+          <span>Estado técnico del XML</span>
           <select name="conciliacion_cfdi">
             <option value="">Todas</option>
             <option value="validado" {{ ($filtros['conciliacion_cfdi'] ?? '') === 'validado' ? 'selected' : '' }}>Validado</option>
@@ -864,7 +864,7 @@
               <th>Valores</th>
               <th>Moneda</th>
               <th>Contable</th>
-              <th>Conciliación CFDI</th>
+              <th>Estado técnico XML</th>
               <th>Fecha</th>
               <th>Acciones</th>
             </tr>
@@ -873,7 +873,7 @@
               <th>Activo</th>
               <th>Ubicación / clasificación</th>
               <th>Contable</th>
-              <th>Conciliación documental</th>
+              <th>Soporte XML</th>
               <th>Fecha de corte</th>
               <th>Acciones</th>
             </tr>
@@ -1189,12 +1189,12 @@
 
           <label class="vf-field full">
             <span>Motivo del cambio {{ $valorEdit ? '(obligatorio)' : '' }}</span>
-            <textarea name="motivo_cambio" placeholder="Describe el origen, ajuste o conciliación realizada.">{{ old('motivo_cambio', '') }}</textarea>
+            <textarea name="motivo_cambio" placeholder="Describe el origen, ajuste o motivo del cambio realizado.">{{ old('motivo_cambio', '') }}</textarea>
           </label>
         </div>
 
         <div class="vf-actions">
-          <button class="vf-button primary" type="submit">{{ $valorEdit ? 'Actualizar y conciliar' : 'Guardar y conciliar' }}</button>
+          <button class="vf-button primary" type="submit">{{ $valorEdit ? 'Actualizar valores' : 'Guardar valores' }}</button>
           <a class="vf-button soft" href="{{ route('valores', ['panel' => 'captura']) }}">Limpiar captura</a>
           <button class="vf-button" type="button" data-vf-open="consulta">Regresar a consulta</button>
         </div>
@@ -1208,7 +1208,7 @@
     >
       <div class="vf-title">
         <div>
-          <h2>Carga masiva con conciliación CFDI</h2>
+          <h2>Carga masiva de valores</h2>
           <p>Procesa valores en volumen sin generar duplicados por número de activo.</p>
         </div>
         <span class="pill ok">Importación autorizada</span>
@@ -1217,7 +1217,7 @@
       <div class="vf-import-box">
         <div class="vf-import-guide">
           <h3>Reglas de importación</h3>
-          <p>SWAFI valida catálogos financieros, tipo de cambio, montos, fechas, depreciación referencial, duplicidad y consistencia contra el XML vigente.</p>
+          <p>SWAFI valida catálogos financieros, tipo de cambio, montos, fechas, depreciación referencial y duplicidad por número de activo. El XML se conserva como soporte documental independiente y no se compara contra los valores capturados.</p>
           <ul>
             <li>Las filas rechazadas no alteran registros correctos.</li>
             <li>Un activo existente se actualiza; no se duplica.</li>

@@ -101,7 +101,6 @@ class RegistroMasivoService
             );
 
             $seenKeys = [];
-            $seenUuids = [];
             $rowPayloads = [];
             $summary = [
                 'total' => 0,
@@ -143,8 +142,7 @@ class RegistroMasivoService
                     data: $data,
                     zipIndex: $zipIndex,
                     lineNumber: $lineNumber,
-                    seenKeys: $seenKeys,
-                    seenUuids: $seenUuids
+                    seenKeys: $seenKeys
                 );
 
                 $summary[$validation['estatus'] . 's']++;
@@ -326,7 +324,6 @@ class RegistroMasivoService
                 ->get();
 
             $seenKeys = [];
-            $seenUuids = [];
             $validatedRows = [];
 
             foreach ($acceptedRows as $row) {
@@ -334,8 +331,7 @@ class RegistroMasivoService
                     data: $row->datos,
                     zipIndex: $zipIndex,
                     lineNumber: $row->numero_fila,
-                    seenKeys: $seenKeys,
-                    seenUuids: $seenUuids
+                    seenKeys: $seenKeys
                 );
 
                 if ($validation['estatus'] !== 'aceptada') {
@@ -521,8 +517,7 @@ class RegistroMasivoService
         array $data,
         array $zipIndex,
         int $lineNumber,
-        array &$seenKeys,
-        array &$seenUuids
+        array &$seenKeys
     ): array {
         $structureErrors = is_array($data['_estructura_errores'] ?? null)
             ? array_values($data['_estructura_errores'])
@@ -667,15 +662,7 @@ class RegistroMasivoService
             }
         }
 
-        if ($data['uuid_cfdi'] !== '') {
-            $uuidKey = Str::lower($data['uuid_cfdi']);
-
-            if (isset($seenUuids[$uuidKey])) {
-                $errors[] = "El UUID CFDI está repetido en la fila {$seenUuids[$uuidKey]} del mismo layout.";
-            } else {
-                $seenUuids[$uuidKey] = $lineNumber;
-            }
-        } else {
+        if ($data['uuid_cfdi'] === '') {
             $warnings[] = 'La fila no incluye UUID CFDI.';
         }
 
@@ -696,17 +683,6 @@ class RegistroMasivoService
                 }
             } else {
                 $action = $existing ? 'actualizar' : 'insertar';
-            }
-        }
-
-        if ($data['uuid_cfdi'] !== '') {
-            $uuidConflict = Expediente::withTrashed()
-                ->where('uuid_cfdi', $data['uuid_cfdi'])
-                ->when($existing, fn ($query) => $query->where('id', '<>', $existing->id))
-                ->exists();
-
-            if ($uuidConflict) {
-                $errors[] = "El UUID CFDI {$data['uuid_cfdi']} ya está registrado en otro expediente.";
             }
         }
 

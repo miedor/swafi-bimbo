@@ -394,7 +394,7 @@
         </div>
 
         <div class="edit-help">
-          El número de activo queda bloqueado para evitar duplicidades BIM. Para agregar, reemplazar o eliminar PDF/XML entra al detalle del expediente.
+          El número de activo queda bloqueado para evitar duplicidades BIM. El folio o UUID puede repetirse en expedientes de distintos activos cuando la factura ampara varios bienes. Para agregar, reemplazar o dar de baja PDF/XML entra al detalle del expediente.
         </div>
       </section>
     </div>

@@ -87,7 +87,7 @@ class FilterValoresActivoRequest extends FormRequest
             'centro_costo_id.exists' => 'El centro de costo seleccionado no existe o está inactivo.',
             'tipo_activo_id.exists' => 'El tipo de activo seleccionado no existe o está inactivo.',
             'estatus_contable.exists' => 'El estatus contable seleccionado no existe o está inactivo.',
-            'conciliacion_cfdi.in' => 'El resultado de conciliación CFDI no es válido.',
+            'conciliacion_cfdi.in' => 'El estado técnico del XML no es válido.',
             'moneda.exists' => 'La moneda seleccionada no existe o está inactiva.',
             'fecha_hasta.after_or_equal' => 'La fecha final debe ser igual o posterior a la fecha inicial.',
             'valor_hasta.gte' => 'El valor máximo debe ser igual o mayor que el valor mínimo.',

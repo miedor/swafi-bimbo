@@ -487,7 +487,7 @@
 
             <div class="list-item">
                 <strong>Errores controlados</strong>
-                <span>Las filas con catálogos inexistentes, fechas inválidas, montos inválidos, UUID duplicado o documentos faltantes se rechazan.</span>
+                <span>Las filas con catálogos inexistentes, fechas inválidas, montos inválidos o documentos faltantes se rechazan. Un mismo folio o UUID puede relacionarse con varios activos cuando la factura ampara una adquisición múltiple.</span>
             </div>
 
             <div class="list-item">

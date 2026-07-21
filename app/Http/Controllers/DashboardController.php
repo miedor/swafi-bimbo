@@ -160,8 +160,7 @@ class DashboardController extends Controller
             ->select(
                 'numero_activo',
                 DB::raw('COUNT(*) as total_valores_registrados'),
-                DB::raw("SUM(CASE WHEN estatus_contable = 'baja' OR (estatus_contable IN ('vigente', 'en_revision') AND COALESCE(valor_fiscal, 0) > 0 AND COALESCE(valor_financiero, 0) > 0) THEN 1 ELSE 0 END) as total_valores_validos"),
-                DB::raw("SUM(CASE WHEN conciliacion_cfdi = 'validado' OR estatus_contable = 'baja' THEN 1 ELSE 0 END) as total_valores_conciliados")
+                DB::raw("SUM(CASE WHEN estatus_contable = 'baja' OR (estatus_contable IN ('vigente', 'en_revision') AND COALESCE(valor_fiscal, 0) > 0 AND COALESCE(valor_financiero, 0) > 0) THEN 1 ELSE 0 END) as total_valores_validos")
             )
             ->groupBy('numero_activo');
 
@@ -206,7 +205,6 @@ class DashboardController extends Controller
                     ->orWhereRaw('COALESCE(dc.total_xml, 0) = 0')
                     ->orWhereNull('a.ubicacion_id')
                     ->orWhereRaw('COALESCE(vc.total_valores_validos, 0) = 0')
-                    ->orWhereRaw('COALESCE(vc.total_valores_conciliados, 0) = 0')
                     ->orWhereRaw('COALESCE(cfc.total_xml_validados, 0) < COALESCE(cfc.total_xml_cfdi, 0)')
                     ->orWhereRaw('COALESCE(cfc.total_cfdi_inconsistentes, 0) > 0')
                     ->orWhereIn('ia.estatus_localizacion', ['no_encontrado', 'diferencia', 'pendiente']);
@@ -223,7 +221,6 @@ class DashboardController extends Controller
                 DB::raw('COALESCE(dc.total_xml, 0) as total_xml'),
                 DB::raw('COALESCE(vc.total_valores_registrados, 0) as total_valores_registrados'),
                 DB::raw('COALESCE(vc.total_valores_validos, 0) as total_valores'),
-                DB::raw('COALESCE(vc.total_valores_conciliados, 0) as total_valores_conciliados'),
                 DB::raw('COALESCE(cfc.total_xml_cfdi, 0) as total_xml_cfdi'),
                 DB::raw('COALESCE(cfc.total_xml_validados, 0) as total_xml_validados'),
                 DB::raw('COALESCE(cfc.total_cfdi_validos, 0) as total_cfdi_validos'),

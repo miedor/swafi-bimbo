@@ -36,8 +36,8 @@ class ValorActivoHistoryService
         'calculo_depreciacion_at' => 'Fecha del cálculo referencial',
         'estatus_contable' => 'Estatus contable',
         'motivo_cambio' => 'Motivo del cambio',
-        'conciliacion_cfdi' => 'Conciliación CFDI',
-        'conciliacion_detalle' => 'Detalle de conciliación',
+        'conciliacion_cfdi' => 'Estado técnico del XML',
+        'conciliacion_detalle' => 'Detalle del soporte XML',
         'fecha_corte' => 'Fecha de corte',
         'deleted_at' => 'Fecha de baja lógica',
         'delete_reason' => 'Motivo de baja lógica',
@@ -52,7 +52,8 @@ class ValorActivoHistoryService
         'IMPORTACION_VALOR_ALTA' => 'Alta por importación',
         'IMPORTACION_VALOR_EDICION' => 'Actualización por importación',
         'IMPORTACION_VALOR_RESTAURACION' => 'Restauración por importación',
-        'CONCILIACION_VALOR_CFDI' => 'Conciliación contra CFDI',
+        'CONCILIACION_VALOR_CFDI' => 'Actualización histórica del soporte XML',
+        'ACTUALIZACION_SOPORTE_XML' => 'Actualización del soporte XML',
         'IMPORTACION_FILA_REVERTIDA' => 'Reversión de importación',
     ];
 

@@ -979,7 +979,7 @@
             <div class="detail-field"><strong>Fecha de corte</strong><div>{{ $valor->fecha_corte ?? 'Pendiente' }}</div></div>
             <div class="detail-field"><strong>Estatus contable</strong><div>{{ $valor ? ucfirst(str_replace('_', ' ', $valor->estatus_contable)) : 'Pendiente' }}</div></div>
             <div class="detail-field">
-              <strong>Conciliación CFDI</strong>
+              <strong>Estado técnico del XML</strong>
               @php
                 $valorConciliacion = $valor->conciliacion_cfdi ?? 'sin_xml';
                 $valorConciliacionClass = $valorConciliacion === 'validado' ? 'ok' : ($valorConciliacion === 'observado' ? 'warn' : 'danger');
@@ -1202,7 +1202,7 @@
           </div>
 
           <div class="detail-note">
-            SWAFI verifica estructura XML, UUID, RFC emisor, fecha, total, moneda, timbre, sello, certificado y consistencia contra el expediente. Esta revisión técnica no sustituye una consulta en línea del estado fiscal ante SAT.
+            SWAFI verifica exclusivamente la estructura, integridad y seguridad del XML: formato, UUID, RFC, fecha, total, moneda, timbre, sello y certificado. Los datos extraídos se muestran como referencia y no se comparan contra el activo, proveedor, folio, monto, moneda o valores registrados. Esta revisión técnica no sustituye una consulta en línea del estado fiscal ante SAT.
           </div>
 
           @if($canValidateCfdi)
@@ -1236,7 +1236,7 @@
                   <div class="detail-field"><strong>Emisor</strong><div>{{ $cfdi->rfc_emisor ?: 'Sin RFC' }}<br><small>{{ $cfdi->nombre_emisor }}</small></div></div>
                   <div class="detail-field"><strong>Total CFDI</strong><div>{{ $cfdi->total !== null ? '$ ' . number_format((float) $cfdi->total, 2) . ' ' . $cfdi->moneda : 'No localizado' }}</div></div>
                   <div class="detail-field"><strong>Tipo de cambio</strong><div>{{ $cfdi->tipo_cambio !== null ? number_format((float) $cfdi->tipo_cambio, 6) : 'No aplica' }}</div></div>
-                  <div class="detail-field"><strong>Coincidencias</strong><div>UUID: {{ $cfdi->coincide_uuid === null ? 'N/A' : ($cfdi->coincide_uuid ? 'Sí' : 'No') }} · RFC: {{ $cfdi->coincide_rfc === null ? 'N/A' : ($cfdi->coincide_rfc ? 'Sí' : 'No') }} · Monto: {{ $cfdi->coincide_monto === null ? 'N/A' : ($cfdi->coincide_monto ? 'Sí' : 'No') }}</div></div>
+                  <div class="detail-field"><strong>Uso de los datos</strong><div>Referencia documental sin comparación contra los registros del activo.</div></div>
                   <div class="detail-field"><strong>Integridad</strong><div>Sello: {{ $cfdi->sello_presente ? 'Sí' : 'No' }} · Certificado: {{ $cfdi->certificado_presente ? 'Sí' : 'No' }} · Timbre: {{ $cfdi->timbre_presente ? 'Sí' : 'No' }}</div></div>
                 </div>
 

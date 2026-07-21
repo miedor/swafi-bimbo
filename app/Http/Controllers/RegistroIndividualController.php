@@ -152,7 +152,7 @@ class RegistroIndividualController extends Controller
 
             if ((string) $exception->getCode() === '23000') {
                 throw ValidationException::withMessages([
-                    'registro' => 'El activo, folio o UUID fue registrado simultáneamente por otra operación. Actualiza la página y verifica la información antes de intentarlo nuevamente.',
+                    'registro' => 'El activo o la combinación activo/folio fue registrada simultáneamente por otra operación. Actualiza la página y verifica la información antes de intentarlo nuevamente.',
                 ]);
             }
 

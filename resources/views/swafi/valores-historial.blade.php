@@ -594,7 +594,7 @@
           <strong>{{ \Illuminate\Support\Str::headline(str_replace('_', ' ', (string) $valorActual->estatus_contable)) }}</strong>
         </div>
         <div class="vh-current-item">
-          <span>Conciliación CFDI</span>
+          <span>Estado técnico del XML</span>
           <strong>{{ \Illuminate\Support\Str::headline(str_replace('_', ' ', (string) ($valorActual->conciliacion_cfdi ?: 'sin_xml'))) }}</strong>
         </div>
         <div class="vh-current-item">

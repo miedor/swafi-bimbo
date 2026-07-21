@@ -1009,7 +1009,7 @@
                 </div>
 
                 <div class="ri-help">
-                    Selecciona el PDF de la factura y el XML CFDI. SWAFI resguardará los archivos y registrará nombre, tipo, tamaño, ruta, versión y hash SHA-256 para trazabilidad documental.
+                    Selecciona el PDF de la factura y el XML CFDI. SWAFI resguardará los archivos y registrará nombre, tipo, tamaño, ruta, versión y hash SHA-256 para trazabilidad documental. Un mismo folio o UUID puede utilizarse en expedientes de distintos activos cuando una factura ampara una adquisición múltiple; los datos extraídos del XML no se comparan contra los datos maestros del activo.
                 </div>
             </section>
 

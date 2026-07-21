@@ -88,7 +88,7 @@ class SensitiveValueAccessConfigurationTest extends TestCase
         self::assertStringContainsString('SWAFI oculta montos, proveedor, factura, moneda, tipo de cambio, historial y exportaciones', $view);
         self::assertStringContainsString('@if($canViewSensitiveValues)', $view);
         self::assertStringContainsString('<th>Ubicación / clasificación</th>', $view);
-        self::assertStringContainsString('<th>Conciliación documental</th>', $view);
+        self::assertStringContainsString('<th>Soporte XML</th>', $view);
         self::assertStringContainsString('Consultar expediente', $view);
         self::assertStringContainsString('{{ $canViewSensitiveValues ? 8 : 6 }}', $view);
     }

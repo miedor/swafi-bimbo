@@ -103,19 +103,6 @@ class ExpedienteGestionController extends Controller
                 ->withInput();
         }
 
-        if ($uuidCfdi) {
-            $uuidConflict = DB::table('expedientes')
-                ->where('uuid_cfdi', $uuidCfdi)
-                ->where('id', '<>', $detalle->expediente_id)
-                ->exists();
-
-            if ($uuidConflict) {
-                return back()
-                    ->withErrors(['uuid_cfdi' => 'El UUID CFDI ya está registrado en otro expediente.'])
-                    ->withInput();
-            }
-        }
-
         DB::transaction(function () use ($detalle, $validated, $folioFactura, $uuidCfdi, $request) {
             $antes = [
                 'activo' => DB::table('activos')->where('numero_activo', $detalle->numero_activo)->first(),

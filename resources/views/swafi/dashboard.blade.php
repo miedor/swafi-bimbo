@@ -647,7 +647,7 @@
         }
 
         if ((int) ($item->total_cfdi_inconsistentes ?? 0) > 0) {
-            $motivos[] = ['texto' => 'CFDI con inconsistencias', 'clase' => 'danger'];
+            $motivos[] = ['texto' => 'XML CFDI con incidencias técnicas', 'clase' => 'danger'];
         }
 
         if (empty($item->ubicacion_id)) {
@@ -656,8 +656,6 @@
 
         if ((int) ($item->total_valores ?? 0) === 0) {
             $motivos[] = ['texto' => 'Falta valores fiscales/financieros', 'clase' => ''];
-        } elseif ((int) ($item->total_valores_conciliados ?? 0) === 0) {
-            $motivos[] = ['texto' => 'Valores sin conciliar con CFDI', 'clase' => ''];
         }
 
         if (in_array(($item->estatus_localizacion ?? ''), ['no_encontrado', 'diferencia', 'pendiente'], true)) {
