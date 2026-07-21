@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use App\Models\BusquedaGuardada;
 use App\Services\AssetStatusCatalogService;
+use App\Services\InitialAssetLocationService;
 use App\Services\ObservationDeadlineService;
 use App\Services\SimplePdfTableExporter;
 use App\Services\SimpleXlsxExporter;
@@ -16,8 +17,10 @@ use Illuminate\Validation\Rule;
 
 class BusquedaController extends Controller
 {
-    public function __construct(private readonly AssetStatusCatalogService $statusCatalogs)
-    {
+    public function __construct(
+        private readonly AssetStatusCatalogService $statusCatalogs,
+        private readonly InitialAssetLocationService $initialAssetLocation
+    ) {
     }
 
     private const CAMPOS_GUARDABLES = [
@@ -128,6 +131,8 @@ class BusquedaController extends Controller
                     'cfdiValidaciones' => $this->emptyPaginator('cfdi_page'),
                     'inventarios' => $this->emptyPaginator('inv_page'),
                     'movimientos' => $this->emptyPaginator('mov_page'),
+                    'ubicacionesIniciales' => collect(),
+                    'responsablesUbicacion' => collect(),
                     'activeTab' => $activeTab,
                     'resumenContadores' => [],
                 ]);
@@ -157,6 +162,10 @@ class BusquedaController extends Controller
                 'e.created_at as expediente_creado',
                 'e.updated_at as expediente_actualizado',
                 'a.numero_activo',
+                'a.planta_id',
+                'a.ubicacion_id',
+                'a.responsable_id',
+                'a.activo as activo_vigente',
                 'a.descripcion as activo_descripcion',
                 'a.serie',
                 'a.marca',
@@ -342,6 +351,15 @@ class BusquedaController extends Controller
                 ->count(),
         ];
 
+        $locationOptions = [
+            'ubicaciones' => collect(),
+            'responsables' => collect(),
+        ];
+
+        if ($detalle->ubicacion_id === null) {
+            $locationOptions = $this->initialAssetLocation->optionsForPlant((int) $detalle->planta_id);
+        }
+
         $this->registrarConsultaDetalle($request, $detalle);
 
         return view('swafi.expediente', [
@@ -354,6 +372,8 @@ class BusquedaController extends Controller
             'cfdiValidaciones' => $cfdiValidaciones,
             'inventarios' => $inventarios,
             'movimientos' => $movimientos,
+            'ubicacionesIniciales' => $locationOptions['ubicaciones'],
+            'responsablesUbicacion' => $locationOptions['responsables'],
             'activeTab' => $activeTab,
             'resumenContadores' => $resumenContadores,
         ]);

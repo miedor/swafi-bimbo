@@ -726,6 +726,13 @@
 
   $resumenContadores = $resumenContadores ?? [];
   $usuariosAsignablesObservacion = $usuariosAsignablesObservacion ?? collect();
+  $ubicacionesIniciales = $ubicacionesIniciales ?? collect();
+  $responsablesUbicacion = $responsablesUbicacion ?? collect();
+  $initialLocationHasErrors = $errors->has('ubicacion_id')
+      || $errors->has('responsable_id')
+      || $errors->has('fecha_asignacion')
+      || $errors->has('motivo')
+      || $errors->has('evidencia');
 
   $tipoObservacionLabels = [
       'falta_pdf' => 'Falta PDF',
@@ -974,8 +981,10 @@
         <div class="detail-section">
           <div class="detail-section-head">
             <h3>Ubicación física actual</h3>
-            @if($canManageLocation)
+            @if($canManageLocation && !empty($expediente->ubicacion_id))
               <a class="tab" href="{{ route('ubicacion', ['numero_activo' => $expediente->numero_activo]) }}">Registrar movimiento o inventario</a>
+            @elseif($canManageLocation)
+              <span class="pill warn">Ubicación inicial pendiente</span>
             @endif
           </div>
 
@@ -989,6 +998,82 @@
             <div class="detail-field"><strong>Responsable</strong><div>{{ $expediente->responsable_nombre ?? 'Sin responsable' }}</div></div>
             <div class="detail-field"><strong>Correo responsable</strong><div>{{ $expediente->responsable_correo ?? 'Sin correo' }}</div></div>
           </div>
+
+          @if($canManageLocation && empty($expediente->ubicacion_id))
+            <details class="detail-collapsible" style="margin-top:12px;" @if($initialLocationHasErrors) open @endif>
+              <summary>Confirmar ubicación inicial desde este expediente</summary>
+              <div class="detail-collapsible-content">
+                <form method="POST" action="{{ route('expedientes.ubicacion-inicial', $expediente->expediente_id) }}">
+                  @csrf
+
+                  <div class="detail-form-grid">
+                    <label class="detail-form-field full">
+                      <span>Ubicación inicial</span>
+                      <select name="ubicacion_id" required aria-describedby="initial-location-help">
+                        <option value="">Seleccione una ubicación activa de {{ $expediente->planta_nombre ?? 'la planta del activo' }}...</option>
+                        @foreach($ubicacionesIniciales as $ubicacionInicial)
+                          @php
+                            $initialLocationLabel = trim(
+                                ($ubicacionInicial->codigo_interno ? $ubicacionInicial->codigo_interno . ' · ' : '')
+                                . ($ubicacionInicial->area_nombre ? $ubicacionInicial->area_nombre . ' / ' : '')
+                                . ($ubicacionInicial->descripcion ?: 'Ubicación ' . $ubicacionInicial->id)
+                                . ($ubicacionInicial->edificio ? ' · Edificio ' . $ubicacionInicial->edificio : '')
+                                . ($ubicacionInicial->piso ? ' · Piso ' . $ubicacionInicial->piso : '')
+                            );
+                          @endphp
+                          <option value="{{ $ubicacionInicial->id }}" @selected((string) old('ubicacion_id') === (string) $ubicacionInicial->id)>
+                            {{ $initialLocationLabel }}
+                          </option>
+                        @endforeach
+                      </select>
+                    </label>
+
+                    <label class="detail-form-field">
+                      <span>Responsable del activo</span>
+                      <select name="responsable_id">
+                        <option value="">Sin responsable asignado</option>
+                        @foreach($responsablesUbicacion as $responsableUbicacion)
+                          <option value="{{ $responsableUbicacion->id }}" @selected((string) old('responsable_id') === (string) $responsableUbicacion->id)>
+                            {{ $responsableUbicacion->nombre }}{{ $responsableUbicacion->correo ? ' · ' . $responsableUbicacion->correo : '' }}
+                          </option>
+                        @endforeach
+                      </select>
+                    </label>
+
+                    <label class="detail-form-field">
+                      <span>Fecha de asignación</span>
+                      <input type="date" name="fecha_asignacion" value="{{ old('fecha_asignacion', now()->format('Y-m-d')) }}" max="{{ now()->format('Y-m-d') }}" required>
+                    </label>
+
+                    <label class="detail-form-field full">
+                      <span>Motivo o fundamento</span>
+                      <textarea name="motivo" minlength="10" maxlength="500" required placeholder="Ej. Ubicación confirmada durante la recepción inicial del activo.">{{ old('motivo') }}</textarea>
+                    </label>
+
+                    <label class="detail-form-field full">
+                      <span>Referencia de evidencia (opcional)</span>
+                      <textarea name="evidencia" maxlength="2000" placeholder="Indica acta de recepción, orden de trabajo, folio de inventario u otra referencia.">{{ old('evidencia') }}</textarea>
+                    </label>
+                  </div>
+
+                  <div id="initial-location-help" class="detail-note warn" style="margin-top:10px;">
+                    Esta acción solo se permite cuando el activo todavía no tiene ubicación ni historial de movimientos. La ubicación debe pertenecer a la planta del activo y el periodo de inventario debe estar abierto.
+                  </div>
+
+                  @if($ubicacionesIniciales->isEmpty())
+                    <div class="detail-note danger" style="margin-top:10px;">
+                      No existen ubicaciones activas disponibles para la planta del activo. Registra o reactiva una ubicación en Catálogos antes de continuar.
+                    </div>
+                  @endif
+
+                  <div class="action-group" style="margin-top:10px;">
+                    <button class="tab" type="submit" @disabled($ubicacionesIniciales->isEmpty())>Confirmar ubicación inicial</button>
+                    <a class="tab" href="{{ route('ubicacion', ['numero_activo' => $expediente->numero_activo]) }}">Ir a Ubicación e inventario</a>
+                  </div>
+                </form>
+              </div>
+            </details>
+          @endif
         </div>
 
         <div class="detail-section">

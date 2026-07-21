@@ -11,6 +11,7 @@ use App\Http\Controllers\EtiquetaActivoController;
 use App\Http\Controllers\ExpedienteGestionController;
 use App\Http\Controllers\ExpedienteObservacionController;
 use App\Http\Controllers\InventarioEvidenciaController;
+use App\Http\Controllers\InitialAssetLocationController;
 use App\Http\Controllers\InventoryPeriodController;
 use App\Http\Controllers\PasswordResetController;
 use App\Http\Controllers\ProfileController;
@@ -220,6 +221,10 @@ Route::middleware('swafi.auth')->group(function () {
     Route::delete('/expedientes/{expediente}', [ExpedienteGestionController::class, 'destroy'])
         ->whereNumber('expediente')
         ->name('expedientes.eliminar');
+
+    Route::post('/expedientes/{expediente}/ubicacion-inicial', [InitialAssetLocationController::class, 'store'])
+        ->whereNumber('expediente')
+        ->name('expedientes.ubicacion-inicial');
 
     Route::get('/detalle-expediente/{expediente?}', [BusquedaController::class, 'show'])->name('expediente');
 
