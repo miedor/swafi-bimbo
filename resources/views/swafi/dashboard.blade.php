@@ -1107,7 +1107,7 @@
           @if ($canAccessCatalogs || $can('catalogos.administrar'))
             <a class="dash-quick-link" href="{{ $catalogosUrl }}">
               <strong>Catálogos base</strong>
-              <span>Consulta de proveedores, plantas y datos maestros.</span>
+              <span>{{ $can('catalogos.administrar') ? 'Administra proveedores, plantas y datos maestros.' : 'Consulta proveedores, plantas y datos maestros.' }}</span>
             </a>
           @endif
 

@@ -809,6 +809,7 @@
         $editandoPermiso = $permisoEdit !== null;
         $rolEsSistema = $editandoRol && ((int) ($rolEdit->es_sistema ?? 0)) === 1;
         $rolEsAdministrador = $editandoRol && (($rolEdit->nombre ?? '') === 'Administrador SWAFI');
+        $rolEsCaptura = $editandoRol && (($rolEdit->nombre ?? '') === 'Usuario Captura');
         $activoRol = (string) old('activo', $rolEdit ? (string) $rolEdit->activo : '1');
         $permisosSeleccionados = old('permission_ids', $rolPermisos);
 
@@ -911,6 +912,7 @@
                                                     $permissionId = (string) $permission->id;
                                                     $permissionMarcado = in_array($permissionId, $permisosSeleccionados, true);
                                                     $permissionSoloAdministrador = $permission->clave === 'documentos.eliminar';
+                                                    $permissionRequeridoCaptura = $rolEsCaptura && $permission->clave === 'catalogos.administrar';
                                                 @endphp
 
                                                 @if ($permissionSoloAdministrador)
@@ -920,6 +922,16 @@
                                                             <span class="sec-code">{{ $permission->clave }}</span><br>
                                                             <small>{{ $permission->descripcion }}</small><br>
                                                             <small><strong>Exclusivo del Administrador SWAFI.</strong></small>
+                                                        </span>
+                                                    </div>
+                                                @elseif ($permissionRequeridoCaptura)
+                                                    <input type="hidden" name="permission_ids[]" value="{{ $permission->id }}">
+                                                    <div class="sec-check" aria-disabled="true">
+                                                        <input type="checkbox" checked disabled>
+                                                        <span>
+                                                            <span class="sec-code">{{ $permission->clave }}</span><br>
+                                                            <small>{{ $permission->descripcion }}</small><br>
+                                                            <small><strong>Requerido para que Usuario Captura administre los catálogos base.</strong></small>
                                                         </span>
                                                     </div>
                                                 @else
@@ -957,7 +969,7 @@
             </form>
 
             <div class="sec-help">
-                Los roles activos requieren al menos un permiso activo. Los roles base conservan su identidad y los cambios de permisos se reflejan en la siguiente solicitud autenticada.
+                Los roles activos requieren al menos un permiso activo. Los roles base conservan su identidad y los cambios de permisos se reflejan en la siguiente solicitud autenticada. Usuario Captura conserva el permiso catalogos.administrar como parte de su matriz operativa aprobada.
             </div>
         </div>
 

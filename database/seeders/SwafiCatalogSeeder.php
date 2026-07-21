@@ -19,7 +19,7 @@ class SwafiCatalogSeeder extends Seeder
 
         $roles = [
             ['nombre' => 'Administrador SWAFI', 'descripcion' => 'Administración general, seguridad, catálogos y bitácora.'],
-            ['nombre' => 'Usuario Captura', 'descripcion' => 'Registro individual y masivo de expedientes de activo fijo.'],
+            ['nombre' => 'Usuario Captura', 'descripcion' => 'Registro individual y masivo de expedientes, documentos, valores oficiales de Oracle ERP y administración de catálogos base.'],
             ['nombre' => 'Usuario Consulta / Auditoría', 'descripcion' => 'Consulta, reportes, exportación y revisión de trazabilidad.'],
             ['nombre' => 'Usuario Planta / Inventarios', 'descripcion' => 'Consulta y seguimiento de ubicación física e inventarios.'],
         ];
@@ -116,6 +116,7 @@ class SwafiCatalogSeeder extends Seeder
             'documentos.cargar',
             'valores.administrar',
             'catalogos.ver',
+            'catalogos.administrar',
         ], $catalogReadPermissionKeys);
 
         $consultaPermisos = array_merge([

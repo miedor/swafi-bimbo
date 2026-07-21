@@ -9,6 +9,21 @@ class RolePermissionManagementService
 {
     private const ADMIN_ROLE = 'Administrador SWAFI';
 
+    private const CAPTURE_ROLE = 'Usuario Captura';
+
+    /**
+     * Permisos mínimos que forman parte de la definición de los roles base.
+     * Aunque la matriz se edite desde Seguridad, estos permisos no deben
+     * retirarse porque representan decisiones operativas aprobadas.
+     *
+     * @var array<string, array<int, string>>
+     */
+    private const REQUIRED_PERMISSION_KEYS_BY_SYSTEM_ROLE = [
+        self::CAPTURE_ROLE => [
+            'catalogos.administrar',
+        ],
+    ];
+
     private const ADMIN_ONLY_PERMISSION_KEYS = [
         'documentos.eliminar',
     ];
@@ -54,6 +69,10 @@ class RolePermissionManagementService
 
             if (!$isAdministrator) {
                 $this->assertNoAdministratorOnlyPermissions($permissionIds);
+                $permissionIds = $this->appendRequiredSystemRolePermissions(
+                    $beforeRole,
+                    $permissionIds
+                );
             }
 
             if ($requestedActive && !$isAdministrator && $permissionIds === []) {
@@ -385,6 +404,57 @@ class RolePermissionManagementService
         }
 
         return $activeIds;
+    }
+
+    /**
+     * Conserva los permisos mínimos aprobados para un rol base del sistema.
+     *
+     * @param array<int, int> $permissionIds
+     * @return array<int, int>
+     */
+    private function appendRequiredSystemRolePermissions(
+        ?object $role,
+        array $permissionIds
+    ): array {
+        if (
+            $role === null
+            || !(bool) ($role->es_sistema ?? false)
+        ) {
+            return $permissionIds;
+        }
+
+        $roleName = (string) ($role->nombre ?? '');
+        $requiredKeys = self::REQUIRED_PERMISSION_KEYS_BY_SYSTEM_ROLE[$roleName] ?? [];
+
+        if ($requiredKeys === []) {
+            return $permissionIds;
+        }
+
+        $requiredPermissionIds = DB::table('permissions')
+            ->whereIn('clave', $requiredKeys)
+            ->where('activo', 1)
+            ->lockForUpdate()
+            ->pluck('id', 'clave');
+
+        $missingKeys = array_values(array_filter(
+            $requiredKeys,
+            fn (string $key): bool => !$requiredPermissionIds->has($key)
+        ));
+
+        if ($missingKeys !== []) {
+            throw new DomainException(
+                'No fue posible conservar la matriz base del rol Usuario Captura porque falta el permiso activo catalogos.administrar.'
+            );
+        }
+
+        return collect($permissionIds)
+            ->merge($requiredPermissionIds->values())
+            ->map(fn ($permissionId): int => (int) $permissionId)
+            ->filter(fn (int $permissionId): bool => $permissionId > 0)
+            ->unique()
+            ->sort()
+            ->values()
+            ->all();
     }
 
     private function assertNoAdministratorOnlyPermissions(array $permissionIds): void

@@ -418,7 +418,7 @@
     <div class="card">
         <div class="section-title">
             <h2>{{ $editing ? 'Editar catálogo' : 'Alta de catálogo' }}</h2>
-            <span class="pill ok">M04 funcional</span>
+            <span class="pill ok">Administrador y Captura</span>
         </div>
 
         <form method="POST" action="{{ route('catalogos.store') }}">
@@ -760,6 +760,7 @@
         </div>
 
         <div class="cat-help">
+            La administración está autorizada para <strong>Administrador SWAFI</strong> y <strong>Usuario Captura</strong>.
             La eliminación se maneja como <strong>desactivación</strong> para conservar trazabilidad y evitar borrar catálogos
             ya relacionados con activos, expedientes, ubicaciones o reportes.
         </div>
@@ -808,7 +809,7 @@
 
             <div class="cat-kpi">
                 <strong>{{ $canAdminCatalogs ? 'CRUD' : 'Consulta' }}</strong>
-                <span>{{ $canAdminCatalogs ? 'Administración y CSV' : 'Acceso de solo lectura' }}</span>
+                <span>{{ $canAdminCatalogs ? 'Administración y carga masiva' : 'Acceso de solo lectura' }}</span>
             </div>
         </div>
 
