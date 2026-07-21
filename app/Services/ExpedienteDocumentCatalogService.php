@@ -3,6 +3,8 @@
 namespace App\Services;
 
 use DomainException;
+use Illuminate\Container\Container;
+use Illuminate\Contracts\Config\Repository;
 use Illuminate\Http\UploadedFile;
 use RuntimeException;
 
@@ -20,9 +22,11 @@ class ExpedienteDocumentCatalogService
      */
     public function __construct(?array $definitions = null, ?int $maxFilesPerUpload = null)
     {
-        $configuration = function_exists('config')
-            ? (array) config('swafi.documentos_expediente', [])
-            : [];
+        $configuration = [];
+
+        if ($definitions === null || $maxFilesPerUpload === null) {
+            $configuration = $this->loadConfiguration();
+        }
 
         $this->definitions = $definitions
             ?? (array) ($configuration['tipos'] ?? []);
@@ -30,6 +34,26 @@ class ExpedienteDocumentCatalogService
             ?? (int) ($configuration['max_archivos_por_carga'] ?? 10);
 
         $this->assertValidConfiguration();
+    }
+
+    /** @return array<string,mixed> */
+    private function loadConfiguration(): array
+    {
+        $container = Container::getInstance();
+
+        if (!$container->bound('config')) {
+            return [];
+        }
+
+        $repository = $container->make('config');
+
+        if (!$repository instanceof Repository) {
+            return [];
+        }
+
+        $configuration = $repository->get('swafi.documentos_expediente', []);
+
+        return is_array($configuration) ? $configuration : [];
     }
 
     /** @return array<int,string> */
