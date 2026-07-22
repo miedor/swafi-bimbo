@@ -1513,7 +1513,7 @@
                 $deadlineBadgeClass = $observationDeadlineService->badgeClass($deadlineState);
               @endphp
 
-              <article class="detail-card-item">
+              <article class="detail-card-item" id="observacion-{{ $observacion->id }}">
                 <div class="detail-card-item-head">
                   <div>
                     <h4>{{ $tipo }}</h4>
@@ -1568,10 +1568,28 @@
                   @if($observacion->respuesta_atencion)
                     <div><strong>Respuesta:</strong> {{ $observacion->respuesta_atencion }}</div>
                     <div class="detail-muted">Atendió: {{ $observacion->atendido_por_nombre ?: ($observacion->atendido_por_email ?: 'Usuario no identificado') }} · {{ $observacion->fecha_atencion ?: $observacion->updated_at }}</div>
+
+                    @if($estatus === 'atendida')
+                      @if(data_get($observacion, 'fecha_notificacion_revision'))
+                        <div class="detail-muted">Aviso de validación enviado: {{ data_get($observacion, 'fecha_notificacion_revision') }}.</div>
+                      @elseif(data_get($observacion, 'notificacion_revision_error_referencia'))
+                        <div class="detail-muted">La corrección está visible en el Dashboard de Consulta / Auditoría, pero el correo no pudo enviarse. Referencia: {{ data_get($observacion, 'notificacion_revision_error_referencia') }}.</div>
+                      @else
+                        <div class="detail-muted">La corrección está pendiente de validación y visible para Consulta / Auditoría.</div>
+                      @endif
+                    @endif
                   @endif
                   @if($observacion->comentario_validacion)
                     <div><strong>Validación:</strong> {{ $observacion->comentario_validacion }}</div>
                     <div class="detail-muted">Validó/Canceló: {{ $observacion->validado_por_nombre ?: ($observacion->validado_por_email ?: ($observacion->cancelado_por_nombre ?: ($observacion->cancelado_por_email ?: 'Usuario no identificado'))) }}</div>
+
+                    @if(in_array($estatus, ['cerrada', 'rechazada'], true))
+                      @if(data_get($observacion, 'fecha_notificacion_resolucion'))
+                        <div class="detail-muted">Resolución notificada al usuario asignado: {{ data_get($observacion, 'fecha_notificacion_resolucion') }}.</div>
+                      @elseif(data_get($observacion, 'notificacion_resolucion_error_referencia'))
+                        <div class="detail-muted">La resolución quedó registrada, pero el correo no pudo enviarse. Referencia: {{ data_get($observacion, 'notificacion_resolucion_error_referencia') }}.</div>
+                      @endif
+                    @endif
                   @endif
                 </div>
 
@@ -1604,7 +1622,7 @@
                         <label class="detail-form-field">
                           <span>Decisión</span>
                           <select name="decision" required>
-                            <option value="cerrada">Cerrar corrección</option>
+                            <option value="cerrada">Aceptar y cerrar corrección</option>
                             <option value="rechazada">Rechazar corrección</option>
                           </select>
                         </label>
@@ -1612,7 +1630,7 @@
                           <span>Comentario de validación</span>
                           <textarea name="comentario_validacion" required placeholder="Indica si la evidencia es correcta o por qué se rechaza"></textarea>
                         </label>
-                        <button type="submit" class="tab">Validar</button>
+                        <button type="submit" class="tab">Registrar decisión</button>
                       </form>
                     @endif
 

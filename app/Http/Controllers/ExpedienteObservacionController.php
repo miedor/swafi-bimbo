@@ -7,6 +7,7 @@ use App\Http\Requests\UpdateObservationDeadlineRequest;
 use App\Mail\SwafiObservacionAsignadaMail;
 use App\Models\ExpedienteObservacion;
 use App\Models\User;
+use App\Services\ObservationWorkflowNotificationService;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -32,6 +33,11 @@ class ExpedienteObservacionController extends Controller
         'alta' => 'Alta',
         'critica' => 'Crítica',
     ];
+
+    public function __construct(
+        private readonly ObservationWorkflowNotificationService $workflowNotifications
+    ) {
+    }
 
     public function store(StoreExpedienteObservacionRequest $request, int $expediente): RedirectResponse
     {
@@ -279,6 +285,11 @@ class ExpedienteObservacionController extends Controller
                 'estatus' => 'atendida',
                 'respuesta_atencion' => $validated['respuesta_atencion'],
                 'atendido_por' => $this->userId(),
+                'validado_por' => null,
+                'comentario_validacion' => null,
+                'fecha_validacion' => null,
+                'fecha_notificacion_resolucion' => null,
+                'notificacion_resolucion_error_referencia' => null,
                 'actualizado_por' => $this->userId(),
                 'fecha_atencion' => now(),
             ]);
@@ -296,9 +307,21 @@ class ExpedienteObservacionController extends Controller
             );
         });
 
+        $notification = $this->workflowNotifications->notifyCreatorForValidation(
+            $observacionData->fresh(),
+            $this->userId()
+        );
+
         return redirect()
-            ->route('expediente', ['expediente' => $observacionData->expediente_id, 'tab' => 'observaciones'])
-            ->with('success', 'La observación fue marcada como atendida. Ahora debe ser validada por Consulta/Auditoría.');
+            ->route('expediente', [
+                'expediente' => $observacionData->expediente_id,
+                'tab' => 'observaciones',
+            ])
+            ->with(
+                'success',
+                'La observación fue marcada como atendida y quedó pendiente de validación. '
+                .$notification['message']
+            );
     }
 
     public function validar(Request $request, int $observacion): RedirectResponse
@@ -357,13 +380,21 @@ class ExpedienteObservacionController extends Controller
             );
         });
 
+        $notification = $this->workflowNotifications->notifyAssigneeOfResolution(
+            $observacionData->fresh(),
+            $this->userId()
+        );
+
         $message = $validated['decision'] === 'cerrada'
-            ? 'La observación fue cerrada por Consulta/Auditoría.'
-            : 'La corrección fue rechazada y regresa a atención del usuario asignado.';
+            ? 'La observación fue cerrada por Consulta/Auditoría. '
+            : 'La corrección fue rechazada y regresa a atención del usuario asignado. ';
 
         return redirect()
-            ->route('expediente', ['expediente' => $observacionData->expediente_id, 'tab' => 'observaciones'])
-            ->with('success', $message);
+            ->route('expediente', [
+                'expediente' => $observacionData->expediente_id,
+                'tab' => 'observaciones',
+            ])
+            ->with('success', $message.$notification['message']);
     }
 
     public function cancelar(Request $request, int $observacion): RedirectResponse

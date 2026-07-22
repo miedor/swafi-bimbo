@@ -4,6 +4,7 @@ namespace App\Http\Controllers;
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
@@ -14,17 +15,99 @@ class DashboardController extends Controller
         $fechaHasta = $request->input('fecha_hasta');
 
         $expedientesAtencion = $this->expedientesAtencion($plantaId, $fechaDesde, $fechaHasta);
+        $validationQueue = $this->observationValidationQueue();
+        $kpis = $this->buildKpis($plantaId, $fechaDesde, $fechaHasta);
+        $kpis['observaciones_pendientes_validacion'] = $validationQueue['total'];
 
         return view('swafi.dashboard', [
             'filtros' => $request->all(),
             'catalogos' => $this->catalogos(),
-            'kpis' => $this->buildKpis($plantaId, $fechaDesde, $fechaHasta),
+            'kpis' => $kpis,
             'estatusDocumental' => $this->estatusDocumental($plantaId, $fechaDesde, $fechaHasta),
             'activosPorPlanta' => $this->activosPorPlanta(),
             'expedientesAtencion' => $expedientesAtencion,
+            'observacionesPendientesValidacion' => $validationQueue['items'],
             'actividadReciente' => $this->actividadReciente(),
             'ultimosDocumentos' => $this->ultimosDocumentos($plantaId),
         ]);
+    }
+
+    /**
+     * @return array{total:int,items:\Illuminate\Support\Collection<int, object>}
+     */
+    private function observationValidationQueue(): array
+    {
+        $roles = session('swafi_roles', []);
+        $permissions = session('swafi_permissions', []);
+        $isAdmin = in_array('Administrador SWAFI', $roles, true)
+            || in_array('Administrador', $roles, true);
+        $canValidate = $isAdmin
+            || in_array('observaciones.validar', $permissions, true);
+        $userId = (int) (session('swafi_user_id') ?: auth()->id());
+
+        if (
+            !$canValidate
+            || $userId <= 0
+            || !Schema::hasTable('expediente_observaciones')
+        ) {
+            return [
+                'total' => 0,
+                'items' => collect(),
+            ];
+        }
+
+        $query = DB::table('expediente_observaciones as o')
+            ->join('expedientes as e', 'e.id', '=', 'o.expediente_id')
+            ->join('activos as a', 'a.numero_activo', '=', 'o.numero_activo')
+            ->leftJoin('users as ua', 'ua.id', '=', 'o.atendido_por')
+            ->leftJoin('users as uasig', 'uasig.id', '=', 'o.asignado_a')
+            ->whereNull('e.deleted_at')
+            ->where('o.estatus', 'atendida');
+
+        if (!$isAdmin) {
+            $query->where('o.creado_por', $userId);
+        }
+
+        $query->select([
+            'o.id as observacion_id',
+            'o.expediente_id',
+            'o.numero_activo',
+            'o.tipo_observacion',
+            'o.prioridad',
+            'o.descripcion',
+            'o.respuesta_atencion',
+            'o.fecha_atencion',
+            'e.folio_factura',
+            'a.descripcion as activo_descripcion',
+            'ua.name as atendido_por_nombre',
+            'ua.email as atendido_por_email',
+            'uasig.name as asignado_a_nombre',
+            'uasig.email as asignado_a_email',
+        ]);
+
+        if (Schema::hasColumn('expediente_observaciones', 'fecha_notificacion_revision')) {
+            $query->addSelect('o.fecha_notificacion_revision');
+        } else {
+            $query->addSelect(DB::raw('NULL as fecha_notificacion_revision'));
+        }
+
+        if (Schema::hasColumn('expediente_observaciones', 'notificacion_revision_error_referencia')) {
+            $query->addSelect('o.notificacion_revision_error_referencia');
+        } else {
+            $query->addSelect(DB::raw('NULL as notificacion_revision_error_referencia'));
+        }
+
+        $total = (clone $query)->count();
+        $items = $query
+            ->orderByDesc('o.fecha_atencion')
+            ->orderByDesc('o.updated_at')
+            ->limit(8)
+            ->get();
+
+        return [
+            'total' => $total,
+            'items' => $items,
+        ];
     }
 
     private function catalogos(): array

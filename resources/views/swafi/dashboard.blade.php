@@ -517,6 +517,38 @@
     font-weight: 850;
   }
 
+  .dash-workflow-alert {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 14px;
+    padding: 13px 15px;
+    border: 1px solid #f9d36a;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #fffaf0 0%, #fff4d6 100%);
+    color: #704100;
+    box-shadow: 0 10px 22px rgba(146, 88, 0, .08);
+  }
+
+  .dash-workflow-alert strong {
+    display: block;
+    color: #704100;
+    font-size: 14px;
+    font-weight: 950;
+  }
+
+  .dash-workflow-alert span {
+    display: block;
+    margin-top: 3px;
+    font-size: 12px;
+    font-weight: 750;
+    line-height: 1.3;
+  }
+
+  .dash-workflow-alert .tab {
+    flex: 0 0 auto;
+  }
+
   @media (max-width: 1360px) {
     .dash-top-row {
       grid-template-columns: 1fr;
@@ -547,6 +579,16 @@
     .dash-health-meta,
     .dash-quick-grid {
       grid-template-columns: 1fr;
+    }
+
+    .dash-workflow-alert {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .dash-workflow-alert .tab {
+      width: 100%;
+      justify-content: center;
     }
 
     .dash-actions {
@@ -679,6 +721,7 @@
     $totalEstatus = max((int) ($kpis['total_expedientes'] ?? 0), 1);
     $porcentajeCompletos = (float) ($kpis['porcentaje_completos'] ?? 0);
     $porcentajePendientes = (float) ($kpis['porcentaje_incompletos'] ?? 0);
+    $pendingValidationCount = (int) ($kpis['observaciones_pendientes_validacion'] ?? 0);
     $hasFilters = filled($filtros['planta_id'] ?? null) || filled($filtros['fecha_desde'] ?? null) || filled($filtros['fecha_hasta'] ?? null);
 @endphp
 
@@ -761,6 +804,16 @@
     </section>
   </div>
 
+  @if($can('observaciones.validar') && $pendingValidationCount > 0)
+    <div class="dash-workflow-alert" role="status" aria-live="polite">
+      <div>
+        <strong>Tienes {{ number_format($pendingValidationCount) }} observación(es) atendida(s) pendiente(s) de validación</strong>
+        <span>Revisa la respuesta del usuario asignado para aceptar y cerrar la corrección o rechazarla y devolverla a atención.</span>
+      </div>
+      <button type="button" class="tab" data-open-validation-queue>Revisar ahora</button>
+    </div>
+  @endif
+
   <div class="dash-kpi-row" data-swafi-query-results id="swafi-dashboard-resultados">
     <div class="dash-kpi">
       <span>Activos registrados</span>
@@ -804,6 +857,11 @@
       <button type="button" class="dash-tab-button is-active" data-dashboard-tab="seguimiento">
         Seguimiento prioritario
       </button>
+      @if($can('observaciones.validar'))
+        <button type="button" class="dash-tab-button" data-dashboard-tab="validaciones">
+          Validaciones pendientes ({{ number_format($pendingValidationCount) }})
+        </button>
+      @endif
       <button type="button" class="dash-tab-button" data-dashboard-tab="resumen">
         Resumen operativo
       </button>
@@ -912,6 +970,78 @@
         </div>
       </div>
     </div>
+
+    @if($can('observaciones.validar'))
+      <div class="dash-tab-panel" data-dashboard-panel="validaciones">
+        <div class="dash-panel">
+          <div class="dash-panel-header">
+            <h3>Observaciones atendidas pendientes de mi validación</h3>
+            <span class="pill {{ $pendingValidationCount > 0 ? 'warn' : 'ok' }}">
+              {{ number_format($pendingValidationCount) }} pendiente(s)
+            </span>
+          </div>
+
+          <div class="dash-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Activo / Factura</th>
+                  <th>Observación</th>
+                  <th>Atendió</th>
+                  <th>Respuesta registrada</th>
+                  <th>Aviso</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                @forelse($observacionesPendientesValidacion as $item)
+                  <tr>
+                    <td class="dash-asset-cell">
+                      <strong>{{ $item->numero_activo }}</strong>
+                      <span class="dash-mini">{{ $item->activo_descripcion }}</span><br>
+                      <span class="dash-mini">Factura: {{ $item->folio_factura ?: 'Sin folio' }}</span>
+                    </td>
+                    <td>
+                      <strong>{{ ucfirst(str_replace('_', ' ', $item->tipo_observacion)) }}</strong><br>
+                      <span class="dash-mini">Prioridad: {{ ucfirst($item->prioridad) }}</span><br>
+                      <span class="dash-mini">{{ \Illuminate\Support\Str::limit($item->descripcion, 120) }}</span>
+                    </td>
+                    <td>
+                      {{ $item->atendido_por_nombre ?: ($item->atendido_por_email ?: 'Usuario no identificado') }}<br>
+                      <span class="dash-mini">{{ $item->fecha_atencion ?: 'Fecha no disponible' }}</span>
+                    </td>
+                    <td>
+                      {{ \Illuminate\Support\Str::limit((string) $item->respuesta_atencion, 170) }}
+                    </td>
+                    <td>
+                      @if($item->fecha_notificacion_revision)
+                        <span class="dash-issue ok">Correo enviado</span>
+                      @elseif($item->notificacion_revision_error_referencia)
+                        <span class="dash-issue danger">Correo no enviado</span><br>
+                        <span class="dash-mini">Ref. {{ $item->notificacion_revision_error_referencia }}</span>
+                      @else
+                        <span class="dash-issue">Visible en Dashboard</span>
+                      @endif
+                    </td>
+                    <td>
+                      <div class="table-actions">
+                        <a href="{{ route('expediente', ['expediente' => $item->expediente_id, 'tab' => 'observaciones']).'#observacion-'.$item->observacion_id }}">
+                          Aceptar o rechazar
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                @empty
+                  <tr>
+                    <td colspan="6">No tienes observaciones atendidas pendientes de validación.</td>
+                  </tr>
+                @endforelse
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    @endif
 
     <div class="dash-tab-panel" data-dashboard-panel="resumen">
       <div class="dash-panel-grid">
@@ -1137,6 +1267,19 @@
   document.addEventListener('DOMContentLoaded', function () {
     const buttons = document.querySelectorAll('[data-dashboard-tab]');
     const panels = document.querySelectorAll('[data-dashboard-panel]');
+
+    const openValidationQueue = document.querySelector('[data-open-validation-queue]');
+
+    if (openValidationQueue) {
+      openValidationQueue.addEventListener('click', function () {
+        const validationButton = document.querySelector('[data-dashboard-tab="validaciones"]');
+
+        if (validationButton) {
+          validationButton.click();
+          validationButton.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+    }
 
     buttons.forEach(function (button) {
       button.addEventListener('click', function () {
