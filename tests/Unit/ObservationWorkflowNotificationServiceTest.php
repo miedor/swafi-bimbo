@@ -132,7 +132,7 @@ class ObservationWorkflowNotificationServiceTest extends TestCase
             static fn (SwafiObservacionAtendidaMail $mail): bool =>
                 $mail->hasTo('auditoria@bimbo.test')
                 && $mail->numeroActivo === 'BIM-000001'
-                && str_contains($mail->tipoObservacion, 'Ubicación')
+                && $mail->tipoObservacion === 'Falta ubicación física'
         );
 
         $observation->update([
