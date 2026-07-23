@@ -462,11 +462,16 @@ class ExpedienteObservacionController extends Controller
         return DB::table('users as u')
             ->join('role_user as ru', 'ru.user_id', '=', 'u.id')
             ->join('roles as r', 'r.id', '=', 'ru.role_id')
+            ->join('permission_role as pr', 'pr.role_id', '=', 'r.id')
+            ->join('permissions as p', 'p.id', '=', 'pr.permission_id')
             ->where('u.id', $userId)
             ->where('u.estatus', 'activo')
             ->where('r.activo', 1)
             ->where('r.nombre', $roleName)
+            ->where('p.activo', 1)
+            ->where('p.clave', 'observaciones.atender')
             ->select(['u.id', 'u.usuario', 'u.name', 'u.email', 'r.nombre as rol_nombre'])
+            ->distinct()
             ->first();
     }
 
@@ -485,6 +490,8 @@ class ExpedienteObservacionController extends Controller
 
         try {
             $urlExpediente = route('expediente', ['expediente' => $expedienteData->id, 'tab' => 'observaciones']);
+
+            $this->assertRealMailTransport();
 
             Mail::to($assignedUser->email)->send(
                 new SwafiObservacionAsignadaMail(
@@ -521,7 +528,7 @@ class ExpedienteObservacionController extends Controller
                 ip: $request->ip()
             );
 
-            return 'Se envió correo de notificación al usuario asignado.';
+            return 'La asignación quedó visible en el Dashboard del usuario responsable y se envió el correo de notificación.';
         } catch (\Throwable $exception) {
             $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
                 $exception,
@@ -552,7 +559,18 @@ class ExpedienteObservacionController extends Controller
                 ip: $request->ip()
             );
 
-            return "La observación quedó registrada, pero no fue posible enviar el correo. Referencia: {$reference}.";
+            return "La asignación quedó visible en el Dashboard del usuario responsable, pero no fue posible enviar el correo. Referencia: {$reference}.";
+        }
+    }
+
+    private function assertRealMailTransport(): void
+    {
+        $mailer = strtolower(trim((string) config('mail.default', 'log')));
+
+        if (in_array($mailer, ['log', 'array', 'failover'], true)) {
+            throw new \RuntimeException(
+                'MAIL_MAILER='.$mailer.' no entrega correos reales. Configura SMTP, SES, Postmark o Resend en Laravel Cloud.'
+            );
         }
     }
 

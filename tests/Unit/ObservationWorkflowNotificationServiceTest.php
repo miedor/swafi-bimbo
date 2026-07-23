@@ -117,6 +117,45 @@ class ObservationWorkflowNotificationServiceTest extends TestCase
         );
     }
 
+    public function test_plant_assignee_returns_the_attended_observation_to_audit_and_receives_the_resolution(): void
+    {
+        $observation = ExpedienteObservacion::query()->findOrFail(2);
+
+        $reviewResult = app(ObservationWorkflowNotificationService::class)
+            ->notifyCreatorForValidation($observation, 30);
+
+        self::assertTrue($reviewResult['sent']);
+        self::assertSame('auditoria@bimbo.test', $reviewResult['recipient_email']);
+
+        Mail::assertSent(
+            SwafiObservacionAtendidaMail::class,
+            static fn (SwafiObservacionAtendidaMail $mail): bool =>
+                $mail->hasTo('auditoria@bimbo.test')
+                && $mail->numeroActivo === 'BIM-000001'
+                && str_contains($mail->tipoObservacion, 'Ubicación')
+        );
+
+        $observation->update([
+            'estatus' => 'cerrada',
+            'comentario_validacion' => 'La ubicación fue verificada y se acepta la corrección.',
+            'validado_por' => 10,
+            'fecha_validacion' => now(),
+        ]);
+
+        $resolutionResult = app(ObservationWorkflowNotificationService::class)
+            ->notifyAssigneeOfResolution($observation, 10);
+
+        self::assertTrue($resolutionResult['sent']);
+        self::assertSame('planta@bimbo.test', $resolutionResult['recipient_email']);
+
+        Mail::assertSent(
+            SwafiObservacionResolucionMail::class,
+            static fn (SwafiObservacionResolucionMail $mail): bool =>
+                $mail->hasTo('planta@bimbo.test')
+                && $mail->decision === 'Cerrada'
+        );
+    }
+
     private function seedData(): void
     {
         DB::table('users')->insert([
@@ -140,11 +179,22 @@ class ObservationWorkflowNotificationServiceTest extends TestCase
                 'created_at' => now(),
                 'updated_at' => now(),
             ],
+            [
+                'id' => 30,
+                'usuario' => 'planta',
+                'name' => 'Usuario Planta',
+                'email' => 'planta@bimbo.test',
+                'password' => 'hash',
+                'estatus' => 'activo',
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ]);
 
         DB::table('roles')->insert([
             ['id' => 1, 'nombre' => 'Usuario Consulta / Auditoría', 'activo' => 1],
             ['id' => 2, 'nombre' => 'Usuario Captura', 'activo' => 1],
+            ['id' => 3, 'nombre' => 'Usuario Planta / Inventarios', 'activo' => 1],
         ]);
 
         DB::table('permissions')->insert([
@@ -155,11 +205,13 @@ class ObservationWorkflowNotificationServiceTest extends TestCase
         DB::table('role_user')->insert([
             ['role_id' => 1, 'user_id' => 10],
             ['role_id' => 2, 'user_id' => 20],
+            ['role_id' => 3, 'user_id' => 30],
         ]);
 
         DB::table('permission_role')->insert([
             ['role_id' => 1, 'permission_id' => 1],
             ['role_id' => 2, 'permission_id' => 2],
+            ['role_id' => 3, 'permission_id' => 2],
         ]);
 
         DB::table('activos')->insert([
@@ -176,23 +228,44 @@ class ObservationWorkflowNotificationServiceTest extends TestCase
         ]);
 
         DB::table('expediente_observaciones')->insert([
-            'id' => 1,
-            'expediente_id' => 1,
-            'numero_activo' => 'BIM-000001',
-            'tipo_observacion' => 'falta_pdf',
-            'prioridad' => 'alta',
-            'rol_destino' => 'Usuario Captura',
-            'asignado_a' => 20,
-            'estatus' => 'atendida',
-            'descripcion' => 'Falta incorporar la evidencia documental de la factura.',
-            'respuesta_atencion' => 'Se incorporó el documento faltante.',
-            'creado_por' => 10,
-            'atendido_por' => 20,
-            'fecha_atencion' => now(),
-            'notificacion_revision_intentos' => 0,
-            'notificacion_resolucion_intentos' => 0,
-            'created_at' => now(),
-            'updated_at' => now(),
+            [
+                'id' => 1,
+                'expediente_id' => 1,
+                'numero_activo' => 'BIM-000001',
+                'tipo_observacion' => 'falta_pdf',
+                'prioridad' => 'alta',
+                'rol_destino' => 'Usuario Captura',
+                'asignado_a' => 20,
+                'estatus' => 'atendida',
+                'descripcion' => 'Falta incorporar la evidencia documental de la factura.',
+                'respuesta_atencion' => 'Se incorporó el documento faltante.',
+                'creado_por' => 10,
+                'atendido_por' => 20,
+                'fecha_atencion' => now(),
+                'notificacion_revision_intentos' => 0,
+                'notificacion_resolucion_intentos' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
+            [
+                'id' => 2,
+                'expediente_id' => 1,
+                'numero_activo' => 'BIM-000001',
+                'tipo_observacion' => 'falta_ubicacion',
+                'prioridad' => 'alta',
+                'rol_destino' => 'Usuario Planta / Inventarios',
+                'asignado_a' => 30,
+                'estatus' => 'atendida',
+                'descripcion' => 'Falta confirmar la ubicación física del activo.',
+                'respuesta_atencion' => 'Se verificó el activo y se actualizó su ubicación.',
+                'creado_por' => 10,
+                'atendido_por' => 30,
+                'fecha_atencion' => now(),
+                'notificacion_revision_intentos' => 0,
+                'notificacion_resolucion_intentos' => 0,
+                'created_at' => now(),
+                'updated_at' => now(),
+            ],
         ]);
     }
 

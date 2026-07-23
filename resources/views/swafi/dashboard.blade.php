@@ -717,10 +717,23 @@
         return $motivos;
     };
 
+    $observationTypeLabels = [
+        'falta_pdf' => 'Falta PDF',
+        'falta_xml' => 'Falta XML',
+        'falta_valores' => 'Falta valores fiscales/financieros',
+        'falta_ubicacion' => 'Falta ubicación física',
+        'ubicacion_incorrecta' => 'Ubicación incorrecta',
+        'datos_inconsistentes' => 'Datos inconsistentes',
+        'documento_incorrecto' => 'Documento incorrecto',
+        'otro' => 'Otro seguimiento',
+    ];
+
     $filtros = $filtros ?? [];
+    $observacionesAsignadasAtencion = $observacionesAsignadasAtencion ?? collect();
     $totalEstatus = max((int) ($kpis['total_expedientes'] ?? 0), 1);
     $porcentajeCompletos = (float) ($kpis['porcentaje_completos'] ?? 0);
     $porcentajePendientes = (float) ($kpis['porcentaje_incompletos'] ?? 0);
+    $assignedAttentionCount = (int) ($kpis['observaciones_asignadas_atencion'] ?? 0);
     $pendingValidationCount = (int) ($kpis['observaciones_pendientes_validacion'] ?? 0);
     $hasFilters = filled($filtros['planta_id'] ?? null) || filled($filtros['fecha_desde'] ?? null) || filled($filtros['fecha_hasta'] ?? null);
 @endphp
@@ -804,6 +817,16 @@
     </section>
   </div>
 
+  @if($can('observaciones.atender') && $assignedAttentionCount > 0)
+    <div class="dash-workflow-alert" role="status" aria-live="polite">
+      <div>
+        <strong>Tienes {{ number_format($assignedAttentionCount) }} observación(es) asignada(s) pendiente(s) de atención</strong>
+        <span>La bandeja muestra únicamente las observaciones asignadas a tu usuario, incluidas las relacionadas con ubicación física e inventarios.</span>
+      </div>
+      <button type="button" class="tab" data-open-attention-queue>Atender ahora</button>
+    </div>
+  @endif
+
   @if($can('observaciones.validar') && $pendingValidationCount > 0)
     <div class="dash-workflow-alert" role="status" aria-live="polite">
       <div>
@@ -857,6 +880,11 @@
       <button type="button" class="dash-tab-button is-active" data-dashboard-tab="seguimiento">
         Seguimiento prioritario
       </button>
+      @if($can('observaciones.atender'))
+        <button type="button" class="dash-tab-button" data-dashboard-tab="asignaciones">
+          Mis observaciones ({{ number_format($assignedAttentionCount) }})
+        </button>
+      @endif
       @if($can('observaciones.validar'))
         <button type="button" class="dash-tab-button" data-dashboard-tab="validaciones">
           Validaciones pendientes ({{ number_format($pendingValidationCount) }})
@@ -970,6 +998,85 @@
         </div>
       </div>
     </div>
+
+    @if($can('observaciones.atender'))
+      <div class="dash-tab-panel" data-dashboard-panel="asignaciones">
+        <div class="dash-panel">
+          <div class="dash-panel-header">
+            <h3>Observaciones asignadas a mi usuario</h3>
+            <span class="pill {{ $assignedAttentionCount > 0 ? 'warn' : 'ok' }}">
+              {{ number_format($assignedAttentionCount) }} pendiente(s)
+            </span>
+          </div>
+
+          <div class="dash-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Activo / Factura</th>
+                  <th>Observación</th>
+                  <th>Prioridad / Estatus</th>
+                  <th>Fecha compromiso</th>
+                  <th>Registró</th>
+                  <th>Aviso</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                @forelse($observacionesAsignadasAtencion as $item)
+                  <tr>
+                    <td class="dash-asset-cell">
+                      <strong>{{ $item->numero_activo }}</strong>
+                      <span class="dash-mini">{{ $item->activo_descripcion }}</span><br>
+                      <span class="dash-mini">Factura: {{ $item->folio_factura ?: 'Sin folio' }}</span>
+                    </td>
+                    <td>
+                      <strong>{{ $observationTypeLabels[$item->tipo_observacion] ?? ucfirst(str_replace('_', ' ', $item->tipo_observacion)) }}</strong><br>
+                      <span class="dash-mini">{{ \Illuminate\Support\Str::limit($item->descripcion, 150) }}</span><br>
+                      <span class="dash-mini">Responsable: {{ $item->rol_destino ?: 'Rol no indicado' }}</span>
+                    </td>
+                    <td>
+                      <span class="dash-issue {{ in_array($item->prioridad, ['critica', 'alta'], true) ? 'danger' : '' }}">
+                        {{ ucfirst($item->prioridad) }}
+                      </span><br>
+                      <span class="dash-mini">{{ ucfirst(str_replace('_', ' ', $item->estatus)) }}</span>
+                    </td>
+                    <td>
+                      {{ $item->fecha_compromiso ?: 'Sin fecha' }}
+                    </td>
+                    <td>
+                      {{ $item->creado_por_nombre ?: ($item->creado_por_email ?: 'Usuario no identificado') }}<br>
+                      <span class="dash-mini">{{ $item->fecha_asignacion ?: $item->created_at }}</span>
+                    </td>
+                    <td>
+                      @if($item->fecha_notificacion)
+                        <span class="dash-issue ok">Correo enviado</span>
+                      @elseif($item->notificacion_error)
+                        <span class="dash-issue danger">Correo no enviado</span><br>
+                        <span class="dash-mini">La asignación permanece visible en esta bandeja.</span>
+                      @else
+                        <span class="dash-issue">Aviso en Dashboard</span>
+                      @endif
+                    </td>
+                    <td>
+                      <div class="table-actions">
+                        <a href="{{ route('expediente', ['expediente' => $item->expediente_id, 'tab' => 'observaciones']) }}#observacion-{{ $item->observacion_id }}">
+                          Abrir y atender
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                @empty
+                  <tr>
+                    <td colspan="7">No tienes observaciones asignadas pendientes de atención.</td>
+                  </tr>
+                @endforelse
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    @endif
 
     @if($can('observaciones.validar'))
       <div class="dash-tab-panel" data-dashboard-panel="validaciones">
@@ -1268,7 +1375,19 @@
     const buttons = document.querySelectorAll('[data-dashboard-tab]');
     const panels = document.querySelectorAll('[data-dashboard-panel]');
 
+    const openAttentionQueue = document.querySelector('[data-open-attention-queue]');
     const openValidationQueue = document.querySelector('[data-open-validation-queue]');
+
+    if (openAttentionQueue) {
+      openAttentionQueue.addEventListener('click', function () {
+        const attentionButton = document.querySelector('[data-dashboard-tab="asignaciones"]');
+
+        if (attentionButton) {
+          attentionButton.click();
+          attentionButton.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+    }
 
     if (openValidationQueue) {
       openValidationQueue.addEventListener('click', function () {

@@ -2,12 +2,18 @@
 
 namespace App\Http\Controllers;
 
+use App\Services\ObservationAssignmentQueueService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
 class DashboardController extends Controller
 {
+    public function __construct(
+        private readonly ObservationAssignmentQueueService $observationAssignments
+    ) {
+    }
+
     public function index(Request $request)
     {
         $plantaId = $request->filled('planta_id') ? (int) $request->input('planta_id') : null;
@@ -15,8 +21,10 @@ class DashboardController extends Controller
         $fechaHasta = $request->input('fecha_hasta');
 
         $expedientesAtencion = $this->expedientesAtencion($plantaId, $fechaDesde, $fechaHasta);
+        $attentionQueue = $this->observationAttentionQueue();
         $validationQueue = $this->observationValidationQueue();
         $kpis = $this->buildKpis($plantaId, $fechaDesde, $fechaHasta);
+        $kpis['observaciones_asignadas_atencion'] = $attentionQueue['total'];
         $kpis['observaciones_pendientes_validacion'] = $validationQueue['total'];
 
         return view('swafi.dashboard', [
@@ -26,10 +34,34 @@ class DashboardController extends Controller
             'estatusDocumental' => $this->estatusDocumental($plantaId, $fechaDesde, $fechaHasta),
             'activosPorPlanta' => $this->activosPorPlanta(),
             'expedientesAtencion' => $expedientesAtencion,
+            'observacionesAsignadasAtencion' => $attentionQueue['items'],
             'observacionesPendientesValidacion' => $validationQueue['items'],
             'actividadReciente' => $this->actividadReciente(),
             'ultimosDocumentos' => $this->ultimosDocumentos($plantaId),
         ]);
+    }
+
+    /**
+     * @return array{total:int,items:\Illuminate\Support\Collection<int, object>}
+     */
+    private function observationAttentionQueue(): array
+    {
+        $roles = session('swafi_roles', []);
+        $permissions = session('swafi_permissions', []);
+        $isAdmin = in_array('Administrador SWAFI', $roles, true)
+            || in_array('Administrador', $roles, true);
+        $canAttend = $isAdmin
+            || in_array('observaciones.atender', $permissions, true);
+        $userId = (int) (session('swafi_user_id') ?: auth()->id());
+
+        if (!$canAttend || $userId <= 0) {
+            return [
+                'total' => 0,
+                'items' => collect(),
+            ];
+        }
+
+        return $this->observationAssignments->pendingForUser($userId);
     }
 
     /**
