@@ -17,7 +17,7 @@ class StoreRegistroIndividualRequest extends FormRequest
     protected function prepareForValidation(): void
     {
         $this->merge([
-            'asset_mode' => strtolower(trim((string) $this->input('asset_mode', 'new'))),
+            'asset_mode' => strtolower(trim((string) $this->input('asset_mode'))),
             'numero_activo' => strtoupper(trim((string) $this->input('numero_activo'))),
             'folio_factura' => trim((string) $this->input('folio_factura')),
             'uuid_cfdi' => $this->filled('uuid_cfdi')
@@ -33,13 +33,15 @@ class StoreRegistroIndividualRequest extends FormRequest
             'required',
             'string',
             'max:30',
-            'regex:/^[A-Z0-9][A-Z0-9\-]*$/',
+            'regex:/^[A-Z0-9][A-Z0-9._-]*$/',
         ];
 
-        $numeroActivoRules[] = $this->isExistingAsset()
-            ? Rule::exists('activos', 'numero_activo')
-                ->where(fn ($query) => $query->where('activo', true))
-            : Rule::unique('activos', 'numero_activo');
+        if ($this->isExistingAsset()) {
+            $numeroActivoRules[] = Rule::exists('activos', 'numero_activo')
+                ->where(fn ($query) => $query->where('activo', true));
+        } elseif ($this->isNewAsset()) {
+            $numeroActivoRules[] = Rule::unique('activos', 'numero_activo');
+        }
 
         return [
             'asset_mode' => ['required', Rule::in(['new', 'existing'])],
@@ -154,7 +156,7 @@ class StoreRegistroIndividualRequest extends FormRequest
             'asset_mode.required' => 'Selecciona si registrarás un activo nuevo o utilizarás uno existente.',
             'asset_mode.in' => 'El modo de registro del activo no es válido.',
             'numero_activo.required' => 'El número de activo es obligatorio.',
-            'numero_activo.regex' => 'El número de activo solo puede contener letras mayúsculas, números y guiones.',
+            'numero_activo.regex' => 'El número de activo solo puede contener letras mayúsculas, números, punto, guion o guion bajo.',
             'numero_activo.unique' => 'El activo ya existe. Utiliza la opción “Buscar activo existente” para asociar el nuevo expediente sin modificar sus datos maestros.',
             'numero_activo.exists' => 'El activo seleccionado no existe o se encuentra inactivo.',
             'descripcion.required' => 'La descripción del activo es obligatoria.',
@@ -214,6 +216,10 @@ class StoreRegistroIndividualRequest extends FormRequest
             return ['prohibited'];
         }
 
+        if (!$this->isNewAsset()) {
+            return ['prohibited'];
+        }
+
         return array_merge([$required ? 'required' : 'nullable'], $rules);
     }
 
@@ -224,7 +230,7 @@ class StoreRegistroIndividualRequest extends FormRequest
 
     private function isNewAsset(): bool
     {
-        return !$this->isExistingAsset();
+        return $this->input('asset_mode') === 'new';
     }
 
     private function validateAssetDates(Validator $validator): void

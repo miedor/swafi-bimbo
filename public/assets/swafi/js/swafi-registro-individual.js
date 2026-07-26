@@ -14,10 +14,12 @@ document.addEventListener('DOMContentLoaded', () => {
     const numberInput = form.querySelector('[data-asset-number]');
     const searchButton = form.querySelector('[data-asset-search]');
     const newButton = form.querySelector('[data-asset-new]');
+    const submitButton = form.querySelector('[data-registration-submit]');
     const status = form.querySelector('[data-asset-status]');
     const summary = form.querySelector('[data-asset-summary]');
     const existingNotice = form.querySelector('[data-existing-asset-notice]');
     const assetFields = Array.from(form.querySelectorAll('[data-asset-field]'));
+    const registrationPanels = Array.from(form.querySelectorAll('[data-registration-panel]'));
 
     const browser = form.querySelector('[data-asset-browser]');
     const browserQuery = form.querySelector('[data-asset-filter-query]');
@@ -31,7 +33,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const paginationInfo = form.querySelector('[data-asset-pagination-info]');
     const paginationActions = form.querySelector('[data-asset-pagination-actions]');
 
-    if (!lookupUrl || !modeInput || !numberInput || !searchButton || !newButton || !status) {
+    if (
+        !lookupUrl
+        || !modeInput
+        || !numberInput
+        || !searchButton
+        || !newButton
+        || !submitButton
+        || !status
+    ) {
         return;
     }
 
@@ -40,6 +50,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let browserController = null;
 
     const normalizeNumber = (value) => String(value || '').trim().toUpperCase();
+    const hasRegistrationMode = () => modeInput.value === 'new'
+        || (
+            modeInput.value === 'existing'
+            && selectedAssetNumber !== ''
+            && normalizeNumber(numberInput.value) === selectedAssetNumber
+        );
 
     const setStatus = (message, type = '') => {
         status.textContent = message;
@@ -84,6 +100,21 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     };
 
+    const setRegistrationReady = (ready) => {
+        submitButton.disabled = !ready;
+        submitButton.setAttribute('aria-disabled', ready ? 'false' : 'true');
+
+        registrationPanels.forEach((panel) => {
+            panel.classList.toggle('is-awaiting-asset-mode', !ready);
+            panel.classList.toggle('is-active-asset-mode', ready);
+        });
+    };
+
+    const setNewButtonSelected = (selected) => {
+        newButton.classList.toggle('is-selected', selected);
+        newButton.setAttribute('aria-pressed', selected ? 'true' : 'false');
+    };
+
     const clearAssetFields = () => {
         assetFields.forEach((field) => {
             field.value = '';
@@ -102,6 +133,30 @@ document.addEventListener('DOMContentLoaded', () => {
         if (element) {
             element.textContent = value || 'Sin dato';
         }
+    };
+
+    const activateSelectionMode = () => {
+        selectedAssetNumber = '';
+        modeInput.value = '';
+        numberInput.readOnly = false;
+        numberInput.removeAttribute('aria-readonly');
+        searchButton.hidden = false;
+        newButton.textContent = 'Registrar activo nuevo';
+        setNewButtonSelected(false);
+        toggleAssetFields(true);
+        setRegistrationReady(false);
+
+        if (existingNotice) {
+            existingNotice.hidden = true;
+        }
+
+        if (summary) {
+            summary.hidden = true;
+        }
+
+        setStatus(
+            'Selecciona “Buscar activo existente” o “Registrar activo nuevo” para habilitar el formulario.'
+        );
     };
 
     const activateExistingMode = (asset) => {
@@ -125,6 +180,8 @@ document.addEventListener('DOMContentLoaded', () => {
         setFieldValue('estatus_operativo', asset.estatus_operativo);
 
         toggleAssetFields(true);
+        setRegistrationReady(true);
+        setNewButtonSelected(false);
         searchButton.hidden = true;
         newButton.textContent = 'Cambiar o registrar otro activo';
 
@@ -150,14 +207,16 @@ document.addEventListener('DOMContentLoaded', () => {
         );
     };
 
-    const activateNewMode = ({ clear = false } = {}) => {
+    const activateNewMode = ({ clear = false, focus = true } = {}) => {
         selectedAssetNumber = '';
         modeInput.value = 'new';
         numberInput.readOnly = false;
         numberInput.removeAttribute('aria-readonly');
         searchButton.hidden = false;
-        newButton.textContent = 'Registrar activo nuevo';
+        newButton.textContent = 'Alta nueva activada';
+        setNewButtonSelected(true);
         toggleAssetFields(false);
+        setRegistrationReady(true);
 
         if (existingNotice) {
             existingNotice.hidden = true;
@@ -173,9 +232,13 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         setStatus(
-            'Modo de alta nueva. Si el número ya existe, utiliza “Buscar activo existente”.'
+            'Alta de activo nuevo habilitada. Captura el número y completa los datos obligatorios del activo y del expediente.',
+            'success'
         );
-        numberInput.focus();
+
+        if (focus) {
+            numberInput.focus();
+        }
     };
 
     const responseErrorMessage = async (response, fallback) => {
@@ -212,6 +275,7 @@ document.addEventListener('DOMContentLoaded', () => {
         lookupController = controller;
         searchButton.disabled = true;
         newButton.disabled = true;
+        submitButton.disabled = true;
         setStatus('Buscando el activo vigente en SWAFI...');
 
         const url = new URL(lookupUrl, window.location.origin);
@@ -258,6 +322,7 @@ document.addEventListener('DOMContentLoaded', () => {
             if (lookupController === controller) {
                 searchButton.disabled = false;
                 newButton.disabled = false;
+                submitButton.disabled = !hasRegistrationMode();
                 lookupController = null;
             }
         }
@@ -504,6 +569,14 @@ document.addEventListener('DOMContentLoaded', () => {
         activateNewMode({ clear: modeInput.value === 'existing' });
     });
 
+    numberInput.addEventListener('input', () => {
+        numberInput.value = normalizeNumber(numberInput.value);
+
+        if (modeInput.value === 'existing') {
+            activateSelectionMode();
+        }
+    });
+
     numberInput.addEventListener('keydown', (event) => {
         if (event.key === 'Enter' && !numberInput.readOnly) {
             event.preventDefault();
@@ -522,6 +595,16 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     form.addEventListener('submit', (event) => {
+        if (!hasRegistrationMode()) {
+            event.preventDefault();
+            setStatus(
+                'Selecciona primero “Registrar activo nuevo” o valida un activo existente antes de guardar.',
+                'error'
+            );
+            numberInput.focus();
+            return;
+        }
+
         if (
             modeInput.value === 'existing'
             && normalizeNumber(numberInput.value) !== selectedAssetNumber
@@ -535,8 +618,12 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     if (modeInput.value === 'existing' && normalizeNumber(numberInput.value) !== '') {
+        toggleAssetFields(true);
+        setRegistrationReady(false);
         lookupAsset();
+    } else if (modeInput.value === 'new') {
+        activateNewMode({ focus: false });
     } else {
-        activateNewMode();
+        activateSelectionMode();
     }
 });

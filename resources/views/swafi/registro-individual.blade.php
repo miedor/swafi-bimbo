@@ -84,6 +84,18 @@
     transition: all .15s ease;
 }
 
+.ri-btn:disabled {
+    cursor: not-allowed;
+    opacity: .55;
+}
+
+.ri-btn.is-selected {
+    background: #0f6b3a;
+    border-color: #0f6b3a;
+    color: #ffffff;
+    box-shadow: 0 0 0 3px rgba(15, 107, 58, 0.14);
+}
+
 .ri-btn-primary {
     background: #154f9b;
     color: #ffffff;
@@ -137,6 +149,17 @@
     border: 1px solid #dfe9f6;
     border-radius: 18px;
     padding: 14px;
+    transition: opacity .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+
+.ri-panel.is-awaiting-asset-mode {
+    opacity: .72;
+    border-style: dashed;
+}
+
+.ri-panel.is-active-asset-mode {
+    border-color: #a9c9ed;
+    box-shadow: 0 8px 18px rgba(21, 79, 155, 0.06);
 }
 
 .ri-panel-head {
@@ -624,7 +647,7 @@
         data-registration-form
     >
         @csrf
-        <input type="hidden" name="asset_mode" value="{{ old('asset_mode', 'new') }}" data-asset-mode>
+        <input type="hidden" name="asset_mode" value="{{ old('asset_mode', '') }}" data-asset-mode>
 
         <div class="ri-header">
             <div>
@@ -636,7 +659,12 @@
             </div>
 
             <div class="ri-actions">
-                <button type="submit" class="ri-btn ri-btn-primary">Guardar</button>
+                <button
+                    type="submit"
+                    class="ri-btn ri-btn-primary"
+                    data-registration-submit
+                    @disabled(!in_array(old('asset_mode'), ['new', 'existing'], true))
+                >Guardar</button>
                 <a class="ri-btn ri-btn-soft" href="{{ route('registro-individual') }}">Limpiar</a>
             </div>
         </div>
@@ -690,13 +718,18 @@
                     Buscar activo existente
                 </button>
 
-                <button type="button" class="ri-btn ri-btn-soft" data-asset-new>
+                <button
+                    type="button"
+                    class="ri-btn ri-btn-soft"
+                    data-asset-new
+                    aria-pressed="false"
+                >
                     Registrar activo nuevo
                 </button>
             </div>
 
             <p class="ri-asset-status" data-asset-status role="status" aria-live="polite">
-                Captura el número y selecciona una opción.
+                Selecciona “Buscar activo existente” o “Registrar activo nuevo” para habilitar el formulario.
             </p>
 
             <details class="ri-asset-browser" data-asset-browser>
@@ -801,7 +834,7 @@
         <div class="ri-grid">
 
             {{-- PANEL 1: FACTURA --}}
-            <section class="ri-panel">
+            <section class="ri-panel" data-registration-panel>
                 <div class="ri-panel-head">
                     <span class="ri-number">1</span>
                     <div>
@@ -846,7 +879,7 @@
 
                     <label class="ri-field">
                         <span>Proveedor <b>*</b></span>
-                        <select name="proveedor_id" data-asset-field>
+                        <select name="proveedor_id" data-asset-field @disabled(old('asset_mode') !== 'new')>
                             <option value="">Seleccione...</option>
                             @foreach ($proveedores as $item)
                                 <option value="{{ $item->id }}" @selected(old('proveedor_id') == $item->id)>
@@ -859,7 +892,7 @@
             </section>
 
             {{-- PANEL 2: ACTIVO --}}
-            <section class="ri-panel">
+            <section class="ri-panel" data-registration-panel>
                 <div class="ri-panel-head">
                     <span class="ri-number">2</span>
                     <div>
@@ -876,7 +909,7 @@
                     <div class="ri-fields ri-fields-2">
                         <label class="ri-field">
                             <span>Tipo de activo <b>*</b></span>
-                            <select name="tipo_activo_id" data-asset-field>
+                            <select name="tipo_activo_id" data-asset-field @disabled(old('asset_mode') !== 'new')>
                                 <option value="">Seleccione...</option>
                                 @foreach ($tiposActivo as $item)
                                     <option value="{{ $item->id }}" @selected(old('tipo_activo_id') == $item->id)>
@@ -888,7 +921,7 @@
 
                         <label class="ri-field">
                             <span>Estatus <b>*</b></span>
-                            <select name="estatus_operativo" required data-asset-field>
+                            <select name="estatus_operativo" required data-asset-field @disabled(old('asset_mode') !== 'new')>
                                 <option value="">Seleccione...</option>
                                 @foreach ($estatusOperativos as $estatusOperativo)
                                     <option
@@ -905,36 +938,36 @@
                     <div class="ri-fields ri-fields-2">
                         <label class="ri-field">
                             <span>Serie</span>
-                            <input name="serie" value="{{ old('serie') }}" placeholder="Serie" data-asset-field>
+                            <input name="serie" value="{{ old('serie') }}" placeholder="Serie" data-asset-field @disabled(old('asset_mode') !== 'new')>
                         </label>
 
                         <label class="ri-field">
                             <span>Marca</span>
-                            <input name="marca" value="{{ old('marca') }}" placeholder="Marca" data-asset-field>
+                            <input name="marca" value="{{ old('marca') }}" placeholder="Marca" data-asset-field @disabled(old('asset_mode') !== 'new')>
                         </label>
                     </div>
 
                     <div class="ri-fields ri-fields-2">
                         <label class="ri-field">
                             <span>Modelo</span>
-                            <input name="modelo" value="{{ old('modelo') }}" placeholder="Modelo" data-asset-field>
+                            <input name="modelo" value="{{ old('modelo') }}" placeholder="Modelo" data-asset-field @disabled(old('asset_mode') !== 'new')>
                         </label>
 
                         <label class="ri-field">
                             <span>Fecha adquisición</span>
-                            <input type="date" name="fecha_adquisicion" value="{{ old('fecha_adquisicion') }}" data-asset-field>
+                            <input type="date" name="fecha_adquisicion" value="{{ old('fecha_adquisicion') }}" data-asset-field @disabled(old('asset_mode') !== 'new')>
                         </label>
                     </div>
 
                     <label class="ri-field">
                         <span>Descripción del bien <b>*</b></span>
-                        <textarea name="descripcion" placeholder="Descripción breve del activo" data-asset-field>{{ old('descripcion') }}</textarea>
+                        <textarea name="descripcion" placeholder="Descripción breve del activo" data-asset-field @disabled(old('asset_mode') !== 'new')>{{ old('descripcion') }}</textarea>
                     </label>
                 </div>
             </section>
 
             {{-- PANEL 3: CONTROL Y DOCUMENTOS --}}
-            <section class="ri-panel ri-panel-control">
+            <section class="ri-panel ri-panel-control" data-registration-panel>
                 <div class="ri-panel-head">
                     <span class="ri-number">3</span>
                     <div>
@@ -946,7 +979,7 @@
                 <div class="ri-fields">
                     <label class="ri-field">
                         <span>Centro de costo <b>*</b></span>
-                        <select name="centro_costo_id" data-asset-field>
+                        <select name="centro_costo_id" data-asset-field @disabled(old('asset_mode') !== 'new')>
                             <option value="">Seleccione...</option>
                             @foreach ($centrosCosto as $item)
                                 <option value="{{ $item->id }}" @selected(old('centro_costo_id') == $item->id)>
@@ -958,7 +991,7 @@
 
                     <label class="ri-field">
                         <span>Planta o sucursal <b>*</b></span>
-                        <select name="planta_id" data-asset-field>
+                        <select name="planta_id" data-asset-field @disabled(old('asset_mode') !== 'new')>
                             <option value="">Seleccione...</option>
                             @foreach ($plantas as $item)
                                 <option value="{{ $item->id }}" @selected(old('planta_id') == $item->id)>
@@ -970,7 +1003,7 @@
 
                     <label class="ri-field">
                         <span>Ubicación física</span>
-                        <select name="ubicacion_id" data-asset-field>
+                        <select name="ubicacion_id" data-asset-field @disabled(old('asset_mode') !== 'new')>
                             <option value="">Seleccione...</option>
                             @foreach ($ubicaciones as $item)
                                 <option value="{{ $item->id }}" @selected(old('ubicacion_id') == $item->id)>
@@ -982,7 +1015,7 @@
 
                     <label class="ri-field">
                         <span>Responsable</span>
-                        <select name="responsable_id" data-asset-field>
+                        <select name="responsable_id" data-asset-field @disabled(old('asset_mode') !== 'new')>
                             <option value="">Seleccione...</option>
                             @foreach ($responsables as $item)
                                 <option value="{{ $item->id }}" @selected(old('responsable_id') == $item->id)>
