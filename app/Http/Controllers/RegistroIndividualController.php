@@ -294,7 +294,7 @@ class RegistroIndividualController extends Controller
             })
             ->get();
 
-        return $rows->map(function ($row): object {
+        return $rows->map(function ($row) use ($metadataColumns): object {
             $data = (array) $row;
 
             $label = $data['nombre']

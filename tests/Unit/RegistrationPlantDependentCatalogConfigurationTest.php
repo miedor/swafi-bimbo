@@ -31,6 +31,10 @@ class RegistrationPlantDependentCatalogConfigurationTest extends TestCase
             'private function catalogOptions(string $table, array $metadataColumns = [])',
             $controller
         );
+        self::assertStringContainsString(
+            'return $rows->map(function ($row) use ($metadataColumns): object {',
+            $controller
+        );
         self::assertStringContainsString('$option[$column] = $data[$column] ?? null;', $controller);
     }
 
