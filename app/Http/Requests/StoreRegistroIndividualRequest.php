@@ -259,8 +259,10 @@ class StoreRegistroIndividualRequest extends FormRequest
 
         if (
             $costCenter
-            && $costCenter->planta_id !== null
-            && (int) $costCenter->planta_id !== (int) $this->input('planta_id')
+            && (
+                $costCenter->planta_id === null
+                || (int) $costCenter->planta_id !== (int) $this->input('planta_id')
+            )
         ) {
             $validator->errors()->add(
                 'centro_costo_id',

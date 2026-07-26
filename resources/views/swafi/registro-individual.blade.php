@@ -978,20 +978,13 @@
 
                 <div class="ri-fields">
                     <label class="ri-field">
-                        <span>Centro de costo <b>*</b></span>
-                        <select name="centro_costo_id" data-asset-field @disabled(old('asset_mode') !== 'new')>
-                            <option value="">Seleccione...</option>
-                            @foreach ($centrosCosto as $item)
-                                <option value="{{ $item->id }}" @selected(old('centro_costo_id') == $item->id)>
-                                    {{ $item->label }}
-                                </option>
-                            @endforeach
-                        </select>
-                    </label>
-
-                    <label class="ri-field">
                         <span>Planta o sucursal <b>*</b></span>
-                        <select name="planta_id" data-asset-field @disabled(old('asset_mode') !== 'new')>
+                        <select
+                            name="planta_id"
+                            data-asset-field
+                            data-asset-plant
+                            @disabled(old('asset_mode') !== 'new')
+                        >
                             <option value="">Seleccione...</option>
                             @foreach ($plantas as $item)
                                 <option value="{{ $item->id }}" @selected(old('planta_id') == $item->id)>
@@ -1002,11 +995,41 @@
                     </label>
 
                     <label class="ri-field">
+                        <span>Centro de costo <b>*</b></span>
+                        <select
+                            name="centro_costo_id"
+                            data-asset-field
+                            data-plant-dependent="centro-costo"
+                            @disabled(old('asset_mode') !== 'new')
+                        >
+                            <option value="" data-dependent-placeholder>Seleccione primero una planta...</option>
+                            @foreach ($centrosCosto as $item)
+                                <option
+                                    value="{{ $item->id }}"
+                                    data-planta-id="{{ $item->planta_id }}"
+                                    @selected(old('centro_costo_id') == $item->id)
+                                >
+                                    {{ $item->label }}
+                                </option>
+                            @endforeach
+                        </select>
+                    </label>
+
+                    <label class="ri-field">
                         <span>Ubicación física</span>
-                        <select name="ubicacion_id" data-asset-field @disabled(old('asset_mode') !== 'new')>
-                            <option value="">Seleccione...</option>
+                        <select
+                            name="ubicacion_id"
+                            data-asset-field
+                            data-plant-dependent="ubicacion"
+                            @disabled(old('asset_mode') !== 'new')
+                        >
+                            <option value="" data-dependent-placeholder>Seleccione primero una planta...</option>
                             @foreach ($ubicaciones as $item)
-                                <option value="{{ $item->id }}" @selected(old('ubicacion_id') == $item->id)>
+                                <option
+                                    value="{{ $item->id }}"
+                                    data-planta-id="{{ $item->planta_id }}"
+                                    @selected(old('ubicacion_id') == $item->id)
+                                >
                                     {{ $item->label }}
                                 </option>
                             @endforeach

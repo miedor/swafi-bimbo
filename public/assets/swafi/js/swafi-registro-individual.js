@@ -20,6 +20,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const existingNotice = form.querySelector('[data-existing-asset-notice]');
     const assetFields = Array.from(form.querySelectorAll('[data-asset-field]'));
     const registrationPanels = Array.from(form.querySelectorAll('[data-registration-panel]'));
+    const plantSelect = form.querySelector('[data-asset-plant]');
+    const costCenterSelect = form.querySelector('[data-plant-dependent="centro-costo"]');
+    const locationSelect = form.querySelector('[data-plant-dependent="ubicacion"]');
 
     const browser = form.querySelector('[data-asset-browser]');
     const browserQuery = form.querySelector('[data-asset-filter-query]');
@@ -115,6 +118,110 @@ document.addEventListener('DOMContentLoaded', () => {
         newButton.setAttribute('aria-pressed', selected ? 'true' : 'false');
     };
 
+    const dependentOptions = (select) => Array.from(select?.options || [])
+        .filter((option) => option.hasAttribute('data-planta-id'));
+
+    const setDependentSelectState = (select, disabled) => {
+        if (!select) {
+            return;
+        }
+
+        select.disabled = disabled;
+        select.setAttribute('aria-disabled', disabled ? 'true' : 'false');
+    };
+
+    const showAllPlantDependentOptions = () => {
+        [costCenterSelect, locationSelect].forEach((select) => {
+            if (!select) {
+                return;
+            }
+
+            dependentOptions(select).forEach((option) => {
+                option.hidden = false;
+                option.disabled = false;
+            });
+
+            const placeholder = select.querySelector('[data-dependent-placeholder]');
+
+            if (placeholder) {
+                placeholder.textContent = 'Seleccione...';
+            }
+        });
+    };
+
+    const filterPlantDependentSelect = (select, plantId, emptyMessage, reset = false) => {
+        if (!select) {
+            return;
+        }
+
+        const currentValue = reset ? '' : String(select.value || '');
+        let availableOptions = 0;
+        let currentValueIsAvailable = false;
+
+        dependentOptions(select).forEach((option) => {
+            const belongsToPlant = plantId !== ''
+                && String(option.dataset.plantaId || '') === plantId;
+
+            option.hidden = !belongsToPlant;
+            option.disabled = !belongsToPlant;
+
+            if (belongsToPlant) {
+                availableOptions += 1;
+
+                if (option.value === currentValue) {
+                    currentValueIsAvailable = true;
+                }
+            }
+        });
+
+        select.value = currentValueIsAvailable ? currentValue : '';
+
+        const placeholder = select.querySelector('[data-dependent-placeholder]');
+
+        if (placeholder) {
+            placeholder.textContent = plantId === ''
+                ? 'Seleccione primero una planta...'
+                : (availableOptions > 0 ? 'Seleccione...' : emptyMessage);
+        }
+
+        const canSelect = modeInput.value === 'new'
+            && plantId !== ''
+            && availableOptions > 0;
+
+        setDependentSelectState(select, !canSelect);
+    };
+
+    const syncPlantDependentCatalogs = ({ reset = false } = {}) => {
+        if (!plantSelect) {
+            return;
+        }
+
+        const plantId = String(plantSelect.value || '');
+
+        filterPlantDependentSelect(
+            costCenterSelect,
+            plantId,
+            'Sin centros de costo activos para esta planta.',
+            reset
+        );
+        filterPlantDependentSelect(
+            locationSelect,
+            plantId,
+            'Sin ubicaciones activas para esta planta.',
+            reset
+        );
+    };
+
+    const selectedOptionBelongsToPlant = (select, plantId) => {
+        if (!select || String(select.value || '') === '') {
+            return true;
+        }
+
+        const selectedOption = select.options[select.selectedIndex];
+
+        return String(selectedOption?.dataset?.plantaId || '') === plantId;
+    };
+
     const clearAssetFields = () => {
         assetFields.forEach((field) => {
             field.value = '';
@@ -143,6 +250,7 @@ document.addEventListener('DOMContentLoaded', () => {
         searchButton.hidden = false;
         newButton.textContent = 'Registrar activo nuevo';
         setNewButtonSelected(false);
+        showAllPlantDependentOptions();
         toggleAssetFields(true);
         setRegistrationReady(false);
 
@@ -166,10 +274,11 @@ document.addEventListener('DOMContentLoaded', () => {
         numberInput.readOnly = true;
         numberInput.setAttribute('aria-readonly', 'true');
 
+        showAllPlantDependentOptions();
         setFieldValue('tipo_activo_id', asset.tipo_activo_id);
         setFieldValue('proveedor_id', asset.proveedor_id);
-        setFieldValue('centro_costo_id', asset.centro_costo_id);
         setFieldValue('planta_id', asset.planta_id);
+        setFieldValue('centro_costo_id', asset.centro_costo_id);
         setFieldValue('ubicacion_id', asset.ubicacion_id);
         setFieldValue('responsable_id', asset.responsable_id);
         setFieldValue('descripcion', asset.descripcion);
@@ -230,6 +339,8 @@ document.addEventListener('DOMContentLoaded', () => {
             numberInput.value = '';
             clearAssetFields();
         }
+
+        syncPlantDependentCatalogs({ reset: clear });
 
         setStatus(
             'Alta de activo nuevo habilitada. Captura el número y completa los datos obligatorios del activo y del expediente.',
@@ -584,6 +695,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     });
 
+    plantSelect?.addEventListener('change', () => {
+        if (modeInput.value === 'new') {
+            syncPlantDependentCatalogs({ reset: true });
+        }
+    });
+
     browserSearch?.addEventListener('click', () => searchAssets(1));
     browserClear?.addEventListener('click', clearBrowser);
 
@@ -614,6 +731,41 @@ document.addEventListener('DOMContentLoaded', () => {
                 'El activo seleccionado cambió. Búscalo nuevamente antes de guardar.',
                 'error'
             );
+            return;
+        }
+
+        if (modeInput.value === 'new') {
+            const plantId = String(plantSelect?.value || '');
+            const costCenterId = String(costCenterSelect?.value || '');
+
+            if (plantId === '' || costCenterId === '') {
+                event.preventDefault();
+                setStatus(
+                    'Selecciona primero la planta y después un centro de costo activo asociado a esa planta.',
+                    'error'
+                );
+                (plantId === '' ? plantSelect : costCenterSelect)?.focus();
+                return;
+            }
+
+            if (!selectedOptionBelongsToPlant(costCenterSelect, plantId)) {
+                event.preventDefault();
+                setStatus(
+                    'El centro de costo seleccionado no pertenece a la planta indicada. Selecciónalo nuevamente.',
+                    'error'
+                );
+                costCenterSelect?.focus();
+                return;
+            }
+
+            if (!selectedOptionBelongsToPlant(locationSelect, plantId)) {
+                event.preventDefault();
+                setStatus(
+                    'La ubicación seleccionada no pertenece a la planta indicada. Selecciónala nuevamente.',
+                    'error'
+                );
+                locationSelect?.focus();
+            }
         }
     });
 

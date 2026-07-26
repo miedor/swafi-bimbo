@@ -35,9 +35,9 @@ class RegistroIndividualController extends Controller
         return view('swafi.registro-individual', [
             'tiposActivo' => $this->catalogOptions('tipos_activo'),
             'proveedores' => $this->catalogOptions('proveedores'),
-            'centrosCosto' => $this->catalogOptions('centros_costo'),
+            'centrosCosto' => $this->catalogOptions('centros_costo', ['planta_id']),
             'plantas' => $this->catalogOptions('plantas'),
-            'ubicaciones' => $this->catalogOptions('ubicaciones'),
+            'ubicaciones' => $this->catalogOptions('ubicaciones', ['planta_id']),
             'responsables' => $this->catalogOptions('responsables'),
             'estatusOperativos' => $this->statusCatalogs->operationalOptions(),
             'monedas' => $this->financialCatalogs->currencies(),
@@ -282,7 +282,7 @@ class RegistroIndividualController extends Controller
         }
     }
 
-    private function catalogOptions(string $table)
+    private function catalogOptions(string $table, array $metadataColumns = [])
     {
         if (!Schema::hasTable($table)) {
             return collect();
@@ -308,10 +308,16 @@ class RegistroIndividualController extends Controller
                 $label = $data['nombre'] . ' (' . $data['rfc'] . ')';
             }
 
-            return (object) [
+            $option = [
                 'id' => $data['id'] ?? null,
                 'label' => $label,
             ];
+
+            foreach ($metadataColumns as $column) {
+                $option[$column] = $data[$column] ?? null;
+            }
+
+            return (object) $option;
         });
     }
 }
