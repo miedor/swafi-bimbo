@@ -126,6 +126,28 @@ return [
 
 
 
+    'valores' => [
+        /*
+         * La carga fiscal y financiera se valida en una previsualización privada
+         * antes de modificar valores oficiales. Los límites reducen consumo
+         * excesivo y evitan mantener confirmaciones pendientes indefinidamente.
+         */
+        'importacion_max_filas' => min(
+            20000,
+            max(
+                1,
+                (int) env('SWAFI_VALUE_IMPORT_MAX_ROWS', 5000)
+            )
+        ),
+        'previsualizacion_horas' => min(
+            72,
+            max(
+                1,
+                (int) env('SWAFI_VALUE_IMPORT_PREVIEW_HOURS', 24)
+            )
+        ),
+    ],
+
     'catalogos' => [
         /*
          * La carga inicial de catálogos se previsualiza antes de aplicar cambios.

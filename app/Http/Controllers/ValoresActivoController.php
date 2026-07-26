@@ -5,70 +5,42 @@ namespace App\Http\Controllers;
 use App\Http\Requests\FilterValoresActivoRequest;
 use App\Http\Requests\ImportValoresActivoRequest;
 use App\Http\Requests\StoreValorActivoRequest;
+use App\Models\ImportacionValores;
 use App\Models\ValorActivo;
 use App\Services\CfdiValidationService;
 use App\Services\FinancialCatalogService;
 use App\Services\SafeExceptionReporter;
 use App\Services\SwafiAuthorizationService;
+use App\Services\ValoresActivoImportService;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
+use Illuminate\Validation\ValidationException;
 
 class ValoresActivoController extends Controller
 {
     /**
-     * Encabezados obligatorios que debe contener cualquier carga masiva.
+     * Esquema centralizado de la carga masiva de valores.
+     *
+     * Se conservan estas constantes en el controlador para mantener compatibilidad
+     * con las pruebas de regresión existentes y evitar divergencias entre plantilla,
+     * previsualización y aplicación.
      *
      * @var list<string>
      */
-    private const IMPORT_REQUIRED_HEADERS = [
-        'numero_activo',
-        'valor_fiscal',
-        'depreciacion_acumulada',
-        'valor_en_libros',
-        'valor_financiero',
-        'vida_util_meses',
-        'fecha_corte',
-        'estatus_contable',
-    ];
+    private const IMPORT_REQUIRED_HEADERS = ValoresActivoImportService::REQUIRED_HEADERS;
 
-    /**
-     * Encabezados de la plantilla oficial, indexados por su nombre canónico.
-     *
-     * @var array<string, string>
-     */
-    private const IMPORT_TEMPLATE_HEADERS = [
-        'numero_activo' => 'Numero activo',
-        'valor_fiscal' => 'Valor fiscal',
-        'depreciacion_acumulada' => 'Depreciacion acumulada',
-        'valor_en_libros' => 'Valor en libros',
-        'valor_financiero' => 'Valor financiero',
-        'moneda' => 'Moneda',
-        'tipo_cambio' => 'Tipo cambio',
-        'fecha_tipo_cambio' => 'Fecha tipo cambio',
-        'origen_tipo_cambio' => 'Origen tipo cambio',
-        'vida_util_meses' => 'Vida util meses',
-        'fecha_corte' => 'Fecha corte',
-        'estatus_contable' => 'Estatus contable',
-        'motivo_cambio' => 'Motivo cambio',
-    ];
+    /** @var array<string, string> */
+    private const IMPORT_TEMPLATE_HEADERS = ValoresActivoImportService::TEMPLATE_HEADERS;
 
-    /**
-     * Alias aceptados para conservar compatibilidad con plantillas oficiales
-     * descargadas antes de corregir la correspondencia de encabezados.
-     *
-     * @var array<string, string>
-     */
-    private const IMPORT_HEADER_ALIASES = [
-        'depreciacion_acumulada_oracle_erp' => 'depreciacion_acumulada',
-        'valor_en_libros_oracle_erp' => 'valor_en_libros',
-        'vida_util_oficial_meses' => 'vida_util_meses',
-    ];
+    /** @var array<string, string> */
+    private const IMPORT_HEADER_ALIASES = ValoresActivoImportService::HEADER_ALIASES;
 
     public function __construct(
         private readonly SwafiAuthorizationService $authorization,
         private readonly SafeExceptionReporter $safeExceptions,
-        private readonly FinancialCatalogService $financialCatalogs
+        private readonly FinancialCatalogService $financialCatalogs,
+        private readonly ValoresActivoImportService $valueImports
     ) {
     }
 
@@ -98,10 +70,27 @@ class ValoresActivoController extends Controller
             ->paginate($perPage)
             ->withQueryString();
 
+        $canManageValues = $this->canManageValues();
         $valorEdit = null;
+        $importBatch = null;
+        $importRows = null;
+        $previewStatus = (string) $request->input('preview_status', '');
 
-        if ($request->filled('editar_valor') && $this->canManageValues()) {
+        if ($request->filled('editar_valor') && $canManageValues) {
             $valorEdit = $this->findValorForEdit((int) $request->input('editar_valor'));
+        }
+
+        if ($request->filled('lote') && $canManageValues) {
+            $importBatch = $this->findOwnedImportBatch((string) $request->input('lote'));
+            $previewQuery = $importBatch->filas()->orderBy('numero_fila');
+
+            if (in_array($previewStatus, ['correcta', 'incorrecta'], true)) {
+                $previewQuery->where('estatus', $previewStatus);
+            }
+
+            $importRows = $previewQuery
+                ->paginate(25, ['*'], 'preview_page')
+                ->withQueryString();
         }
 
         return view('swafi.valores', [
@@ -109,7 +98,10 @@ class ValoresActivoController extends Controller
             'catalogos' => $this->catalogos($canViewSensitiveValues),
             'filtros' => $filters,
             'valorEdit' => $valorEdit,
-            'canAdministrarValores' => $this->canManageValues(),
+            'importBatch' => $importBatch,
+            'importRows' => $importRows,
+            'previewStatus' => $previewStatus,
+            'canAdministrarValores' => $canManageValues,
             'canViewSensitiveValues' => $canViewSensitiveValues,
             'canExportarValores' => $this->canExportValues(),
             'canExportarExcel' => $canViewSensitiveValues
@@ -208,146 +200,28 @@ class ValoresActivoController extends Controller
                 : 'Los valores oficiales provenientes de Oracle ERP se registraron correctamente.');
     }
 
-    public function importar(ImportValoresActivoRequest $request, CfdiValidationService $cfdiService)
+    public function importar(ImportValoresActivoRequest $request): RedirectResponse
     {
         $this->abortUnlessCanManageValues();
-        $rows = file($request->file('archivo_csv')->getRealPath(), FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-
-        if (!$rows || count($rows) < 2) {
-            return back()->withErrors(['archivo_csv' => 'El archivo no contiene registros para importar.']);
-        }
-
-        $delimiter = $this->detectDelimiter($rows[0]);
-        $headers = $this->normalizeImportHeaders(str_getcsv($rows[0], $delimiter));
-        $indexes = array_flip($headers);
-        $missing = array_diff(self::IMPORT_REQUIRED_HEADERS, $headers);
-
-        if ($missing) {
-            return back()->withErrors([
-                'archivo_csv' => 'Faltan encabezados obligatorios: ' . implode(', ', $missing),
-            ]);
-        }
-
-        $summary = ['procesados' => 0, 'insertados' => 0, 'actualizados' => 0, 'rechazados' => 0, 'errores' => []];
-        $currencyRules = DB::table('monedas')
-            ->where('estatus', 'activo')
-            ->pluck('requiere_tipo_cambio', 'clave')
-            ->mapWithKeys(fn (mixed $required, mixed $key): array => [
-                mb_strtoupper((string) $key, 'UTF-8') => (bool) $required,
-            ])
-            ->all();
-        $statusKeys = DB::table('estatus_contables')
-            ->where('estatus', 'activo')
-            ->pluck('clave')
-            ->map(fn (mixed $key): string => mb_strtolower((string) $key, 'UTF-8'))
-            ->all();
-        DB::beginTransaction();
 
         try {
-            foreach (array_slice($rows, 1) as $index => $line) {
-                $lineNumber = $index + 2;
-                $columns = str_getcsv($line, $delimiter);
-                $get = fn (string $key) => $this->normalizeCell($columns[$indexes[$key] ?? -1] ?? '');
-                $numeroActivo = strtoupper($get('numero_activo'));
+            $batch = $this->valueImports->previsualizar(
+                file: $request->file('archivo_csv'),
+                userId: (int) auth()->id()
+            );
 
-                if ($numeroActivo === '') {
-                    continue;
-                }
-
-                $summary['procesados']++;
-
-                if (!DB::table('activos')->where('numero_activo', $numeroActivo)->exists()) {
-                    $this->rejectRow($summary, $lineNumber, "el activo {$numeroActivo} no existe.");
-                    continue;
-                }
-
-                $payload = [
-                    'numero_activo' => $numeroActivo,
-                    'valor_fiscal' => $this->toDecimal($get('valor_fiscal')),
-                    'depreciacion_acumulada' => $this->toDecimal($get('depreciacion_acumulada')),
-                    'valor_en_libros' => $this->toDecimal($get('valor_en_libros')),
-                    'valor_financiero' => $this->toDecimal($get('valor_financiero')),
-                    'vida_util_meses' => $this->toInteger($get('vida_util_meses')),
-                    'fecha_corte' => $this->parseDate($get('fecha_corte')),
-                    'estatus_contable' => $this->normalizeStatus($get('estatus_contable')),
-                    'moneda' => mb_strtoupper($get('moneda') ?: 'MXN', 'UTF-8'),
-                    'tipo_cambio' => $this->toDecimal($get('tipo_cambio'), 6),
-                    'fecha_tipo_cambio' => $this->parseDate($get('fecha_tipo_cambio')),
-                    'origen_tipo_cambio' => $get('origen_tipo_cambio') ?: null,
-                    'motivo_cambio' => $get('motivo_cambio') ?: 'Actualización mediante carga masiva.',
-                    'registrado_por' => auth()->id(),
-                ];
-
-                if (array_key_exists($payload['moneda'], $currencyRules) && !$currencyRules[$payload['moneda']]) {
-                    $payload['tipo_cambio'] = 1.0;
-                    $payload['fecha_tipo_cambio'] = null;
-                    $payload['origen_tipo_cambio'] = null;
-                }
-
-                if (
-                    $payload['valor_fiscal'] === null
-                    || $payload['valor_financiero'] === null
-                    || $payload['depreciacion_acumulada'] === null
-                    || $payload['valor_en_libros'] === null
-                ) {
-                    $this->rejectRow(
-                        $summary,
-                        $lineNumber,
-                        'los importes oficiales obligatorios deben ser numéricos.'
-                    );
-                    continue;
-                }
-
-                $validationError = $this->validateImportPayload(
-                    $payload,
-                    $currencyRules,
-                    $statusKeys
+            return redirect()
+                ->route('valores', [
+                    'panel' => 'importar',
+                    'lote' => $batch->uuid,
+                ])
+                ->with(
+                    'success',
+                    'La previsualización fue generada. Revisa las filas correctas e incorrectas antes de confirmar la aplicación.'
                 );
-
-                if ($validationError) {
-                    $this->rejectRow($summary, $lineNumber, $validationError);
-                    continue;
-                }
-
-                $reconciliation = $cfdiService->reconcileValuePayload($numeroActivo, $payload);
-
-                $payload['cfdi_validacion_id'] = $reconciliation['validation_id'];
-                $payload['conciliacion_cfdi'] = $reconciliation['status'];
-                $payload['conciliacion_detalle'] = $reconciliation['details'];
-
-                $existing = ValorActivo::withTrashed()->where('numero_activo', $numeroActivo)->first();
-
-                if ($existing) {
-                    $before = $existing->toArray();
-                    $wasDeleted = $existing->trashed();
-
-                    if ($wasDeleted) {
-                        $existing->restore();
-                    }
-
-                    $existing->forceFill([
-                        'deleted_by' => null,
-                        'delete_reason' => null,
-                    ]);
-                    $existing->update($payload);
-                    $summary['actualizados']++;
-                    $this->registerAudit(
-                        $numeroActivo,
-                        $wasDeleted ? 'IMPORTACION_VALOR_RESTAURACION' : 'IMPORTACION_VALOR_EDICION',
-                        (string) $existing->id,
-                        $before,
-                        $existing->fresh()->toArray()
-                    );
-                } else {
-                    $value = ValorActivo::create($payload);
-                    $summary['insertados']++;
-                    $this->registerAudit($numeroActivo, 'IMPORTACION_VALOR_ALTA', (string) $value->id, null, $value->toArray());
-                }
-            }
-
-            DB::commit();
+        } catch (ValidationException $exception) {
+            throw $exception;
         } catch (\Throwable $exception) {
-            DB::rollBack();
             $reference = $this->safeExceptions->warning(
                 $exception,
                 'asset_values_bulk_import',
@@ -357,15 +231,97 @@ class ValoresActivoController extends Controller
                 ]
             );
 
-            return back()->withErrors([
-                'archivo_csv' => "La importación fue revertida. Referencia: {$reference}.",
-            ]);
+            return redirect()
+                ->route('valores', ['panel' => 'importar'])
+                ->withErrors([
+                    'archivo_csv' => "La importación fue revertida. Referencia: {$reference}. No se modificaron valores.",
+                ]);
         }
+    }
 
-        return redirect()
-            ->route('valores')
-            ->with('success', 'La carga masiva de valores fue procesada.')
-            ->with('import_summary', $summary);
+    public function aplicarImportacion(Request $request, string $lote): RedirectResponse
+    {
+        $this->abortUnlessCanManageValues();
+        $request->validate([
+            'confirmar_aplicacion' => ['accepted'],
+        ], [
+            'confirmar_aplicacion.accepted' => 'Debes confirmar que revisaste la previsualización antes de aplicar los valores.',
+        ]);
+        $batch = $this->findOwnedImportBatch($lote);
+
+        try {
+            $summary = $this->valueImports->aplicar(
+                batch: $batch,
+                userId: (int) auth()->id()
+            );
+
+            return redirect()
+                ->route('valores', [
+                    'panel' => 'importar',
+                    'lote' => $batch->uuid,
+                ])
+                ->with('success', 'La carga masiva de valores fue aplicada correctamente.')
+                ->with('import_summary', $summary);
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            $reference = $this->safeExceptions->warning(
+                $exception,
+                'asset_values_bulk_apply',
+                [
+                    'batch_id' => $batch->id,
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
+
+            return redirect()
+                ->route('valores', [
+                    'panel' => 'importar',
+                    'lote' => $batch->uuid,
+                ])
+                ->withErrors([
+                    'lote' => "La carga no fue aplicada. No se confirmó ningún cambio. Referencia: {$reference}.",
+                ]);
+        }
+    }
+
+    public function cancelarImportacion(string $lote): RedirectResponse
+    {
+        $this->abortUnlessCanManageValues();
+        $batch = $this->findOwnedImportBatch($lote);
+
+        try {
+            $this->valueImports->cancelar(
+                batch: $batch,
+                userId: (int) auth()->id()
+            );
+
+            return redirect()
+                ->route('valores', ['panel' => 'importar'])
+                ->with('success', 'La previsualización fue cancelada sin modificar los valores fiscales y financieros.');
+        } catch (ValidationException $exception) {
+            throw $exception;
+        } catch (\Throwable $exception) {
+            $reference = $this->safeExceptions->warning(
+                $exception,
+                'asset_values_bulk_cancel',
+                [
+                    'batch_id' => $batch->id,
+                    'user_id' => auth()->id(),
+                    'route_name' => request()->route()?->getName(),
+                ]
+            );
+
+            return redirect()
+                ->route('valores', [
+                    'panel' => 'importar',
+                    'lote' => $batch->uuid,
+                ])
+                ->withErrors([
+                    'lote' => "No fue posible cancelar la previsualización. Referencia: {$reference}.",
+                ]);
+        }
     }
 
     public function plantillaCsv()
@@ -601,62 +557,16 @@ class ValoresActivoController extends Controller
         array $currencyRules,
         array $statusKeys
     ): ?string {
-        if (!in_array((string) $payload['estatus_contable'], $statusKeys, true)) {
-            return 'el estatus contable no existe o se encuentra inactivo.';
-        }
-
-        if (!$payload['fecha_corte']) {
-            return 'la fecha de corte no es válida.';
-        }
-
-        if (!$payload['vida_util_meses'] || $payload['vida_util_meses'] <= 0 || $payload['vida_util_meses'] > 1200) {
-            return 'la vida útil debe ser un entero entre 1 y 1200 meses.';
-        }
-
-        foreach ([
-            'valor_fiscal' => 'valor fiscal',
-            'valor_financiero' => 'valor financiero',
-            'depreciacion_acumulada' => 'depreciación acumulada',
-            'valor_en_libros' => 'valor en libros',
-        ] as $key => $label) {
-            if ($payload[$key] === null || (float) $payload[$key] < 0) {
-                return "el {$label} debe ser numérico y no puede ser negativo.";
-            }
-        }
-
-        if (
-            $payload['estatus_contable'] !== 'baja'
-            && ((float) $payload['valor_fiscal'] <= 0 || (float) $payload['valor_financiero'] <= 0)
-        ) {
-            return 'un activo vigente o en revisión requiere valor fiscal y valor financiero mayores a cero.';
-        }
-
-        $currency = (string) $payload['moneda'];
-
-        if (!array_key_exists($currency, $currencyRules)) {
-            return 'la moneda no existe o se encuentra inactiva.';
-        }
-
-        if (
-            $currencyRules[$currency]
-            && (
-                !$payload['tipo_cambio']
-                || !$payload['fecha_tipo_cambio']
-                || !$payload['origen_tipo_cambio']
-            )
-        ) {
-            return 'la moneda seleccionada requiere tipo de cambio, fecha y origen.';
-        }
-
-        return null;
+        return ValoresActivoImportService::validateImportPayload(
+            $payload,
+            $currencyRules,
+            $statusKeys
+        );
     }
 
     private function detectDelimiter(string $line): string
     {
-        $counts = [',' => substr_count($line, ','), ';' => substr_count($line, ';'), "\t" => substr_count($line, "\t")];
-        arsort($counts);
-
-        return (string) array_key_first($counts);
+        return ValoresActivoImportService::detectDelimiter($line);
     }
 
     /**
@@ -665,111 +575,45 @@ class ValoresActivoController extends Controller
      */
     private function normalizeImportHeaders(array $headers): array
     {
-        return array_values(array_map(function (?string $header): string {
-            $normalized = $this->normalizeHeader($header);
-
-            return self::IMPORT_HEADER_ALIASES[$normalized] ?? $normalized;
-        }, $headers));
+        return ValoresActivoImportService::normalizeImportHeaders($headers);
     }
 
     private function normalizeHeader(?string $value): string
     {
-        $value = preg_replace('/^\xEF\xBB\xBF/', '', (string) $value);
-        $value = Str::ascii(mb_strtolower(trim($value), 'UTF-8'));
-        $value = preg_replace('/[^a-z0-9]+/', '_', $value);
-
-        return trim((string) $value, '_');
+        return ValoresActivoImportService::normalizeHeader($value);
     }
 
     private function normalizeCell(?string $value): string
     {
-        return trim(preg_replace('/^\xEF\xBB\xBF/', '', (string) $value));
+        return ValoresActivoImportService::normalizeCell($value);
     }
 
     private function toDecimal(?string $value, int $scale = 2): ?float
     {
-        $value = trim((string) $value);
-
-        if ($value === '') {
-            return null;
-        }
-
-        $value = str_replace(['$', ' ', "\u{00A0}"], '', $value);
-
-        $lastComma = strrpos($value, ',');
-        $lastDot = strrpos($value, '.');
-
-        if ($lastComma !== false && $lastDot !== false) {
-            if ($lastComma > $lastDot) {
-                $value = str_replace('.', '', $value);
-                $value = str_replace(',', '.', $value);
-            } else {
-                $value = str_replace(',', '', $value);
-            }
-        } elseif ($lastComma !== false) {
-            $commaCount = substr_count($value, ',');
-            $decimals = strlen($value) - $lastComma - 1;
-
-            if ($commaCount === 1 && $decimals > 0 && $decimals <= $scale && $decimals !== 3) {
-                $value = str_replace(',', '.', $value);
-            } else {
-                $value = str_replace(',', '', $value);
-            }
-        } elseif (substr_count($value, '.') > 1) {
-            $parts = explode('.', $value);
-            $decimalPart = array_pop($parts);
-            $value = implode('', $parts) . '.' . $decimalPart;
-        }
-
-        return is_numeric($value)
-            ? round((float) $value, $scale)
-            : null;
+        return ValoresActivoImportService::toDecimal($value, $scale);
     }
 
     private function toInteger(?string $value): ?int
     {
-        return filter_var(trim((string) $value), FILTER_VALIDATE_INT) !== false ? (int) $value : null;
+        return ValoresActivoImportService::toInteger($value);
     }
 
     private function parseDate(?string $value): ?string
     {
-        $value = trim((string) $value);
-
-        if ($value === '') {
-            return null;
-        }
-
-        foreach (['d/m/Y', 'Y-m-d', 'd-m-Y', 'm/d/Y'] as $format) {
-            $date = \DateTimeImmutable::createFromFormat('!' . $format, $value);
-            $errors = \DateTimeImmutable::getLastErrors();
-
-            if (
-                $date !== false
-                && ($errors === false || ($errors['warning_count'] === 0 && $errors['error_count'] === 0))
-            ) {
-                return $date->format('Y-m-d');
-            }
-        }
-
-        return null;
+        return ValoresActivoImportService::parseDate($value);
     }
 
     private function normalizeStatus(?string $value): ?string
     {
-        $value = $this->normalizeHeader($value);
-
-        return match ($value) {
-            'vigente', 'activo' => 'vigente',
-            'en_revision', 'revision', 'en_revicion' => 'en_revision',
-            'baja', 'dado_de_baja' => 'baja',
-            default => $value !== '' ? $value : null,
-        };
+        return ValoresActivoImportService::normalizeStatus($value);
     }
 
-    private function rejectRow(array &$summary, int $line, string $message): void
+    private function findOwnedImportBatch(string $uuid): ImportacionValores
     {
-        $summary['rechazados']++;
-        $summary['errores'][] = "Fila {$line}: {$message}";
+        return ImportacionValores::query()
+            ->where('uuid', $uuid)
+            ->where('user_id', auth()->id())
+            ->firstOrFail();
     }
 
     private function canManageValues(): bool

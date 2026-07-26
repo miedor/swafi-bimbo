@@ -26,7 +26,7 @@ class ImportValoresActivoRequest extends FormRequest
     public function messages(): array
     {
         return [
-            'archivo_csv.required' => 'Debes seleccionar un archivo CSV para importar.',
+            'archivo_csv.required' => 'Debes seleccionar un archivo CSV para previsualizar.',
             'archivo_csv.file' => 'El archivo seleccionado no es válido.',
             'archivo_csv.mimes' => 'El archivo debe tener extensión CSV o TXT.',
             'archivo_csv.max' => 'El archivo no debe superar los 5 MB.',

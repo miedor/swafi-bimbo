@@ -7,14 +7,16 @@
 
 @php
   $panelSolicitado = (string) request('panel', '');
-  $errorImportacion = $errors->has('archivo_csv');
+  $errorImportacion = $errors->has('archivo_csv')
+    || $errors->has('lote')
+    || $errors->has('confirmar_aplicacion');
   $errorCaptura = $errors->any() && !$errorImportacion;
 
   if (!$canAdministrarValores) {
     $panelActivo = 'consulta';
   } elseif ($valorEdit || $errorCaptura || $panelSolicitado === 'captura') {
     $panelActivo = 'captura';
-  } elseif ($errorImportacion || $panelSolicitado === 'importar') {
+  } elseif ($importBatch || $errorImportacion || $panelSolicitado === 'importar') {
     $panelActivo = 'importar';
   } else {
     $panelActivo = 'consulta';
@@ -299,6 +301,166 @@
     padding-left: 18px;
   }
 
+  .vf-preview {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #e2ebf6;
+  }
+
+  .vf-preview-meta {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 800;
+  }
+
+  .vf-preview-summary {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 10px;
+    margin-bottom: 12px;
+  }
+
+  .vf-preview-stat {
+    padding: 12px;
+    border: 1px solid #dbe7f6;
+    border-radius: 14px;
+    background: #f8fbff;
+  }
+
+  .vf-preview-stat strong {
+    display: block;
+    color: #152f52;
+    font-size: 20px;
+    font-weight: 950;
+  }
+
+  .vf-preview-stat span {
+    display: block;
+    margin-top: 2px;
+    color: #64748b;
+    font-size: 11px;
+    font-weight: 850;
+  }
+
+  .vf-preview-stat.correct {
+    border-color: #b9e5bf;
+    background: #eefbf2;
+  }
+
+  .vf-preview-stat.incorrect {
+    border-color: #f1bcbc;
+    background: #fff0f0;
+  }
+
+  .vf-preview-stat.insert {
+    border-color: #c8dcf7;
+    background: #eef6ff;
+  }
+
+  .vf-preview-toolbar {
+    display: flex;
+    align-items: end;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+
+  .vf-preview-toolbar form {
+    display: flex;
+    align-items: end;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+
+  .vf-preview-scroll {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    border: 1px solid #e2ebf6;
+    border-radius: 16px;
+    scrollbar-gutter: stable;
+  }
+
+  .vf-preview-scroll table {
+    width: 100%;
+    min-width: 1700px;
+    border-collapse: collapse;
+    table-layout: fixed;
+    font-size: 11px;
+  }
+
+  .vf-preview-scroll th,
+  .vf-preview-scroll td {
+    padding: 10px;
+    border-bottom: 1px solid #e7eef8;
+    text-align: left;
+    vertical-align: top;
+    overflow-wrap: anywhere;
+  }
+
+  .vf-preview-scroll th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f6faff;
+    color: #48617f;
+    font-size: 10px;
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: .03em;
+  }
+
+  .vf-preview-scroll th:nth-child(1) { width: 65px; }
+  .vf-preview-scroll th:nth-child(2) { width: 125px; }
+  .vf-preview-scroll th:nth-child(3) { width: 105px; }
+  .vf-preview-scroll th:nth-child(4) { width: 100px; }
+  .vf-preview-scroll th:nth-child(5) { width: 125px; }
+  .vf-preview-scroll th:nth-child(6) { width: 125px; }
+  .vf-preview-scroll th:nth-child(7) { width: 125px; }
+  .vf-preview-scroll th:nth-child(8) { width: 125px; }
+  .vf-preview-scroll th:nth-child(9) { width: 80px; }
+  .vf-preview-scroll th:nth-child(10) { width: 95px; }
+  .vf-preview-scroll th:nth-child(11) { width: 85px; }
+  .vf-preview-scroll th:nth-child(12) { width: 110px; }
+  .vf-preview-scroll th:nth-child(13) { width: 115px; }
+  .vf-preview-scroll th:nth-child(14) { width: 260px; }
+
+  .vf-preview-errors {
+    margin: 0;
+    padding-left: 16px;
+    color: #b42318;
+    line-height: 1.4;
+  }
+
+  .vf-preview-confirm {
+    margin-top: 12px;
+    padding: 13px;
+    border: 1px solid #c8dcf7;
+    border-radius: 14px;
+    background: #f8fbff;
+  }
+
+  .vf-preview-confirm label {
+    display: flex;
+    align-items: flex-start;
+    gap: 9px;
+    color: #1d3558;
+    font-size: 12px;
+    font-weight: 850;
+    line-height: 1.45;
+  }
+
+  .vf-preview-confirm input {
+    margin-top: 2px;
+  }
+
   .vf-table-head {
     display: flex;
     align-items: center;
@@ -491,6 +653,10 @@
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
 
+    .vf-preview-summary {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
     .vf-footer {
       grid-template-columns: minmax(0, 1fr);
       justify-items: start;
@@ -532,6 +698,11 @@
     .vf-field.full {
       grid-column: auto;
     }
+
+    .vf-import-box,
+    .vf-preview-summary {
+      grid-template-columns: minmax(0, 1fr);
+    }
   }
 </style>
 @endsection
@@ -550,7 +721,8 @@
       <strong>Carga masiva:</strong>
       {{ $summary['procesados'] ?? 0 }} procesados,
       {{ $summary['insertados'] ?? 0 }} insertados,
-      {{ $summary['actualizados'] ?? 0 }} actualizados y
+      {{ $summary['actualizados'] ?? 0 }} actualizados,
+      {{ $summary['restaurados'] ?? 0 }} restaurados y
       {{ $summary['rechazados'] ?? 0 }} rechazados.
 
       @if(!empty($summary['errores']))
@@ -1086,7 +1258,7 @@
       <div class="vf-title">
         <div>
           <h2>Carga masiva de valores</h2>
-          <p>Procesa valores en volumen sin generar duplicados por número de activo.</p>
+          <p>Previsualiza, valida y confirma los valores oficiales antes de modificar registros.</p>
         </div>
         <span class="pill ok">Importación autorizada</span>
       </div>
@@ -1094,12 +1266,12 @@
       <div class="vf-import-box">
         <div class="vf-import-guide">
           <h3>Reglas de importación</h3>
-          <p>SWAFI valida catálogos financieros, tipo de cambio, montos, fechas y duplicidad por número de activo. La depreciación acumulada y el valor en libros deben provenir de Oracle ERP. El XML se conserva como soporte documental independiente y no se compara contra los valores capturados.</p>
+          <p>SWAFI valida catálogos financieros, tipo de cambio, montos, fechas, existencia del activo y duplicidad dentro del archivo. La depreciación acumulada, el valor en libros y la vida útil deben provenir de Oracle ERP; SWAFI no los calcula ni los compara entre sí.</p>
           <ul>
-            <li>Las filas rechazadas no alteran registros correctos.</li>
-            <li>Un activo existente se actualiza; no se duplica.</li>
-            <li>Los valores vigentes deben ser mayores a cero.</li>
-            <li>La plantilla oficial conserva los encabezados esperados.</li>
+            <li>La previsualización no modifica valores fiscales ni financieros.</li>
+            <li>Se informa cuántas filas son correctas e incorrectas antes de aplicar.</li>
+            <li>Un activo existente se actualiza o restaura; no se duplica.</li>
+            <li>Solo las filas correctas se aplican después de una confirmación expresa.</li>
           </ul>
         </div>
 
@@ -1112,11 +1284,241 @@
           </label>
 
           <div class="vf-actions">
-            <button class="vf-button primary" type="submit">Importar CSV</button>
+            <button class="vf-button primary" type="submit">Previsualizar CSV</button>
             <a class="vf-button soft" href="{{ route('valores.plantilla') }}">Descargar plantilla</a>
           </div>
         </form>
       </div>
+
+      @if($importBatch)
+        @php
+          $batchState = (string) $importBatch->estado;
+          $batchCanApply = $importBatch->puedeAplicarse();
+          $stateClass = $batchState === 'aplicada'
+            ? 'ok'
+            : (in_array($batchState, ['cancelada', 'vencida'], true) ? 'danger' : 'warn');
+        @endphp
+
+        <div class="vf-preview" id="previsualizacion-valores">
+          <div class="vf-title">
+            <div>
+              <h2>Previsualización del archivo</h2>
+              <p>Revisa la clasificación y los mensajes por fila antes de confirmar.</p>
+            </div>
+            <span class="vf-status {{ $stateClass }}">{{ ucfirst($batchState) }}</span>
+          </div>
+
+          <div class="vf-preview-meta">
+            <span>Archivo: {{ $importBatch->archivo_nombre_original }}</span>
+            <span>Generada: {{ optional($importBatch->created_at)->format('d/m/Y H:i') }}</span>
+            <span>Vence: {{ optional($importBatch->expira_at)->format('d/m/Y H:i') }}</span>
+            <span>Lote: {{ $importBatch->uuid }}</span>
+          </div>
+
+          <div class="vf-preview-summary">
+            <div class="vf-preview-stat">
+              <strong>{{ $importBatch->total_filas }}</strong>
+              <span>Filas revisadas</span>
+            </div>
+            <div class="vf-preview-stat correct">
+              <strong>{{ $importBatch->filas_correctas }}</strong>
+              <span>Registros correctos</span>
+            </div>
+            <div class="vf-preview-stat incorrect">
+              <strong>{{ $importBatch->filas_incorrectas }}</strong>
+              <span>Registros incorrectos</span>
+            </div>
+            <div class="vf-preview-stat insert">
+              <strong>{{ $importBatch->filas_insertadas + $importBatch->filas_actualizadas + $importBatch->filas_restauradas }}</strong>
+              <span>Registros aplicados</span>
+            </div>
+          </div>
+
+          <div class="vf-preview-toolbar">
+            <form method="GET" action="{{ route('valores') }}">
+              <input type="hidden" name="panel" value="importar">
+              <input type="hidden" name="lote" value="{{ $importBatch->uuid }}">
+
+              <label class="vf-field">
+                <span>Filtrar previsualización</span>
+                <select name="preview_status">
+                  <option value="">Todas las filas</option>
+                  <option value="correcta" {{ $previewStatus === 'correcta' ? 'selected' : '' }}>Correctas</option>
+                  <option value="incorrecta" {{ $previewStatus === 'incorrecta' ? 'selected' : '' }}>Incorrectas</option>
+                </select>
+              </label>
+
+              <button class="vf-button soft" type="submit">Filtrar</button>
+            </form>
+
+            <a class="vf-button soft" href="{{ route('valores', ['panel' => 'importar']) }}">Cerrar previsualización</a>
+          </div>
+
+          @if($importRows)
+            <div class="vf-preview-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Fila</th>
+                    <th>Activo</th>
+                    <th>Resultado</th>
+                    <th>Acción</th>
+                    <th>Valor fiscal</th>
+                    <th>Depreciación acumulada</th>
+                    <th>Valor en libros</th>
+                    <th>Valor financiero</th>
+                    <th>Moneda</th>
+                    <th>Tipo cambio</th>
+                    <th>Vida útil</th>
+                    <th>Fecha corte</th>
+                    <th>Estatus contable</th>
+                    <th>Detalle de validación</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  @forelse($importRows as $previewRow)
+                    @php
+                      $previewData = is_array($previewRow->datos) ? $previewRow->datos : [];
+                      $previewPayload = data_get($previewData, 'payload', []);
+                      $previewErrors = is_array($previewRow->errores) ? $previewRow->errores : [];
+                      $isCorrect = $previewRow->estatus === 'correcta';
+                    @endphp
+                    <tr>
+                      <td>{{ $previewRow->numero_fila }}</td>
+                      <td><strong>{{ $previewRow->numero_activo ?: 'Sin activo' }}</strong></td>
+                      <td>
+                        <span class="vf-status {{ $isCorrect ? 'ok' : 'danger' }}">
+                          {{ $isCorrect ? 'Correcto' : 'Incorrecto' }}
+                        </span>
+                      </td>
+                      <td>{{ $previewRow->accion ? ucfirst($previewRow->accion) : 'No aplicable' }}</td>
+                      <td>
+                        @if(is_numeric(data_get($previewPayload, 'valor_fiscal')))
+                          {{ number_format((float) data_get($previewPayload, 'valor_fiscal'), 2) }}
+                        @else
+                          —
+                        @endif
+                      </td>
+                      <td>
+                        @if(is_numeric(data_get($previewPayload, 'depreciacion_acumulada')))
+                          {{ number_format((float) data_get($previewPayload, 'depreciacion_acumulada'), 2) }}
+                        @else
+                          —
+                        @endif
+                      </td>
+                      <td>
+                        @if(is_numeric(data_get($previewPayload, 'valor_en_libros')))
+                          {{ number_format((float) data_get($previewPayload, 'valor_en_libros'), 2) }}
+                        @else
+                          —
+                        @endif
+                      </td>
+                      <td>
+                        @if(is_numeric(data_get($previewPayload, 'valor_financiero')))
+                          {{ number_format((float) data_get($previewPayload, 'valor_financiero'), 2) }}
+                        @else
+                          —
+                        @endif
+                      </td>
+                      <td>{{ data_get($previewPayload, 'moneda') ?: '—' }}</td>
+                      <td>
+                        @if(is_numeric(data_get($previewPayload, 'tipo_cambio')))
+                          {{ number_format((float) data_get($previewPayload, 'tipo_cambio'), 6) }}
+                        @else
+                          —
+                        @endif
+                      </td>
+                      <td>{{ data_get($previewPayload, 'vida_util_meses') ?: '—' }}</td>
+                      <td>{{ data_get($previewPayload, 'fecha_corte') ?: '—' }}</td>
+                      <td>{{ data_get($previewPayload, 'estatus_contable') ?: '—' }}</td>
+                      <td>
+                        @if($previewErrors !== [])
+                          <ul class="vf-preview-errors">
+                            @foreach($previewErrors as $previewError)
+                              <li>{{ $previewError }}</li>
+                            @endforeach
+                          </ul>
+                        @elseif($previewRow->aplicada)
+                          Aplicada correctamente.
+                        @else
+                          La fila cumple las reglas vigentes y está lista para confirmación.
+                        @endif
+                      </td>
+                    </tr>
+                  @empty
+                    <tr>
+                      <td colspan="14">No existen filas con el filtro seleccionado.</td>
+                    </tr>
+                  @endforelse
+                </tbody>
+              </table>
+            </div>
+
+            <div class="vf-footer">
+              <div>Mostrando {{ $importRows->firstItem() ?? 0 }}–{{ $importRows->lastItem() ?? 0 }} de {{ $importRows->total() }} filas</div>
+
+              <div class="vf-pagination">
+                @if($importRows->onFirstPage())
+                  <span class="vf-page-link disabled">Anterior</span>
+                @else
+                  <a class="vf-page-link" href="{{ $importRows->previousPageUrl() }}">Anterior</a>
+                @endif
+
+                <span class="vf-page-link active">{{ $importRows->currentPage() }}</span>
+
+                @if($importRows->hasMorePages())
+                  <a class="vf-page-link" href="{{ $importRows->nextPageUrl() }}">Siguiente</a>
+                @else
+                  <span class="vf-page-link disabled">Siguiente</span>
+                @endif
+              </div>
+
+              <div>La previsualización no modifica datos.</div>
+            </div>
+          @endif
+
+          @if($batchState === 'previsualizada')
+            <div class="vf-preview-confirm">
+              @if($batchCanApply)
+                <form method="POST" action="{{ route('valores.importaciones.aplicar', $importBatch->uuid) }}">
+                  @csrf
+
+                  <label>
+                    <input type="checkbox" name="confirmar_aplicacion" value="1" required>
+                    <span>Confirmo que revisé la previsualización y autorizo aplicar únicamente las {{ $importBatch->filas_correctas }} filas correctas. Las {{ $importBatch->filas_incorrectas }} filas incorrectas no modificarán registros.</span>
+                  </label>
+
+                  <div class="vf-actions">
+                    <button class="vf-button primary" type="submit" data-confirm="¿Aplicar las filas correctas de esta previsualización?">Confirmar y aplicar</button>
+                  </div>
+                </form>
+              @elseif($importBatch->filas_correctas === 0)
+                <div class="vf-message vf-error">
+                  No hay filas correctas para aplicar. Corrige el archivo y genera una nueva previsualización.
+                </div>
+              @else
+                <div class="vf-message vf-error">
+                  La previsualización venció. Genera una nueva para confirmar la carga.
+                </div>
+              @endif
+
+              <form method="POST" action="{{ route('valores.importaciones.cancelar', $importBatch->uuid) }}">
+                @csrf
+                @method('DELETE')
+                <div class="vf-actions">
+                  <button class="vf-button" type="submit" data-confirm="¿Cancelar esta previsualización sin modificar los valores?">Cancelar previsualización</button>
+                </div>
+              </form>
+            </div>
+          @elseif($batchState === 'aplicada')
+            <div class="vf-message vf-success">
+              Este lote ya fue aplicado: {{ $importBatch->filas_insertadas }} insertados,
+              {{ $importBatch->filas_actualizadas }} actualizados y
+              {{ $importBatch->filas_restauradas }} restaurados.
+            </div>
+          @endif
+        </div>
+      @endif
     </section>
   @endif
 </div>

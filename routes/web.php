@@ -100,6 +100,14 @@ Route::middleware('swafi.auth')->group(function () {
     Route::get('/valores-fiscales-financieros/plantilla-csv', [ValoresActivoController::class, 'plantillaCsv'])->name('valores.plantilla');
     Route::post('/valores-fiscales-financieros/importar', [ValoresActivoController::class, 'importar'])->name('valores.importar');
 
+    Route::post('/valores-fiscales-financieros/importaciones/{lote}/aplicar', [ValoresActivoController::class, 'aplicarImportacion'])
+        ->whereUuid('lote')
+        ->name('valores.importaciones.aplicar');
+
+    Route::delete('/valores-fiscales-financieros/importaciones/{lote}', [ValoresActivoController::class, 'cancelarImportacion'])
+        ->whereUuid('lote')
+        ->name('valores.importaciones.cancelar');
+
     Route::delete('/valores-fiscales-financieros/{valor}', [ValoresActivoController::class, 'destroy'])
         ->whereNumber('valor')
         ->name('valores.destroy');

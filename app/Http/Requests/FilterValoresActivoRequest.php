@@ -28,6 +28,12 @@ class FilterValoresActivoRequest extends FormRequest
             'export' => $this->filled('export')
                 ? mb_strtolower(trim((string) $this->input('export')), 'UTF-8')
                 : null,
+            'lote' => $this->filled('lote')
+                ? trim((string) $this->input('lote'))
+                : null,
+            'preview_status' => $this->filled('preview_status')
+                ? mb_strtolower(trim((string) $this->input('preview_status')), 'UTF-8')
+                : null,
         ]);
     }
 
@@ -75,6 +81,15 @@ class FilterValoresActivoRequest extends FormRequest
             'per_page' => ['nullable', 'integer', Rule::in([10, 25, 50, 100])],
             'export' => ['nullable', Rule::in(['csv'])],
             'editar_valor' => ['nullable', 'integer', 'exists:valores_activo,id'],
+            'lote' => [
+                'nullable',
+                'uuid',
+                Rule::exists('importaciones_valores', 'uuid')->where(
+                    fn ($query) => $query->where('user_id', $this->user()?->getAuthIdentifier())
+                ),
+            ],
+            'preview_status' => ['nullable', Rule::in(['correcta', 'incorrecta'])],
+            'preview_page' => ['nullable', 'integer', 'min:1'],
         ];
     }
 
@@ -93,6 +108,9 @@ class FilterValoresActivoRequest extends FormRequest
             'valor_hasta.gte' => 'El valor máximo debe ser igual o mayor que el valor mínimo.',
             'per_page.in' => 'Selecciona una cantidad de registros permitida.',
             'export.in' => 'El formato de exportación solicitado no está permitido.',
+            'lote.uuid' => 'El identificador de la previsualización no es válido.',
+            'lote.exists' => 'La previsualización solicitada no existe o ya no está disponible.',
+            'preview_status.in' => 'El filtro de previsualización no es válido.',
         ];
     }
 }

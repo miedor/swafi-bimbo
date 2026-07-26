@@ -204,6 +204,8 @@ class SwafiAuth
             'valores.store',
             'valores.plantilla',
             'valores.importar',
+            'valores.importaciones.aplicar',
+            'valores.importaciones.cancelar',
             'valores.destroy' => 'valores.administrar',
 
             'cfdi.revalidar' => 'cfdi.validar',
