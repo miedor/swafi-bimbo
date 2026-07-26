@@ -16,6 +16,55 @@ use Illuminate\Support\Str;
 
 class ValoresActivoController extends Controller
 {
+    /**
+     * Encabezados obligatorios que debe contener cualquier carga masiva.
+     *
+     * @var list<string>
+     */
+    private const IMPORT_REQUIRED_HEADERS = [
+        'numero_activo',
+        'valor_fiscal',
+        'depreciacion_acumulada',
+        'valor_en_libros',
+        'valor_financiero',
+        'vida_util_meses',
+        'fecha_corte',
+        'estatus_contable',
+    ];
+
+    /**
+     * Encabezados de la plantilla oficial, indexados por su nombre canónico.
+     *
+     * @var array<string, string>
+     */
+    private const IMPORT_TEMPLATE_HEADERS = [
+        'numero_activo' => 'Numero activo',
+        'valor_fiscal' => 'Valor fiscal',
+        'depreciacion_acumulada' => 'Depreciacion acumulada',
+        'valor_en_libros' => 'Valor en libros',
+        'valor_financiero' => 'Valor financiero',
+        'moneda' => 'Moneda',
+        'tipo_cambio' => 'Tipo cambio',
+        'fecha_tipo_cambio' => 'Fecha tipo cambio',
+        'origen_tipo_cambio' => 'Origen tipo cambio',
+        'vida_util_meses' => 'Vida util meses',
+        'fecha_corte' => 'Fecha corte',
+        'estatus_contable' => 'Estatus contable',
+        'motivo_cambio' => 'Motivo cambio',
+    ];
+
+    /**
+     * Alias aceptados para conservar compatibilidad con plantillas oficiales
+     * descargadas antes de corregir la correspondencia de encabezados.
+     *
+     * @var array<string, string>
+     */
+    private const IMPORT_HEADER_ALIASES = [
+        'depreciacion_acumulada_oracle_erp' => 'depreciacion_acumulada',
+        'valor_en_libros_oracle_erp' => 'valor_en_libros',
+        'vida_util_oficial_meses' => 'vida_util_meses',
+    ];
+
     public function __construct(
         private readonly SwafiAuthorizationService $authorization,
         private readonly SafeExceptionReporter $safeExceptions,
@@ -169,19 +218,9 @@ class ValoresActivoController extends Controller
         }
 
         $delimiter = $this->detectDelimiter($rows[0]);
-        $headers = array_map(fn ($value) => $this->normalizeHeader($value), str_getcsv($rows[0], $delimiter));
+        $headers = $this->normalizeImportHeaders(str_getcsv($rows[0], $delimiter));
         $indexes = array_flip($headers);
-        $required = [
-            'numero_activo',
-            'valor_fiscal',
-            'depreciacion_acumulada',
-            'valor_en_libros',
-            'valor_financiero',
-            'vida_util_meses',
-            'fecha_corte',
-            'estatus_contable',
-        ];
-        $missing = array_diff($required, $headers);
+        $missing = array_diff(self::IMPORT_REQUIRED_HEADERS, $headers);
 
         if ($missing) {
             return back()->withErrors([
@@ -336,12 +375,7 @@ class ValoresActivoController extends Controller
         return response()->streamDownload(function (): void {
             $output = fopen('php://output', 'w');
             fwrite($output, "\xEF\xBB\xBF");
-            fputcsv($output, [
-                'Numero activo', 'Valor fiscal', 'Depreciacion acumulada Oracle ERP', 'Valor en libros Oracle ERP',
-                'Valor financiero', 'Moneda', 'Tipo cambio', 'Fecha tipo cambio',
-                'Origen tipo cambio', 'Vida util oficial meses', 'Fecha corte',
-                'Estatus contable', 'Motivo cambio',
-            ]);
+            fputcsv($output, array_values(self::IMPORT_TEMPLATE_HEADERS));
             fputcsv($output, [
                 'BIM-537028', '602700', '10045', '592655', '602700', 'MXN', '1', '', '',
                 '60', '25/06/2027', 'vigente',
@@ -623,6 +657,19 @@ class ValoresActivoController extends Controller
         arsort($counts);
 
         return (string) array_key_first($counts);
+    }
+
+    /**
+     * @param array<int, string|null> $headers
+     * @return list<string>
+     */
+    private function normalizeImportHeaders(array $headers): array
+    {
+        return array_values(array_map(function (?string $header): string {
+            $normalized = $this->normalizeHeader($header);
+
+            return self::IMPORT_HEADER_ALIASES[$normalized] ?? $normalized;
+        }, $headers));
     }
 
     private function normalizeHeader(?string $value): string

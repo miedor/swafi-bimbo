@@ -103,6 +103,55 @@ class ValoresActivoControllerParsingTest extends TestCase
         self::assertNull($error, 'SWAFI debe resguardar los valores oficiales de Oracle ERP sin recalcularlos.');
     }
 
+    public function test_downloaded_template_headers_match_the_import_validator(): void
+    {
+        $controller = $this->controller();
+        $reflection = new ReflectionClass($controller);
+        $templateHeaders = $reflection->getConstant('IMPORT_TEMPLATE_HEADERS');
+        $requiredHeaders = $reflection->getConstant('IMPORT_REQUIRED_HEADERS');
+        $normalize = new ReflectionMethod($controller, 'normalizeImportHeaders');
+
+        self::assertIsArray($templateHeaders);
+        self::assertIsArray($requiredHeaders);
+
+        $normalized = $normalize->invoke($controller, array_values($templateHeaders));
+
+        self::assertSame(
+            [],
+            array_values(array_diff($requiredHeaders, $normalized)),
+            'La plantilla descargada debe contener todos los encabezados obligatorios que valida la carga masiva.'
+        );
+    }
+
+    public function test_previous_official_template_headers_remain_compatible(): void
+    {
+        $controller = $this->controller();
+        $normalize = new ReflectionMethod($controller, 'normalizeImportHeaders');
+
+        $normalized = $normalize->invoke($controller, [
+            'Numero activo',
+            'Valor fiscal',
+            'Depreciacion acumulada Oracle ERP',
+            'Valor en libros Oracle ERP',
+            'Valor financiero',
+            'Moneda',
+            'Tipo cambio',
+            'Fecha tipo cambio',
+            'Origen tipo cambio',
+            'Vida util oficial meses',
+            'Fecha corte',
+            'Estatus contable',
+            'Motivo cambio',
+        ]);
+
+        self::assertContains('depreciacion_acumulada', $normalized);
+        self::assertContains('valor_en_libros', $normalized);
+        self::assertContains('vida_util_meses', $normalized);
+        self::assertNotContains('depreciacion_acumulada_oracle_erp', $normalized);
+        self::assertNotContains('valor_en_libros_oracle_erp', $normalized);
+        self::assertNotContains('vida_util_oficial_meses', $normalized);
+    }
+
     private function controller(): ValoresActivoController
     {
         $reflection = new ReflectionClass(ValoresActivoController::class);
