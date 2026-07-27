@@ -138,6 +138,28 @@ class ValoresActivoImportPreviewConfigurationTest extends TestCase
         }
     }
 
+    public function test_preview_uses_compact_grouped_layout_and_controlled_confirmation(): void
+    {
+        $view = $this->read('resources/views/swafi/valores.blade.php');
+
+        foreach ([
+            'vf-preview-meta-grid',
+            'vf-preview-table',
+            'Valores oficiales Oracle ERP',
+            'vf-preview-values',
+            'vf-preview-parameters',
+            'vf-preview-decision',
+            'vf-preview-confirmation-check',
+            'width: 20px;',
+            'Aplicación controlada del lote',
+        ] as $expected) {
+            self::assertStringContainsString($expected, $view);
+        }
+
+        self::assertStringNotContainsString('min-width: 1700px;', $view);
+        self::assertStringNotContainsString('<th>Depreciación acumulada</th>', $view);
+    }
+
     public function test_preview_keeps_oracle_as_source_without_recalculating_values(): void
     {
         $service = $this->read('app/Services/ValoresActivoImportService.php');
