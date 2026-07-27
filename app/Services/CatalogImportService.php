@@ -38,7 +38,7 @@ class CatalogImportService
             'areas' => ['planta_clave', 'clave', 'nombre', 'estatus'],
             'ubicaciones' => [
                 'planta_clave',
-                'area_nombre',
+                'area_clave',
                 'codigo_interno',
                 'edificio',
                 'piso',
@@ -49,6 +49,25 @@ class CatalogImportService
             'responsables' => ['nombre', 'correo', 'telefono', 'estatus'],
             default => [],
         };
+    }
+
+
+    /**
+     * Encabezados que el importador acepta. Se conserva area_nombre para
+     * compatibilidad con plantillas anteriores; las nuevas plantillas utilizan
+     * area_clave porque es un identificador más estable.
+     *
+     * @return array<int, string>
+     */
+    public function acceptedHeadersFor(string $catalog): array
+    {
+        $headers = $this->headersFor($catalog);
+
+        if ($catalog === 'ubicaciones') {
+            $headers[] = 'area_nombre';
+        }
+
+        return array_values(array_unique($headers));
     }
 
     /**
@@ -66,6 +85,100 @@ class CatalogImportService
             'areas' => ['planta_clave', 'clave', 'nombre'],
             'ubicaciones' => ['planta_clave', 'codigo_interno'],
             'responsables' => ['nombre'],
+            default => [],
+        };
+    }
+
+
+    /**
+     * @return array<int, string>
+     */
+    public function optionalHeadersFor(string $catalog): array
+    {
+        return array_values(array_diff(
+            $this->headersFor($catalog),
+            $this->requiredHeadersFor($catalog)
+        ));
+    }
+
+    /**
+     * Diccionario único de campos para mostrar instrucciones y previsualizar
+     * exactamente la información capturada en el layout.
+     *
+     * @return array<string, array{label: string, required: bool, help: string}>
+     */
+    public function fieldGuideFor(string $catalog): array
+    {
+        $status = [
+            'label' => 'Estatus',
+            'required' => false,
+            'help' => 'Opcional. Usa activo o inactivo; si se omite, SWAFI asigna activo.',
+        ];
+
+        return match ($catalog) {
+            'proveedores' => [
+                'rfc' => ['label' => 'RFC', 'required' => true, 'help' => 'RFC válido de 12 o 13 caracteres, sin espacios ni guiones.'],
+                'nombre' => ['label' => 'Nombre', 'required' => true, 'help' => 'Razón social o nombre del proveedor.'],
+                'correo' => ['label' => 'Correo', 'required' => false, 'help' => 'Correo electrónico válido.'],
+                'telefono' => ['label' => 'Teléfono', 'required' => false, 'help' => 'Hasta 30 caracteres.'],
+                'estatus' => $status,
+            ],
+            'plantas' => [
+                'clave' => ['label' => 'Clave', 'required' => true, 'help' => 'Clave única en mayúsculas; admite números, punto, guion y guion bajo.'],
+                'nombre' => ['label' => 'Nombre', 'required' => true, 'help' => 'Nombre de la planta.'],
+                'direccion' => ['label' => 'Dirección', 'required' => true, 'help' => 'Dirección completa, mínimo 5 caracteres.'],
+                'estado' => ['label' => 'Estado', 'required' => false, 'help' => 'Entidad federativa o región.'],
+                'pais' => ['label' => 'País', 'required' => false, 'help' => 'Si se omite, SWAFI asigna México.'],
+                'estatus' => $status,
+            ],
+            'centros_costo' => [
+                'planta_clave' => ['label' => 'Clave de planta', 'required' => true, 'help' => 'Debe existir y estar activa en el catálogo Plantas.'],
+                'clave' => ['label' => 'Clave', 'required' => true, 'help' => 'Clave única del centro de costo.'],
+                'descripcion' => ['label' => 'Descripción', 'required' => true, 'help' => 'Descripción del centro de costo.'],
+                'estatus' => $status,
+            ],
+            'categorias_activo' => [
+                'clave' => ['label' => 'Clave', 'required' => true, 'help' => 'Clave única de la categoría.'],
+                'nombre' => ['label' => 'Categoría', 'required' => true, 'help' => 'Nombre único de la categoría.'],
+                'descripcion' => ['label' => 'Descripción', 'required' => false, 'help' => 'Descripción funcional de la categoría.'],
+                'estatus' => $status,
+            ],
+            'tipos_activo' => [
+                'categoria_clave' => ['label' => 'Clave de categoría', 'required' => true, 'help' => 'Debe existir y estar activa en Categorías de activo.'],
+                'clave' => ['label' => 'Clave', 'required' => true, 'help' => 'Clave única del tipo de activo.'],
+                'descripcion' => ['label' => 'Tipo de activo', 'required' => true, 'help' => 'Descripción única del tipo de activo.'],
+                'vida_util_meses' => ['label' => 'Vida útil en meses', 'required' => false, 'help' => 'Dato referencial entero de 1 a 600; SWAFI no calcula depreciación.'],
+                'estatus' => $status,
+            ],
+            'estatus_documentales', 'estatus_operativos' => [
+                'clave' => ['label' => 'Clave técnica', 'required' => true, 'help' => 'Minúsculas, números y guion bajo; debe iniciar con letra.'],
+                'nombre' => ['label' => 'Nombre visible', 'required' => true, 'help' => 'Nombre único que verá la persona usuaria.'],
+                'descripcion' => ['label' => 'Descripción', 'required' => false, 'help' => 'Explicación del estado.'],
+                'orden' => ['label' => 'Orden', 'required' => true, 'help' => 'Número entero de 1 a 999.'],
+                'estatus' => $status,
+            ],
+            'areas' => [
+                'planta_clave' => ['label' => 'Clave de planta', 'required' => true, 'help' => 'Debe existir y estar activa en Plantas.'],
+                'clave' => ['label' => 'Clave', 'required' => true, 'help' => 'Clave única dentro de la planta.'],
+                'nombre' => ['label' => 'Área', 'required' => true, 'help' => 'Nombre único dentro de la planta.'],
+                'estatus' => $status,
+            ],
+            'ubicaciones' => [
+                'planta_clave' => ['label' => 'Clave de planta', 'required' => true, 'help' => 'Debe existir y estar activa en Plantas.'],
+                'area_clave' => ['label' => 'Clave de área', 'required' => false, 'help' => 'Opcional. Debe existir, estar activa y pertenecer a la planta indicada.'],
+                'codigo_interno' => ['label' => 'Código interno', 'required' => true, 'help' => 'Código único de ubicación en mayúsculas.'],
+                'edificio' => ['label' => 'Edificio', 'required' => false, 'help' => 'Edificio o nave.'],
+                'piso' => ['label' => 'Piso', 'required' => false, 'help' => 'Nivel o piso.'],
+                'pasillo' => ['label' => 'Pasillo', 'required' => false, 'help' => 'Pasillo, línea o referencia interna.'],
+                'descripcion' => ['label' => 'Descripción', 'required' => false, 'help' => 'Descripción de la ubicación.'],
+                'estatus' => $status,
+            ],
+            'responsables' => [
+                'nombre' => ['label' => 'Nombre', 'required' => true, 'help' => 'Nombre completo de la persona responsable.'],
+                'correo' => ['label' => 'Correo', 'required' => false, 'help' => 'Correo electrónico válido; se utiliza como identificador preferente.'],
+                'telefono' => ['label' => 'Teléfono', 'required' => false, 'help' => 'Hasta 30 caracteres.'],
+                'estatus' => $status,
+            ],
             default => [],
         };
     }
@@ -111,7 +224,7 @@ class CatalogImportService
             'areas' => ['PLT-SM', 'PROD', 'Producción', 'activo'],
             'ubicaciones' => [
                 'PLT-SM',
-                'Producción',
+                'PROD',
                 'UBI-SM-PRO-L3-PB',
                 'Edificio B',
                 'PB',
@@ -190,7 +303,7 @@ class CatalogImportService
                 }
             }
 
-            $expectedHeaders = $this->headersFor($catalog);
+            $expectedHeaders = $this->acceptedHeadersFor($catalog);
             $summary = [
                 'procesados' => 0,
                 'aceptados' => 0,
@@ -228,6 +341,9 @@ class CatalogImportService
                     'errores' => $classification['errores'],
                     'advertencias' => $classification['advertencias'],
                     'aplicada' => false,
+                    'resultado' => [
+                        'datos_origen' => $sourceData,
+                    ],
                 ]);
 
                 match ($classification['estatus']) {
@@ -344,12 +460,14 @@ class CatalogImportService
                     ip: $ip
                 );
 
+                $previousResult = is_array($row->resultado) ? $row->resultado : [];
+
                 $row->forceFill([
                     'aplicada' => true,
-                    'resultado' => [
+                    'resultado' => array_merge($previousResult, [
                         'registro_id' => (int) $saved->id,
                         'accion' => $expectedAction,
-                    ],
+                    ]),
                 ])->save();
 
                 if ($expectedAction === 'actualizar') {
@@ -749,11 +867,22 @@ class CatalogImportService
     {
         $plantKey = mb_strtoupper($this->normalizeCell($data['planta_clave'] ?? ''));
         $plantId = $this->activeIdByKey('plantas', $plantKey);
+        $areaKey = mb_strtoupper($this->normalizeCell($data['area_clave'] ?? ''));
         $areaName = $this->normalizeCell($data['area_nombre'] ?? '');
         $areaId = null;
 
         if ($plantId === null) {
             $errors[] = "La planta {$plantKey} no existe o está inactiva.";
+        } elseif ($areaKey !== '') {
+            $areaId = DB::table('areas')
+                ->where('planta_id', $plantId)
+                ->where('clave', $areaKey)
+                ->where('estatus', 'activo')
+                ->value('id');
+
+            if ($areaId === null) {
+                $errors[] = "El área con clave {$areaKey} no existe o está inactiva para la planta {$plantKey}.";
+            }
         } elseif ($areaName !== '') {
             $areaId = DB::table('areas')
                 ->where('planta_id', $plantId)
@@ -954,7 +1083,9 @@ class CatalogImportService
     private function assertHeaders(string $catalog, array $headers): void
     {
         $required = $this->requiredHeadersFor($catalog);
-        $missing = array_values(array_diff($required, $headers));
+        $allowed = $this->acceptedHeadersFor($catalog);
+        $present = array_values(array_filter($headers, static fn (string $header): bool => $header !== ''));
+        $missing = array_values(array_diff($required, $present));
 
         if ($missing !== []) {
             throw new DomainException(
@@ -962,7 +1093,16 @@ class CatalogImportService
             );
         }
 
-        $duplicates = array_keys(array_filter(array_count_values(array_filter($headers)), fn (int $count): bool => $count > 1));
+        $unknown = array_values(array_diff($present, $allowed));
+
+        if ($unknown !== []) {
+            throw new DomainException(
+                'El layout contiene encabezados no reconocidos: ' . implode(', ', $unknown)
+                . '. Descarga la plantilla vigente del catálogo y conserva exactamente sus columnas.'
+            );
+        }
+
+        $duplicates = array_keys(array_filter(array_count_values($present), fn (int $count): bool => $count > 1));
 
         if ($duplicates !== []) {
             throw new DomainException(

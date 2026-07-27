@@ -16,7 +16,6 @@ use DomainException;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
-use Illuminate\Support\Str;
 use Symfony\Component\HttpFoundation\StreamedResponse;
 use Throwable;
 
@@ -129,6 +128,9 @@ class CatalogosController extends Controller
             'opciones' => $this->options(),
             'kpis' => $this->buildKpis($catalogoActivo),
             'headersLayout' => $this->catalogImports->headersFor($catalogoActivo),
+            'requiredHeadersLayout' => $this->catalogImports->requiredHeadersFor($catalogoActivo),
+            'optionalHeadersLayout' => $this->catalogImports->optionalHeadersFor($catalogoActivo),
+            'layoutFieldGuide' => $this->catalogImports->fieldGuideFor($catalogoActivo),
             'importBatch' => $importBatch,
             'importRows' => $importRows,
         ]);
@@ -391,11 +393,51 @@ class CatalogosController extends Controller
         );
     }
 
-    public function plantillaCsv(CatalogIndexRequest $request): StreamedResponse
+    public function plantillaCsv(CatalogIndexRequest $request): RedirectResponse|StreamedResponse
     {
         $catalog = (string) ($request->validated('catalogo') ?? 'proveedores');
+        $format = (string) ($request->validated('template_format') ?? 'csv');
         $headers = $this->catalogImports->headersFor($catalog);
         $example = $this->catalogImports->exampleRowFor($catalog);
+        $filename = 'plantilla_catalogo_swafi_' . $catalog;
+
+        if ($format === 'xlsx') {
+            try {
+                $contents = $this->xlsxExporter->exportBytes(
+                    'Plantilla ' . ($this->catalogs()[$catalog] ?? 'catálogo'),
+                    $headers,
+                    [$example]
+                );
+            } catch (Throwable $exception) {
+                $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                    $exception,
+                    'catalog_template_xlsx',
+                    [
+                        'catalog' => $catalog,
+                        'user_id' => auth()->id(),
+                        'route_name' => $request->route()?->getName(),
+                    ]
+                );
+
+                return redirect()
+                    ->route('catalogos', ['catalogo' => $catalog])
+                    ->withErrors([
+                        'plantilla' => "No fue posible generar la plantilla Excel. Referencia: {$reference}.",
+                    ]);
+            }
+
+            return response()->streamDownload(
+                static function () use ($contents): void {
+                    echo $contents;
+                },
+                $filename . '.xlsx',
+                [
+                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                    'X-Content-Type-Options' => 'nosniff',
+                ]
+            );
+        }
 
         return response()->streamDownload(function () use ($headers, $example): void {
             $output = fopen('php://output', 'wb');
@@ -405,17 +447,18 @@ class CatalogosController extends Controller
             }
 
             fwrite($output, "\xEF\xBB\xBF");
+            fputcsv($output, $headers, ',', '"', '');
             fputcsv(
                 $output,
-                array_map(fn ($header) => Str::headline(str_replace('_', ' ', $header)), $headers),
+                array_map(static fn (mixed $value): string => self::safeSpreadsheetValue($value), $example),
                 ',',
                 '"',
                 ''
             );
-            fputcsv($output, $example, ',', '"', '');
             fclose($output);
-        }, 'plantilla_catalogo_swafi_' . $catalog . '.csv', [
+        }, $filename . '.csv', [
             'Content-Type' => 'text/csv; charset=UTF-8',
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
             'X-Content-Type-Options' => 'nosniff',
         ]);
     }

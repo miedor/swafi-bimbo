@@ -158,6 +158,103 @@
         line-height: 1.4;
     }
 
+
+    .cat-layout-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 7px;
+        margin-top: 8px;
+    }
+
+    .cat-layout-badge {
+        display: inline-flex;
+        align-items: center;
+        min-height: 28px;
+        padding: 5px 9px;
+        border: 1px solid #cfe0f5;
+        border-radius: 999px;
+        background: #ffffff;
+        color: #264b73;
+        font-size: 11px;
+        font-weight: 900;
+    }
+
+    .cat-layout-badge.is-required {
+        border-color: #f0c5c5;
+        background: #fff4f4;
+        color: #8a1f1f;
+    }
+
+    .cat-field-guide {
+        margin-top: 10px;
+        border-top: 1px solid #dbe8f7;
+        padding-top: 9px;
+    }
+
+    .cat-field-guide summary {
+        cursor: pointer;
+        color: #154f9b;
+        font-weight: 900;
+    }
+
+    .cat-field-guide-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 8px;
+        margin-top: 9px;
+    }
+
+    .cat-field-guide-item {
+        padding: 9px 10px;
+        border: 1px solid #dbe8f7;
+        border-radius: 11px;
+        background: #ffffff;
+    }
+
+    .cat-field-guide-item strong {
+        display: block;
+        color: #12345a;
+        font-size: 12px;
+    }
+
+    .cat-field-guide-item small {
+        display: block;
+        margin-top: 3px;
+        color: #64748b;
+        line-height: 1.35;
+    }
+
+    .cat-preview-values {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(150px, 1fr));
+        gap: 6px;
+        min-width: 330px;
+    }
+
+    .cat-preview-value {
+        min-width: 0;
+        padding: 6px 8px;
+        border: 1px solid #e1eaf6;
+        border-radius: 9px;
+        background: #f8fbff;
+    }
+
+    .cat-preview-value span {
+        display: block;
+        color: #64748b;
+        font-size: 10px;
+        font-weight: 900;
+        text-transform: uppercase;
+    }
+
+    .cat-preview-value strong {
+        display: block;
+        margin-top: 2px;
+        overflow-wrap: anywhere;
+        color: #12345a;
+        font-size: 11px;
+    }
+
     .cat-table-scroll {
         width: 100%;
         overflow-x: auto;
@@ -368,7 +465,9 @@
         .cat-detail-grid,
         .cat-preview-meta,
         .cat-import-kpi-grid,
-        .cat-import-filter {
+        .cat-import-filter,
+        .cat-field-guide-grid,
+        .cat-preview-values {
             grid-template-columns: 1fr !important;
         }
     }
@@ -745,15 +844,49 @@
                 </label>
 
                 <div class="cat-help">
-                    Encabezados esperados para este catálogo:
-                    <strong>{{ implode(', ', $headersLayout) }}</strong>.
-                    El archivo no debe contener fórmulas. Para CSV utiliza codificación UTF-8.
+                    <strong>Columnas exactas de la plantilla vigente</strong>
+                    <div class="cat-layout-badges" aria-label="Columnas requeridas">
+                        @foreach ($requiredHeadersLayout as $header)
+                            <span class="cat-layout-badge is-required">{{ $header }} · requerida</span>
+                        @endforeach
+                    </div>
+
+                    @if ($optionalHeadersLayout !== [])
+                        <div class="cat-layout-badges" aria-label="Columnas opcionales">
+                            @foreach ($optionalHeadersLayout as $header)
+                                <span class="cat-layout-badge">{{ $header }} · opcional</span>
+                            @endforeach
+                        </div>
+                    @endif
+
+                    <details class="cat-field-guide">
+                        <summary>Ver reglas de llenado de cada columna</summary>
+                        <div class="cat-field-guide-grid">
+                            @foreach ($layoutFieldGuide as $fieldKey => $fieldDefinition)
+                                <div class="cat-field-guide-item">
+                                    <strong>
+                                        {{ $fieldKey }} — {{ $fieldDefinition['label'] }}
+                                        {{ $fieldDefinition['required'] ? '(requerido)' : '(opcional)' }}
+                                    </strong>
+                                    <small>{{ $fieldDefinition['help'] }}</small>
+                                </div>
+                            @endforeach
+                        </div>
+                    </details>
+
+                    <div style="margin-top:9px">
+                        Las plantillas incluyen una fila de ejemplo. Sustitúyela o elimínala antes de cargar datos reales.
+                        No agregues, renombres ni dupliques columnas. El XLSX no debe contener fórmulas y el CSV debe utilizar UTF-8.
+                    </div>
                 </div>
 
                 <div class="action-group" style="margin-top:12px">
                     <button class="tab" type="submit">Previsualizar y validar</button>
-                    <a class="tab" href="{{ route('catalogos.plantilla', ['catalogo' => $catalogoActivo]) }}">
-                        Descargar plantilla
+                    <a class="tab" href="{{ route('catalogos.plantilla', ['catalogo' => $catalogoActivo, 'template_format' => 'xlsx']) }}">
+                        Plantilla Excel
+                    </a>
+                    <a class="tab" href="{{ route('catalogos.plantilla', ['catalogo' => $catalogoActivo, 'template_format' => 'csv']) }}">
+                        Plantilla CSV
                     </a>
                 </div>
             </form>
@@ -919,6 +1052,7 @@
                     <tr>
                         <th>Fila</th>
                         <th>Identificador</th>
+                        <th>Datos del layout</th>
                         <th>Acción propuesta</th>
                         <th>Clasificación</th>
                         <th>Resultado de validación</th>
@@ -928,14 +1062,46 @@
                     @forelse ($importRows as $importRow)
                         @php
                             $rowData = is_array($importRow->datos) ? $importRow->datos : [];
+                            $rowResult = is_array($importRow->resultado) ? $importRow->resultado : [];
+                            $rowSource = is_array($rowResult['datos_origen'] ?? null)
+                                ? $rowResult['datos_origen']
+                                : $rowData;
                             $rowErrors = is_array($importRow->errores) ? $importRow->errores : [];
                             $rowWarnings = is_array($importRow->advertencias) ? $importRow->advertencias : [];
-                            $rowIdentifier = $rowData['rfc']
+                            $rowIdentifier = $rowSource['rfc']
+                                ?? $rowSource['clave']
+                                ?? $rowSource['codigo_interno']
+                                ?? $rowSource['correo']
+                                ?? $rowSource['nombre']
+                                ?? $rowData['rfc']
                                 ?? $rowData['clave']
                                 ?? $rowData['codigo_interno']
                                 ?? $rowData['correo']
                                 ?? $rowData['nombre']
                                 ?? '—';
+                            $rowPreviewValues = [];
+
+                            foreach ($layoutFieldGuide as $fieldKey => $fieldDefinition) {
+                                $fieldValue = $rowSource[$fieldKey] ?? null;
+
+                                if ($fieldValue !== null && trim((string) $fieldValue) !== '') {
+                                    $rowPreviewValues[] = [
+                                        'label' => $fieldDefinition['label'],
+                                        'value' => $fieldValue,
+                                    ];
+                                }
+                            }
+
+                            if (
+                                $catalogoActivo === 'ubicaciones'
+                                && empty($rowSource['area_clave'])
+                                && !empty($rowSource['area_nombre'])
+                            ) {
+                                $rowPreviewValues[] = [
+                                    'label' => 'Área (plantilla anterior)',
+                                    'value' => $rowSource['area_nombre'],
+                                ];
+                            }
                             $rowPillClass = match ($importRow->estatus) {
                                 'aceptada' => 'ok',
                                 'rechazada' => 'danger',
@@ -945,6 +1111,20 @@
                         <tr>
                             <td>{{ $importRow->numero_fila }}</td>
                             <td><strong>{{ $rowIdentifier }}</strong></td>
+                            <td>
+                                @if ($rowPreviewValues !== [])
+                                    <div class="cat-preview-values">
+                                        @foreach ($rowPreviewValues as $previewValue)
+                                            <div class="cat-preview-value">
+                                                <span>{{ $previewValue['label'] }}</span>
+                                                <strong>{{ $previewValue['value'] }}</strong>
+                                            </div>
+                                        @endforeach
+                                    </div>
+                                @else
+                                    <span>—</span>
+                                @endif
+                            </td>
                             <td>{{ $importRow->accion ? ucfirst($importRow->accion) : 'No aplicable' }}</td>
                             <td><span class="pill {{ $rowPillClass }}">{{ ucfirst($importRow->estatus) }}</span></td>
                             <td>
@@ -967,7 +1147,7 @@
                         </tr>
                     @empty
                         <tr>
-                            <td colspan="5">No existen filas con la clasificación seleccionada.</td>
+                            <td colspan="6">No existen filas con la clasificación seleccionada.</td>
                         </tr>
                     @endforelse
                 </tbody>

@@ -24,6 +24,7 @@ class CatalogIndexRequest extends FormRequest
             $this->filled('editar')
             || $this->filled('lote')
             || $this->filled('import_status')
+            || $this->route()?->getName() === 'catalogos.plantilla'
         ) && !$visibility->canAdminister($this)) {
             return false;
         }
@@ -42,6 +43,7 @@ class CatalogIndexRequest extends FormRequest
             'categoria_activo_id' => ['nullable', 'integer', Rule::exists('categorias_activo', 'id')],
             'per_page' => ['nullable', 'integer', Rule::in([10, 25, 50])],
             'export' => ['nullable', Rule::in(['csv', 'xlsx', 'pdf'])],
+            'template_format' => ['nullable', Rule::in(['csv', 'xlsx'])],
             'editar' => ['nullable', 'integer', 'min:1'],
             'detalle' => ['nullable', 'integer', 'min:1'],
             'swafi_focus' => ['nullable', 'string', 'max:80'],
@@ -61,6 +63,7 @@ class CatalogIndexRequest extends FormRequest
             'categoria_activo_id.exists' => 'La categoría de activo seleccionada ya no existe.',
             'per_page.in' => 'Selecciona 10, 25 o 50 registros por página.',
             'export.in' => 'El formato de exportación solicitado no es válido.',
+            'template_format.in' => 'El formato de plantilla solicitado no es válido.',
             'editar.integer' => 'El registro solicitado para edición no es válido.',
             'detalle.integer' => 'El registro solicitado para consulta no es válido.',
             'lote.uuid' => 'El identificador de la previsualización no es válido.',
@@ -149,7 +152,7 @@ class CatalogIndexRequest extends FormRequest
             'catalogo' => $catalog,
         ];
 
-        foreach (['buscar', 'estatus', 'export', 'swafi_focus', 'lote', 'import_status'] as $field) {
+        foreach (['buscar', 'estatus', 'export', 'template_format', 'swafi_focus', 'lote', 'import_status'] as $field) {
             $value = $this->input($field);
 
             if (is_string($value)) {
