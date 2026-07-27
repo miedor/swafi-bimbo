@@ -29,9 +29,6 @@ class ValorActivoExportController extends Controller
         $data = $request->validated();
         $numeroActivo = (string) $data['numero_activo'];
         $formato = (string) $data['formato'];
-        $permission = $formato === 'xlsx'
-            ? 'reportes.exportar_excel'
-            : 'reportes.exportar_pdf';
         $canViewSensitiveValues = $this->authorization->canCurrentUser('valores.administrar')
             || $this->authorization->canCurrentUser('reportes.valores');
 
@@ -39,14 +36,6 @@ class ValorActivoExportController extends Controller
             $canViewSensitiveValues,
             403,
             'Tu usuario no tiene permiso para consultar valores fiscales y financieros sensibles.'
-        );
-
-        abort_unless(
-            $this->authorization->canCurrentUser($permission),
-            403,
-            $formato === 'xlsx'
-                ? 'Tu usuario no tiene permiso para exportar fichas a Excel.'
-                : 'Tu usuario no tiene permiso para exportar fichas a PDF.'
         );
 
         $record = $this->fichaService->findCurrent($numeroActivo);

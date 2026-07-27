@@ -28,9 +28,10 @@ class SensitiveValueAccessConfigurationTest extends TestCase
         self::assertStringContainsString('return $query->select($commonColumns);', $controller);
     }
 
-    public function test_basic_users_cannot_apply_sensitive_filters_or_export_the_complete_dataset(): void
+    public function test_basic_users_export_only_the_operational_projection_visible_to_their_profile(): void
     {
         $controller = $this->read('app/Http/Controllers/ValoresActivoController.php');
+        $request = $this->read('app/Http/Requests/FilterValoresActivoRequest.php');
 
         self::assertStringContainsString("'proveedor_id' => 'a.proveedor_id'", $controller);
         self::assertStringContainsString("'moneda' => 'v.moneda'", $controller);
@@ -38,19 +39,14 @@ class SensitiveValueAccessConfigurationTest extends TestCase
             '/if \(!\$includeSensitiveValues\) \{\s+return;/s',
             $controller
         );
-        self::assertStringContainsString('return $this->canViewSensitiveValues()', $controller);
-        self::assertStringContainsString(
-            '&& $this->authorization->canCurrentUser(\'reportes.exportar\')',
-            $controller
-        );
-        self::assertStringContainsString(
-            '\'canExportarExcel\' => $canViewSensitiveValues',
-            $controller
-        );
-        self::assertStringContainsString(
-            '\'canExportarPdf\' => $canViewSensitiveValues',
-            $controller
-        );
+        self::assertStringContainsString("canCurrentUser('valores.ver')", $controller);
+        self::assertStringContainsString('private function exportColumns(bool $includeSensitiveValues): array', $controller);
+        self::assertStringContainsString("'estatus_operativo' => 'Estatus operativo'", $controller);
+        self::assertStringContainsString("'valor_fiscal' => 'Valor fiscal'", $controller);
+        self::assertStringContainsString("\$scope = \$includeSensitiveValues ? 'completo' : 'operativo_basico';", $controller);
+        self::assertStringContainsString("Rule::in(['csv', 'xlsx', 'pdf'])", $request);
+        self::assertStringContainsString("'canExportarExcel' => \$canViewSensitiveValues", $controller);
+        self::assertStringContainsString("'canExportarPdf' => \$canViewSensitiveValues", $controller);
     }
 
     public function test_history_and_individual_exports_are_denied_before_loading_sensitive_data(): void
@@ -85,7 +81,10 @@ class SensitiveValueAccessConfigurationTest extends TestCase
         $view = $this->read('resources/views/swafi/valores.blade.php');
 
         self::assertStringContainsString('Tu perfil cuenta con consulta operativa básica.', $view);
-        self::assertStringContainsString('SWAFI oculta montos, proveedor, factura, moneda, tipo de cambio, historial y exportaciones', $view);
+        self::assertStringContainsString('SWAFI oculta montos, proveedor, factura, moneda, tipo de cambio e historial financiero', $view);
+        self::assertStringContainsString('Las exportaciones incluyen únicamente las columnas operativas visibles para tu perfil.', $view);
+        self::assertStringContainsString('Exportar Excel', $view);
+        self::assertStringContainsString('Exportar PDF', $view);
         self::assertStringContainsString('@if($canViewSensitiveValues)', $view);
         self::assertStringContainsString('<th>Ubicación / clasificación</th>', $view);
         self::assertStringContainsString('<th>Soporte XML</th>', $view);

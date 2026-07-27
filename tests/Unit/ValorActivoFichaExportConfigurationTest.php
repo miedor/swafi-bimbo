@@ -54,12 +54,12 @@ class ValorActivoFichaExportConfigurationTest extends TestCase
         self::assertStringContainsString("canCurrentUser('reportes.valores')", $request);
     }
 
-    public function test_controller_enforces_format_specific_permissions_and_safe_errors(): void
+    public function test_controller_uses_sensitive_consultation_permission_for_both_formats_and_safe_errors(): void
     {
         $controller = $this->read('app/Http/Controllers/ValorActivoExportController.php');
 
-        self::assertStringContainsString("'reportes.exportar_excel'", $controller);
-        self::assertStringContainsString("'reportes.exportar_pdf'", $controller);
+        self::assertStringNotContainsString("'reportes.exportar_excel'", $controller);
+        self::assertStringNotContainsString("'reportes.exportar_pdf'", $controller);
         self::assertStringContainsString("'reportes.valores'", $controller);
         self::assertStringContainsString("'valores.administrar'", $controller);
         self::assertStringContainsString('SafeExceptionReporter', $controller);
@@ -95,10 +95,10 @@ class ValorActivoFichaExportConfigurationTest extends TestCase
         }
 
         self::assertStringContainsString('aria-label="Exportar ficha fiscal y financiera', $view);
-        self::assertStringContainsString("'canExportarExcel'", $controller);
-        self::assertStringContainsString("'canExportarPdf'", $controller);
-        self::assertStringContainsString("'reportes.exportar_excel'", $controller);
-        self::assertStringContainsString("'reportes.exportar_pdf'", $controller);
+        self::assertStringContainsString("'canExportarExcel' => \$canViewSensitiveValues", $controller);
+        self::assertStringContainsString("'canExportarPdf' => \$canViewSensitiveValues", $controller);
+        self::assertStringNotContainsString("'reportes.exportar_excel'", $controller);
+        self::assertStringNotContainsString("'reportes.exportar_pdf'", $controller);
         self::assertStringContainsString("'reportes.valores'", $controller);
         self::assertStringContainsString("'valores.administrar'", $controller);
     }

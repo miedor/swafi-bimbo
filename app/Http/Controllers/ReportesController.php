@@ -122,8 +122,8 @@ class ReportesController extends Controller
             'kpis' => $kpis,
             'reportesGuardados' => $this->savedReports(),
             'canSaveReports' => $this->can('reportes.plantillas'),
-            'canExportExcel' => $this->can('reportes.exportar_excel'),
-            'canExportPdf' => $this->can('reportes.exportar_pdf'),
+            'canExportExcel' => $this->can('reportes.exportar'),
+            'canExportPdf' => $this->can('reportes.exportar'),
             'canScheduleReports' => $this->can('reportes.programar'),
             'exportLimit' => self::EXPORT_LIMIT,
         ]);
@@ -1104,13 +1104,11 @@ class ReportesController extends Controller
         SimpleXlsxExporter $xlsxExporter,
         SimplePdfTableExporter $pdfExporter
     ): Response|BinaryFileResponse {
-        if ($format === 'xlsx' && !$this->can('reportes.exportar_excel')) {
-            abort(403, 'Tu usuario no tiene permiso para exportar reportes a Excel.');
-        }
-
-        if ($format === 'pdf' && !$this->can('reportes.exportar_pdf')) {
-            abort(403, 'Tu usuario no tiene permiso para exportar reportes a PDF.');
-        }
+        abort_unless(
+            $this->can('reportes.exportar'),
+            403,
+            'Tu usuario no tiene permiso para exportar desde el Centro de reportes.'
+        );
 
         $rows = (clone $query)
             ->limit(self::EXPORT_LIMIT + 1)

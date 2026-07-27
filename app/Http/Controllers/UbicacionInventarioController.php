@@ -11,6 +11,8 @@ use App\Models\InventarioEvidencia;
 use App\Models\MovimientoUbicacion;
 use App\Services\AssetStatusCatalogService;
 use App\Services\InventoryPeriodService;
+use App\Services\SimplePdfTableExporter;
+use App\Services\SimpleXlsxExporter;
 use App\Services\SwafiAuthorizationService;
 use App\Services\SwafiStorageService;
 use App\Services\TransferNotificationService;
@@ -26,13 +28,17 @@ use Illuminate\Validation\ValidationException;
 
 class UbicacionInventarioController extends Controller
 {
+    private const EXPORT_LIMIT = 5000;
+
     public function __construct(
         private readonly SwafiStorageService $storage,
         private readonly TransferWorkflowService $transferWorkflow,
         private readonly InventoryPeriodService $inventoryPeriods,
         private readonly SwafiAuthorizationService $authorization,
         private readonly TransferNotificationService $transferNotifications,
-        private readonly AssetStatusCatalogService $statusCatalogs
+        private readonly AssetStatusCatalogService $statusCatalogs,
+        private readonly SimpleXlsxExporter $xlsxExporter,
+        private readonly SimplePdfTableExporter $pdfExporter
     ) {
     }
 
@@ -52,16 +58,20 @@ class UbicacionInventarioController extends Controller
                 Rule::exists('estatus_operativos', 'clave')
                     ->where(fn ($query) => $query->where('estatus', 'activo')),
             ],
+            'export' => ['nullable', Rule::in(['csv', 'xlsx', 'pdf'])],
         ], [
             'estatus_operativo.exists' => 'El estatus operativo seleccionado no existe o está inactivo.',
+            'export.in' => 'El formato de exportación solicitado no está permitido.',
         ]);
 
         $query = $this->baseQuery();
 
         $this->applyFilters($query, $request);
 
-        if ($request->input('export') === 'csv') {
-            return $this->exportCsv($query);
+        $exportFormat = strtolower((string) $request->input('export'));
+
+        if (in_array($exportFormat, ['csv', 'xlsx', 'pdf'], true)) {
+            return $this->exportResults($query, $request, $exportFormat);
         }
 
         $perPage = (int) $request->input('per_page', 10);
@@ -837,64 +847,226 @@ class UbicacionInventarioController extends Controller
         ]));
     }
 
-    private function exportCsv($query)
+    private function exportResults($query, Request $request, string $format)
     {
-        $rows = $query
+        $columns = [
+            'numero_activo' => 'Número activo',
+            'activo_descripcion' => 'Descripción',
+            'planta_nombre' => 'Planta',
+            'area_nombre' => 'Área',
+            'ubicacion_actual' => 'Ubicación actual',
+            'responsable_nombre' => 'Responsable',
+            'estatus_operativo' => 'Estatus operativo',
+            'fecha_inventario' => 'Fecha inventario',
+            'estatus_localizacion' => 'Estatus localización',
+            'total_evidencias' => 'Evidencias vigentes',
+            'notificado_a_email' => 'Notificado a',
+            'notificado_at' => 'Fecha notificación',
+            'fecha_movimiento' => 'Último movimiento',
+            'movimiento_motivo' => 'Motivo movimiento',
+            'solicitud_traslado_uuid' => 'Traslado pendiente',
+            'solicitud_destino_planta' => 'Planta destino solicitada',
+            'solicitud_traslado_fecha' => 'Fecha traslado solicitada',
+        ];
+
+        $rows = (clone $query)
             ->orderBy('pl.nombre')
             ->orderBy('a.numero_activo')
+            ->limit(self::EXPORT_LIMIT + 1)
             ->get();
 
-        return response()->streamDownload(function () use ($rows) {
-            $output = fopen('php://output', 'w');
-
-            fwrite($output, "\xEF\xBB\xBF");
-
-            fputcsv($output, [
-                'Numero activo',
-                'Descripcion',
-                'Planta',
-                'Area',
-                'Ubicacion actual',
-                'Responsable',
-                'Estatus operativo',
-                'Fecha inventario',
-                'Estatus localizacion',
-                'Evidencias vigentes',
-                'Notificado a',
-                'Fecha notificacion',
-                'Ultimo movimiento',
-                'Motivo movimiento',
-                'Traslado pendiente',
-                'Planta destino solicitada',
-                'Fecha traslado solicitada',
-            ]);
-
-            foreach ($rows as $row) {
-                fputcsv($output, [
-                    $row->numero_activo,
-                    $row->activo_descripcion,
-                    $row->planta_nombre,
-                    $row->area_nombre,
-                    $this->formatUbicacion($row),
-                    $row->responsable_nombre,
-                    $row->estatus_operativo,
-                    $row->fecha_inventario,
-                    $row->estatus_localizacion,
-                    $row->total_evidencias,
-                    $row->notificado_a_email,
-                    $row->notificado_at,
-                    $row->fecha_movimiento,
-                    $row->movimiento_motivo,
-                    $row->solicitud_traslado_uuid,
-                    $row->solicitud_destino_planta,
-                    $row->solicitud_traslado_fecha,
+        if ($rows->count() > self::EXPORT_LIMIT) {
+            return redirect()
+                ->route('ubicacion', $request->except(['export']))
+                ->withErrors([
+                    'exportacion' => 'La exportación supera el límite de '
+                        . number_format(self::EXPORT_LIMIT)
+                        . ' registros. Aplica filtros más específicos.',
                 ]);
-            }
+        }
 
-            fclose($output);
-        }, 'ubicacion_inventario_swafi_' . now()->format('Ymd_His') . '.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+        $dataRows = $rows->map(function (object $row): array {
+            return [
+                $this->safeSpreadsheetValue($row->numero_activo),
+                $this->safeSpreadsheetValue($row->activo_descripcion),
+                $this->safeSpreadsheetValue($row->planta_nombre),
+                $this->safeSpreadsheetValue($row->area_nombre),
+                $this->safeSpreadsheetValue($this->formatUbicacion($row)),
+                $this->safeSpreadsheetValue($row->responsable_nombre),
+                $this->safeSpreadsheetValue($row->estatus_operativo),
+                $row->fecha_inventario,
+                $this->safeSpreadsheetValue($row->estatus_localizacion),
+                $row->total_evidencias,
+                $this->safeSpreadsheetValue($row->notificado_a_email),
+                $row->notificado_at,
+                $row->fecha_movimiento,
+                $this->safeSpreadsheetValue($row->movimiento_motivo),
+                $this->safeSpreadsheetValue($row->solicitud_traslado_uuid),
+                $this->safeSpreadsheetValue($row->solicitud_destino_planta),
+                $row->solicitud_traslado_fecha,
+            ];
+        })->all();
+
+        $filenameBase = 'ubicacion_inventario_swafi_' . now()->format('Ymd_His');
+
+        try {
+            if ($format === 'xlsx') {
+                $contents = $this->xlsxExporter->exportBytes(
+                    'Ubicación e inventario',
+                    array_values($columns),
+                    $dataRows
+                );
+            } elseif ($format === 'pdf') {
+                $contents = $this->pdfExporter->export(
+                    title: 'Consulta de ubicación e inventario SWAFI',
+                    headers: array_values($columns),
+                    rows: $dataRows,
+                    metadata: [
+                        'usuario' => session('swafi_nombre', session('swafi_usuario', 'Usuario SWAFI')),
+                        'fecha' => now()->format('d/m/Y H:i:s'),
+                        'filtros' => $this->exportFilterSummary($request),
+                    ]
+                );
+            }
+        } catch (\Throwable $exception) {
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'inventory_location_list_export',
+                [
+                    'format' => $format,
+                    'user_id' => auth()->id(),
+                    'route_name' => $request->route()?->getName(),
+                ]
+            );
+
+            return redirect()
+                ->route('ubicacion', $request->except(['export']))
+                ->withErrors([
+                    'exportacion' => "No fue posible generar la exportación. Referencia: {$reference}.",
+                ]);
+        }
+
+        $this->registerListExportAudit($request, $format, $rows->count());
+
+        if ($format === 'csv') {
+            return response()->streamDownload(function () use ($columns, $dataRows): void {
+                $output = fopen('php://output', 'w');
+                fwrite($output, "\xEF\xBB\xBF");
+                fputcsv($output, array_values($columns), ',', '"', '');
+
+                foreach ($dataRows as $row) {
+                    fputcsv($output, $row, ',', '"', '');
+                }
+
+                fclose($output);
+            }, $filenameBase . '.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        if ($format === 'xlsx') {
+            return response()->streamDownload(
+                static function () use ($contents): void {
+                    echo $contents;
+                },
+                $filenameBase . '.xlsx',
+                [
+                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                    'X-Content-Type-Options' => 'nosniff',
+                ]
+            );
+        }
+
+        return response($contents, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filenameBase . '.pdf"',
+            'Content-Length' => (string) strlen($contents),
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    private function registerListExportAudit(Request $request, string $format, int $rowCount): void
+    {
+        try {
+            $this->registrarBitacora(
+                numeroActivo: null,
+                accion: match ($format) {
+                    'xlsx' => 'EXPORTACION_UBICACION_XLSX',
+                    'pdf' => 'EXPORTACION_UBICACION_PDF',
+                    default => 'EXPORTACION_UBICACION_CSV',
+                },
+                tablaAfectada: 'activos',
+                registroClave: 'consulta_ubicacion',
+                antes: null,
+                despues: [
+                    'formato' => strtoupper($format),
+                    'total_exportado' => $rowCount,
+                    'filtros' => array_intersect_key($request->all(), array_flip([
+                        'numero_activo',
+                        'planta_id',
+                        'area_id',
+                        'ubicacion_id',
+                        'responsable_id',
+                        'estatus_operativo',
+                        'estatus_localizacion',
+                        'fecha_desde',
+                        'fecha_hasta',
+                    ])),
+                ]
+            );
+        } catch (\Throwable $exception) {
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'inventory_location_list_export_audit',
+                [
+                    'format' => $format,
+                    'user_id' => auth()->id(),
+                    'route_name' => $request->route()?->getName(),
+                ]
+            );
+        }
+    }
+
+    private function exportFilterSummary(Request $request): string
+    {
+        $parts = [];
+
+        foreach ([
+            'numero_activo',
+            'planta_id',
+            'area_id',
+            'ubicacion_id',
+            'responsable_id',
+            'estatus_operativo',
+            'estatus_localizacion',
+            'fecha_desde',
+            'fecha_hasta',
+        ] as $key) {
+            if ($request->filled($key)) {
+                $parts[] = str_replace('_', ' ', $key) . ': ' . $request->input($key);
+            }
+        }
+
+        return $parts === [] ? 'Sin filtros adicionales' : implode(' | ', $parts);
+    }
+
+    private function safeSpreadsheetValue(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        $trimmed = ltrim($value);
+
+        if ($trimmed !== '' && in_array($trimmed[0], ['=', '+', '-', '@'], true)) {
+            return "'" . $value;
+        }
+
+        return $value;
     }
 
     private function formatUbicacion($row): string

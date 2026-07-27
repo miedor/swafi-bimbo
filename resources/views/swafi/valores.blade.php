@@ -1091,7 +1091,7 @@
       @if($canViewSensitiveValues)
         Tu perfil cuenta con consulta fiscal y financiera completa en modo de solo lectura. La creación, edición, carga masiva y eliminación permanece reservada para Administrador SWAFI y Usuario Captura.
       @else
-        Tu perfil cuenta con consulta operativa básica. Por seguridad, SWAFI oculta montos, proveedor, factura, moneda, tipo de cambio, historial y exportaciones fiscales o financieras.
+        Tu perfil cuenta con consulta operativa básica. Por seguridad, SWAFI oculta montos, proveedor, factura, moneda, tipo de cambio e historial financiero. Las exportaciones incluyen únicamente las columnas operativas visibles para tu perfil.
       @endif
     </div>
   @endunless
@@ -1282,6 +1282,8 @@
 
         @if($canExportarValores)
           <button class="vf-button" type="submit" name="export" value="csv">Exportar CSV</button>
+          <button class="vf-button" type="submit" name="export" value="xlsx">Exportar Excel</button>
+          <button class="vf-button" type="submit" name="export" value="pdf">Exportar PDF</button>
         @endif
 
         <a class="vf-button soft" href="{{ route('valores', ['panel' => 'consulta']) }}">Limpiar filtros</a>

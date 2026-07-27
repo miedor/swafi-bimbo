@@ -682,6 +682,9 @@
 
       <div class="vh-filter-actions">
         <button class="vh-button primary" type="submit">Consultar histórico</button>
+        <button class="vh-button" type="submit" name="export" value="csv">Exportar CSV</button>
+        <button class="vh-button" type="submit" name="export" value="xlsx">Exportar Excel</button>
+        <button class="vh-button" type="submit" name="export" value="pdf">Exportar PDF</button>
         <a class="vh-button" href="{{ route('valores.historial', $activo->numero_activo) }}">Limpiar filtros</a>
       </div>
     </form>

@@ -4,6 +4,7 @@ namespace App\Services;
 
 use Illuminate\Pagination\LengthAwarePaginator;
 use Illuminate\Support\Carbon;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
 use JsonException;
@@ -74,6 +75,22 @@ class ValorActivoHistoryService
         );
 
         return $paginator;
+    }
+
+    public function exportRows(
+        string $numeroActivo,
+        array $filters,
+        int $limit
+    ): Collection {
+        $query = $this->baseQuery($numeroActivo);
+        $this->applyFilters($query, $filters);
+
+        return $query
+            ->orderByDesc('b.fecha_evento')
+            ->orderByDesc('b.id')
+            ->limit($limit + 1)
+            ->get()
+            ->map(fn (object $entry): object => $this->presentEntry($entry));
     }
 
     public function summary(string $numeroActivo): array

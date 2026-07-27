@@ -10,6 +10,8 @@ use App\Models\ValorActivo;
 use App\Services\CfdiValidationService;
 use App\Services\FinancialCatalogService;
 use App\Services\SafeExceptionReporter;
+use App\Services\SimplePdfTableExporter;
+use App\Services\SimpleXlsxExporter;
 use App\Services\SwafiAuthorizationService;
 use App\Services\ValoresActivoImportService;
 use Illuminate\Http\RedirectResponse;
@@ -19,6 +21,8 @@ use Illuminate\Validation\ValidationException;
 
 class ValoresActivoController extends Controller
 {
+    private const EXPORT_LIMIT = 5000;
+
     /**
      * Esquema centralizado de la carga masiva de valores.
      *
@@ -40,7 +44,9 @@ class ValoresActivoController extends Controller
         private readonly SwafiAuthorizationService $authorization,
         private readonly SafeExceptionReporter $safeExceptions,
         private readonly FinancialCatalogService $financialCatalogs,
-        private readonly ValoresActivoImportService $valueImports
+        private readonly ValoresActivoImportService $valueImports,
+        private readonly SimpleXlsxExporter $xlsxExporter,
+        private readonly SimplePdfTableExporter $pdfExporter
     ) {
     }
 
@@ -51,14 +57,21 @@ class ValoresActivoController extends Controller
         $query = $this->baseQuery($canViewSensitiveValues);
         $this->applyFilters($query, $request, $canViewSensitiveValues);
 
-        if ($request->input('export') === 'csv') {
+        $exportFormat = strtolower((string) $request->input('export'));
+
+        if (in_array($exportFormat, ['csv', 'xlsx', 'pdf'], true)) {
             abort_unless(
                 $this->canExportValues(),
                 403,
-                'No tienes permiso para exportar valores fiscales y financieros.'
+                'No tienes permiso para exportar la consulta de valores.'
             );
 
-            return $this->exportCsv($query);
+            return $this->exportValues(
+                query: $query,
+                request: $request,
+                format: $exportFormat,
+                includeSensitiveValues: $canViewSensitiveValues
+            );
         }
 
         $perPage = (int) $request->input('per_page', 10);
@@ -104,10 +117,8 @@ class ValoresActivoController extends Controller
             'canAdministrarValores' => $canManageValues,
             'canViewSensitiveValues' => $canViewSensitiveValues,
             'canExportarValores' => $this->canExportValues(),
-            'canExportarExcel' => $canViewSensitiveValues
-                && $this->authorization->canCurrentUser('reportes.exportar_excel'),
-            'canExportarPdf' => $canViewSensitiveValues
-                && $this->authorization->canCurrentUser('reportes.exportar_pdf'),
+            'canExportarExcel' => $canViewSensitiveValues,
+            'canExportarPdf' => $canViewSensitiveValues,
         ]);
     }
 
@@ -518,34 +529,267 @@ class ValoresActivoController extends Controller
         return $this->baseQuery(true)->where('v.id', $id)->first();
     }
 
-    private function exportCsv($query)
-    {
-        $rows = $query->orderByDesc('v.fecha_corte')->orderByDesc('v.id')->get();
+    private function exportValues(
+        $query,
+        FilterValoresActivoRequest $request,
+        string $format,
+        bool $includeSensitiveValues
+    ) {
+        $columns = $this->exportColumns($includeSensitiveValues);
+        $rows = (clone $query)
+            ->orderByDesc('v.fecha_corte')
+            ->orderByDesc('v.id')
+            ->limit(self::EXPORT_LIMIT + 1)
+            ->get();
 
-        return response()->streamDownload(function () use ($rows): void {
-            $output = fopen('php://output', 'w');
-            fwrite($output, "\xEF\xBB\xBF");
-            fputcsv($output, [
-                'Numero activo', 'Folio factura', 'Proveedor', 'Planta', 'Centro costo',
-                'Tipo activo', 'Valor fiscal', 'Depreciacion acumulada Oracle ERP', 'Valor en libros Oracle ERP',
-                'Valor financiero', 'Moneda', 'Tipo cambio', 'Fecha tipo cambio',
-                'Vida util oficial meses', 'Fecha corte', 'Estatus contable', 'Estado tecnico XML',
-                'Total CFDI', 'Moneda CFDI',
-            ]);
-
-            foreach ($rows as $row) {
-                fputcsv($output, [
-                    $row->numero_activo, $row->folio_factura, $row->proveedor_nombre,
-                    $row->planta_nombre, $row->centro_costo_clave, $row->tipo_activo,
-                    $row->valor_fiscal, $row->depreciacion_acumulada, $row->valor_en_libros,
-                    $row->valor_financiero, $row->moneda, $row->tipo_cambio,
-                    $row->fecha_tipo_cambio, $row->vida_util_meses, $row->fecha_corte,
-                    $row->estatus_contable, $row->conciliacion_cfdi, $row->cfdi_total,
-                    $row->cfdi_moneda,
+        if ($rows->count() > self::EXPORT_LIMIT) {
+            return redirect()
+                ->route('valores', $request->except(['export']))
+                ->withErrors([
+                    'exportacion' => 'La exportación supera el límite de '
+                        . number_format(self::EXPORT_LIMIT)
+                        . ' registros. Aplica filtros más específicos.',
                 ]);
+        }
+
+        $dataRows = $rows->map(function (object $row) use ($columns): array {
+            $line = [];
+
+            foreach (array_keys($columns) as $key) {
+                $line[] = $this->safeSpreadsheetValue(data_get($row, $key));
             }
-            fclose($output);
-        }, 'valores_activo_swafi_' . now()->format('Ymd_His') . '.csv', ['Content-Type' => 'text/csv; charset=UTF-8']);
+
+            return $line;
+        })->all();
+
+        $scope = $includeSensitiveValues ? 'completo' : 'operativo_basico';
+        $filenameBase = 'valores_activo_swafi_' . $scope . '_' . now()->format('Ymd_His');
+
+        try {
+            if ($format === 'xlsx') {
+                $contents = $this->xlsxExporter->exportBytes(
+                    'Valores de activo fijo',
+                    array_values($columns),
+                    $dataRows
+                );
+            } elseif ($format === 'pdf') {
+                $contents = $this->pdfExporter->export(
+                    title: 'Consulta de valores de activo fijo SWAFI',
+                    headers: array_values($columns),
+                    rows: $dataRows,
+                    metadata: [
+                        'usuario' => session('swafi_nombre', session('swafi_usuario', 'Usuario SWAFI')),
+                        'fecha' => now()->format('d/m/Y H:i:s'),
+                        'filtros' => $this->valueFilterSummary($request, $includeSensitiveValues),
+                    ]
+                );
+            }
+        } catch (\Throwable $exception) {
+            $reference = $this->safeExceptions->warning(
+                $exception,
+                'asset_values_list_export',
+                [
+                    'format' => $format,
+                    'scope' => $scope,
+                    'user_id' => auth()->id(),
+                    'route_name' => $request->route()?->getName(),
+                ]
+            );
+
+            return redirect()
+                ->route('valores', $request->except(['export']))
+                ->withErrors([
+                    'exportacion' => "No fue posible generar la exportación. Referencia: {$reference}.",
+                ]);
+        }
+
+        $this->registerExportAudit(
+            request: $request,
+            format: $format,
+            scope: $scope,
+            rowCount: $rows->count(),
+            columns: array_keys($columns)
+        );
+
+        if ($format === 'csv') {
+            return response()->streamDownload(function () use ($columns, $dataRows): void {
+                $output = fopen('php://output', 'w');
+                fwrite($output, "\xEF\xBB\xBF");
+                fputcsv($output, array_values($columns), ',', '"', '');
+
+                foreach ($dataRows as $row) {
+                    fputcsv($output, $row, ',', '"', '');
+                }
+
+                fclose($output);
+            }, $filenameBase . '.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        if ($format === 'xlsx') {
+            return response()->streamDownload(
+                static function () use ($contents): void {
+                    echo $contents;
+                },
+                $filenameBase . '.xlsx',
+                [
+                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                    'X-Content-Type-Options' => 'nosniff',
+                ]
+            );
+        }
+
+        return response($contents, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filenameBase . '.pdf"',
+            'Content-Length' => (string) strlen($contents),
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    private function exportColumns(bool $includeSensitiveValues): array
+    {
+        $basic = [
+            'numero_activo' => 'Número activo',
+            'activo_descripcion' => 'Descripción',
+            'planta_nombre' => 'Planta',
+            'centro_costo_clave' => 'Centro de costo',
+            'tipo_activo' => 'Tipo de activo',
+            'estatus_operativo' => 'Estatus operativo',
+            'estatus_documental' => 'Estatus documental',
+            'estatus_contable' => 'Estatus contable',
+            'conciliacion_cfdi' => 'Soporte XML',
+            'fecha_corte' => 'Fecha de corte',
+        ];
+
+        if (!$includeSensitiveValues) {
+            return $basic;
+        }
+
+        return [
+            'numero_activo' => 'Número activo',
+            'activo_descripcion' => 'Descripción',
+            'folio_factura' => 'Folio factura',
+            'proveedor_nombre' => 'Proveedor',
+            'planta_nombre' => 'Planta',
+            'centro_costo_clave' => 'Centro de costo',
+            'tipo_activo' => 'Tipo de activo',
+            'valor_fiscal' => 'Valor fiscal',
+            'depreciacion_acumulada' => 'Depreciación acumulada Oracle ERP',
+            'valor_en_libros' => 'Valor en libros Oracle ERP',
+            'valor_financiero' => 'Valor financiero',
+            'moneda' => 'Moneda',
+            'tipo_cambio' => 'Tipo de cambio',
+            'fecha_tipo_cambio' => 'Fecha tipo de cambio',
+            'vida_util_meses' => 'Vida útil oficial meses',
+            'fecha_corte' => 'Fecha de corte',
+            'estatus_contable' => 'Estatus contable',
+            'conciliacion_cfdi' => 'Estado técnico XML',
+            'cfdi_total' => 'Total CFDI',
+            'cfdi_moneda' => 'Moneda CFDI',
+        ];
+    }
+
+    private function valueFilterSummary(
+        FilterValoresActivoRequest $request,
+        bool $includeSensitiveValues
+    ): string {
+        $allowed = [
+            'numero_activo',
+            'planta_id',
+            'centro_costo_id',
+            'tipo_activo_id',
+            'estatus_contable',
+            'conciliacion_cfdi',
+        ];
+
+        if ($includeSensitiveValues) {
+            $allowed = array_merge($allowed, [
+                'proveedor_id',
+                'moneda',
+                'fecha_desde',
+                'fecha_hasta',
+                'valor_desde',
+                'valor_hasta',
+            ]);
+        }
+
+        $parts = [];
+
+        foreach ($allowed as $key) {
+            $value = $request->validated($key);
+
+            if ($value !== null && $value !== '') {
+                $parts[] = str_replace('_', ' ', $key) . ': ' . $value;
+            }
+        }
+
+        return $parts === [] ? 'Sin filtros adicionales' : implode(' | ', $parts);
+    }
+
+    private function registerExportAudit(
+        FilterValoresActivoRequest $request,
+        string $format,
+        string $scope,
+        int $rowCount,
+        array $columns
+    ): void {
+        try {
+            DB::table('bitacora_auditoria')->insert([
+                'numero_activo' => null,
+                'user_id' => auth()->id(),
+                'modulo' => 'M02 Control fiscal y financiero',
+                'accion' => match ($format) {
+                    'xlsx' => 'EXPORTACION_VALORES_XLSX',
+                    'pdf' => 'EXPORTACION_VALORES_PDF',
+                    default => 'EXPORTACION_VALORES_CSV',
+                },
+                'tabla_afectada' => 'valores_activo',
+                'registro_clave' => $scope,
+                'antes' => null,
+                'despues' => json_encode([
+                    'formato' => strtoupper($format),
+                    'alcance' => $scope,
+                    'total_exportado' => $rowCount,
+                    'columnas' => $columns,
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'ip' => $request->ip(),
+                'fecha_evento' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Throwable $exception) {
+            $this->safeExceptions->warning(
+                $exception,
+                'asset_values_list_export_audit',
+                [
+                    'format' => $format,
+                    'scope' => $scope,
+                    'user_id' => auth()->id(),
+                    'route_name' => $request->route()?->getName(),
+                ]
+            );
+        }
+    }
+
+    private function safeSpreadsheetValue(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        $trimmed = ltrim($value);
+
+        if ($trimmed !== '' && in_array($trimmed[0], ['=', '+', '-', '@'], true)) {
+            return "'" . $value;
+        }
+
+        return $value;
     }
 
     /**
@@ -629,8 +873,7 @@ class ValoresActivoController extends Controller
 
     private function canExportValues(): bool
     {
-        return $this->canViewSensitiveValues()
-            && $this->authorization->canCurrentUser('reportes.exportar');
+        return $this->authorization->canCurrentUser('valores.ver');
     }
 
     private function abortUnlessCanManageValues(): void

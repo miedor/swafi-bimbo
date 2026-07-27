@@ -8,6 +8,7 @@ use App\Models\ImportacionMasiva;
 use App\Services\AssetStatusCatalogService;
 use App\Services\BulkImportRollbackService;
 use App\Services\RegistroMasivoService;
+use App\Services\SimplePdfTableExporter;
 use App\Services\SimpleXlsxExporter;
 use App\Services\SwafiAuthorizationService;
 use Illuminate\Http\RedirectResponse;
@@ -20,10 +21,13 @@ use Symfony\Component\HttpFoundation\StreamedResponse;
 
 class RegistroMasivoController extends Controller
 {
+    private const EXPORT_LIMIT = 5000;
+
     public function __construct(
         private readonly RegistroMasivoService $importService,
         private readonly BulkImportRollbackService $rollbackService,
         private readonly SimpleXlsxExporter $xlsxExporter,
+        private readonly SimplePdfTableExporter $pdfExporter,
         private readonly SwafiAuthorizationService $authorization,
         private readonly AssetStatusCatalogService $assetStatuses
     ) {
@@ -39,8 +43,10 @@ class RegistroMasivoController extends Controller
                 Rule::exists('estatus_documentales', 'clave')
                     ->where(fn ($query) => $query->where('estatus', 'activo')),
             ],
+            'export' => ['nullable', Rule::in(['csv', 'xlsx', 'pdf'])],
         ], [
             'estatus.exists' => 'El estatus documental seleccionado no existe o está inactivo.',
+            'export.in' => 'El formato de exportación solicitado no está permitido.',
         ]);
 
         $canRollbackImports = $this->authorization
@@ -48,8 +54,10 @@ class RegistroMasivoController extends Controller
         $query = $this->baseQuery();
         $this->applyFilters($query, $request);
 
-        if ($request->input('export') === 'csv') {
-            return $this->exportCsv($query);
+        $exportFormat = strtolower((string) $request->input('export'));
+
+        if (in_array($exportFormat, ['csv', 'xlsx', 'pdf'], true)) {
+            return $this->exportResults($query, $request, $exportFormat);
         }
 
         $perPage = (int) $request->input('per_page', 10);
@@ -668,57 +676,225 @@ class RegistroMasivoController extends Controller
         ];
     }
 
-    private function exportCsv($query)
+    private function exportResults($query, Request $request, string $format)
     {
-        $rows = $query
+        $columns = [
+            'numero_activo' => 'Número activo',
+            'activo_descripcion' => 'Descripción',
+            'folio_factura' => 'Folio factura',
+            'uuid_cfdi' => 'UUID CFDI',
+            'proveedor_nombre' => 'Proveedor',
+            'proveedor_rfc' => 'RFC',
+            'planta_nombre' => 'Planta',
+            'centro_costo_clave' => 'Centro de costo',
+            'fecha_factura' => 'Fecha factura',
+            'monto_factura' => 'Monto factura',
+            'moneda' => 'Moneda',
+            'estatus' => 'Estatus documental',
+            'tiene_pdf' => 'Tiene PDF',
+            'tiene_xml' => 'Tiene XML',
+        ];
+
+        $rows = (clone $query)
             ->orderByDesc('e.created_at')
+            ->limit(self::EXPORT_LIMIT + 1)
             ->get();
 
-        return response()->streamDownload(function () use ($rows) {
-            $output = fopen('php://output', 'w');
-
-            fwrite($output, "\xEF\xBB\xBF");
-
-            fputcsv($output, [
-                'Numero activo',
-                'Descripcion',
-                'Folio factura',
-                'UUID CFDI',
-                'Proveedor',
-                'RFC',
-                'Planta',
-                'Centro costo',
-                'Fecha factura',
-                'Monto factura',
-                'Moneda',
-                'Estatus',
-                'Tiene PDF',
-                'Tiene XML',
-            ]);
-
-            foreach ($rows as $row) {
-                fputcsv($output, [
-                    $row->numero_activo,
-                    $row->activo_descripcion,
-                    $row->folio_factura,
-                    $row->uuid_cfdi,
-                    $row->proveedor_nombre,
-                    $row->proveedor_rfc,
-                    $row->planta_nombre,
-                    $row->centro_costo_clave,
-                    $row->fecha_factura,
-                    $row->monto_factura,
-                    $row->moneda,
-                    $row->estatus,
-                    ((int) $row->total_pdf) > 0 ? 'Sí' : 'No',
-                    ((int) $row->total_xml) > 0 ? 'Sí' : 'No',
+        if ($rows->count() > self::EXPORT_LIMIT) {
+            return redirect()
+                ->route('registro-masivo', $request->except(['export']))
+                ->withErrors([
+                    'exportacion' => 'La exportación supera el límite de '
+                        . number_format(self::EXPORT_LIMIT)
+                        . ' registros. Aplica filtros más específicos.',
                 ]);
-            }
+        }
 
-            fclose($output);
-        }, 'registro_masivo_expedientes_swafi_' . now()->format('Ymd_His') . '.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+        $dataRows = $rows->map(function (object $row): array {
+            return [
+                $this->safeSpreadsheetValue($row->numero_activo),
+                $this->safeSpreadsheetValue($row->activo_descripcion),
+                $this->safeSpreadsheetValue($row->folio_factura),
+                $this->safeSpreadsheetValue($row->uuid_cfdi),
+                $this->safeSpreadsheetValue($row->proveedor_nombre),
+                $this->safeSpreadsheetValue($row->proveedor_rfc),
+                $this->safeSpreadsheetValue($row->planta_nombre),
+                $this->safeSpreadsheetValue($row->centro_costo_clave),
+                $row->fecha_factura,
+                $row->monto_factura,
+                $this->safeSpreadsheetValue($row->moneda),
+                $this->safeSpreadsheetValue($row->estatus),
+                ((int) $row->total_pdf) > 0 ? 'Sí' : 'No',
+                ((int) $row->total_xml) > 0 ? 'Sí' : 'No',
+            ];
+        })->all();
+
+        $filenameBase = 'registro_masivo_expedientes_swafi_' . now()->format('Ymd_His');
+
+        try {
+            if ($format === 'xlsx') {
+                $contents = $this->xlsxExporter->exportBytes(
+                    'Expedientes registrados por carga masiva',
+                    array_values($columns),
+                    $dataRows
+                );
+            } elseif ($format === 'pdf') {
+                $contents = $this->pdfExporter->export(
+                    title: 'Consulta de expedientes por registro masivo SWAFI',
+                    headers: array_values($columns),
+                    rows: $dataRows,
+                    metadata: [
+                        'usuario' => session('swafi_nombre', session('swafi_usuario', 'Usuario SWAFI')),
+                        'fecha' => now()->format('d/m/Y H:i:s'),
+                        'filtros' => $this->exportFilterSummary($request),
+                    ]
+                );
+            }
+        } catch (\Throwable $exception) {
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'mass_registration_list_export',
+                [
+                    'format' => $format,
+                    'user_id' => auth()->id(),
+                    'route_name' => $request->route()?->getName(),
+                ]
+            );
+
+            return redirect()
+                ->route('registro-masivo', $request->except(['export']))
+                ->withErrors([
+                    'exportacion' => "No fue posible generar la exportación. Referencia: {$reference}.",
+                ]);
+        }
+
+        $this->registerListExportAudit($request, $format, $rows->count());
+
+        if ($format === 'csv') {
+            return response()->streamDownload(function () use ($columns, $dataRows): void {
+                $output = fopen('php://output', 'w');
+                fwrite($output, "\xEF\xBB\xBF");
+                fputcsv($output, array_values($columns), ',', '"', '');
+
+                foreach ($dataRows as $row) {
+                    fputcsv($output, $row, ',', '"', '');
+                }
+
+                fclose($output);
+            }, $filenameBase . '.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        if ($format === 'xlsx') {
+            return response()->streamDownload(
+                static function () use ($contents): void {
+                    echo $contents;
+                },
+                $filenameBase . '.xlsx',
+                [
+                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                    'X-Content-Type-Options' => 'nosniff',
+                ]
+            );
+        }
+
+        return response($contents, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filenameBase . '.pdf"',
+            'Content-Length' => (string) strlen($contents),
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    private function registerListExportAudit(Request $request, string $format, int $rowCount): void
+    {
+        try {
+            DB::table('bitacora_auditoria')->insert([
+                'numero_activo' => null,
+                'user_id' => auth()->id(),
+                'modulo' => 'M01 Gestión de expedientes',
+                'accion' => match ($format) {
+                    'xlsx' => 'EXPORTACION_REG_MASIVO_XLSX',
+                    'pdf' => 'EXPORTACION_REG_MASIVO_PDF',
+                    default => 'EXPORTACION_REG_MASIVO_CSV',
+                },
+                'tabla_afectada' => 'expedientes',
+                'registro_clave' => 'consulta_registro_masivo',
+                'antes' => null,
+                'despues' => json_encode([
+                    'formato' => strtoupper($format),
+                    'total_exportado' => $rowCount,
+                    'filtros' => array_intersect_key($request->all(), array_flip([
+                        'numero_activo',
+                        'folio_factura',
+                        'planta_id',
+                        'proveedor_id',
+                        'estatus',
+                        'fecha_desde',
+                        'fecha_hasta',
+                        'monto_desde',
+                        'monto_hasta',
+                    ])),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'ip' => $request->ip(),
+                'fecha_evento' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (\Throwable $exception) {
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'mass_registration_list_export_audit',
+                [
+                    'format' => $format,
+                    'user_id' => auth()->id(),
+                    'route_name' => $request->route()?->getName(),
+                ]
+            );
+        }
+    }
+
+    private function exportFilterSummary(Request $request): string
+    {
+        $parts = [];
+
+        foreach ([
+            'numero_activo',
+            'folio_factura',
+            'planta_id',
+            'proveedor_id',
+            'estatus',
+            'fecha_desde',
+            'fecha_hasta',
+            'monto_desde',
+            'monto_hasta',
+        ] as $key) {
+            if ($request->filled($key)) {
+                $parts[] = str_replace('_', ' ', $key) . ': ' . $request->input($key);
+            }
+        }
+
+        return $parts === [] ? 'Sin filtros adicionales' : implode(' | ', $parts);
+    }
+
+    private function safeSpreadsheetValue(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        $trimmed = ltrim($value);
+
+        if ($trimmed !== '' && in_array($trimmed[0], ['=', '+', '-', '@'], true)) {
+            return "'" . $value;
+        }
+
+        return $value;
     }
 
 }

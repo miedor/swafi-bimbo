@@ -9,6 +9,7 @@ use App\Services\InitialAssetLocationService;
 use App\Services\ObservationDeadlineService;
 use App\Services\SimplePdfTableExporter;
 use App\Services\SimpleXlsxExporter;
+use App\Services\SwafiAuthorizationService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\Request;
 use Illuminate\Pagination\LengthAwarePaginator;
@@ -1085,11 +1086,8 @@ class BusquedaController extends Controller
 
     private function canExportReports(): bool
     {
-        $roles = session('swafi_roles', []);
-        $permissions = session('swafi_permissions', []);
-
-        return in_array('Administrador SWAFI', $roles, true)
-            || in_array('reportes.exportar', $permissions, true);
+        return app(SwafiAuthorizationService::class)
+            ->canCurrentUser('expedientes.ver');
     }
 
     private function hasMeaningfulFilters(Request $request): bool

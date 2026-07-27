@@ -10,6 +10,7 @@ use App\Http\Requests\UpdateCatalogStatusRequest;
 use App\Services\CatalogImportService;
 use App\Services\CatalogManagementService;
 use App\Services\CatalogVisibilityService;
+use App\Services\SimplePdfTableExporter;
 use App\Services\SimpleXlsxExporter;
 use DomainException;
 use Illuminate\Http\RedirectResponse;
@@ -21,11 +22,14 @@ use Throwable;
 
 class CatalogosController extends Controller
 {
+    private const EXPORT_LIMIT = 5000;
+
     public function __construct(
         private readonly CatalogManagementService $catalogManagement,
         private readonly CatalogImportService $catalogImports,
         private readonly CatalogVisibilityService $catalogVisibility,
-        private readonly SimpleXlsxExporter $xlsxExporter
+        private readonly SimpleXlsxExporter $xlsxExporter,
+        private readonly SimplePdfTableExporter $pdfExporter
     ) {
     }
     public function index(CatalogIndexRequest $request)
@@ -77,8 +81,15 @@ class CatalogosController extends Controller
 
         $this->applyFilters($query, $request, $catalogoActivo);
 
-        if (($validated['export'] ?? null) === 'csv') {
-            return $this->exportCsv($query, $catalogoActivo);
+        $exportFormat = strtolower((string) ($validated['export'] ?? ''));
+
+        if (in_array($exportFormat, ['csv', 'xlsx', 'pdf'], true)) {
+            return $this->exportCatalog(
+                query: $query,
+                request: $request,
+                catalog: $catalogoActivo,
+                format: $exportFormat
+            );
         }
 
         $this->applyOrder($query, $catalogoActivo);
@@ -813,32 +824,194 @@ class CatalogosController extends Controller
         ];
     }
 
-    private function exportCsv($query, string $catalogo)
-    {
-        $columns = $this->columnsFor($catalogo);
-        $this->applyOrder($query, $catalogo);
-        $rows = $query->cursor();
+    private function exportCatalog(
+        $query,
+        CatalogIndexRequest $request,
+        string $catalog,
+        string $format
+    ) {
+        $columns = $this->columnsFor($catalog);
+        $this->applyOrder($query, $catalog);
 
-        return response()->streamDownload(function () use ($rows, $columns) {
-            $output = fopen('php://output', 'w');
+        $rows = (clone $query)
+            ->limit(self::EXPORT_LIMIT + 1)
+            ->get();
 
-            fwrite($output, "\xEF\xBB\xBF");
-            fputcsv($output, array_values($columns), ',', '"', '');
+        if ($rows->count() > self::EXPORT_LIMIT) {
+            return redirect()
+                ->route('catalogos', $request->except(['export']))
+                ->withErrors([
+                    'exportacion' => 'La exportación supera el límite de '
+                        . number_format(self::EXPORT_LIMIT)
+                        . ' registros. Aplica filtros más específicos.',
+                ]);
+        }
 
-            foreach ($rows as $row) {
-                $line = [];
+        $dataRows = $rows->map(function (object $row) use ($columns): array {
+            $line = [];
 
-                foreach (array_keys($columns) as $key) {
-                    $line[] = $this->csvSafeValue(data_get($row, $key));
-                }
-
-                fputcsv($output, $line, ',', '"', '');
+            foreach (array_keys($columns) as $key) {
+                $line[] = self::safeSpreadsheetValue(data_get($row, $key));
             }
 
-            fclose($output);
-        }, 'catalogo_swafi_' . $catalogo . '_' . now()->format('Ymd_His') . '.csv', [
-            'Content-Type' => 'text/csv; charset=UTF-8',
+            return $line;
+        })->all();
+
+        $filenameBase = 'catalogo_swafi_' . $catalog . '_' . now()->format('Ymd_His');
+        $catalogLabel = $this->catalogs()[$catalog] ?? 'Catálogo SWAFI';
+
+        try {
+            if ($format === 'xlsx') {
+                $contents = $this->xlsxExporter->exportBytes(
+                    $catalogLabel,
+                    array_values($columns),
+                    $dataRows
+                );
+            } elseif ($format === 'pdf') {
+                $contents = $this->pdfExporter->export(
+                    title: $catalogLabel,
+                    headers: array_values($columns),
+                    rows: $dataRows,
+                    metadata: [
+                        'usuario' => session('swafi_nombre', session('swafi_usuario', 'Usuario SWAFI')),
+                        'fecha' => now()->format('d/m/Y H:i:s'),
+                        'filtros' => $this->catalogFilterSummary($request),
+                    ]
+                );
+            }
+        } catch (Throwable $exception) {
+            $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'catalog_list_export',
+                [
+                    'catalog' => $catalog,
+                    'format' => $format,
+                    'user_id' => auth()->id(),
+                    'route_name' => $request->route()?->getName(),
+                ]
+            );
+
+            return redirect()
+                ->route('catalogos', $request->except(['export']))
+                ->withErrors([
+                    'exportacion' => "No fue posible generar la exportación. Referencia: {$reference}.",
+                ]);
+        }
+
+        $this->registerCatalogExportAudit(
+            request: $request,
+            catalog: $catalog,
+            format: $format,
+            rowCount: $rows->count()
+        );
+
+        if ($format === 'csv') {
+            return response()->streamDownload(function () use ($columns, $dataRows): void {
+                $output = fopen('php://output', 'w');
+                fwrite($output, "\xEF\xBB\xBF");
+                fputcsv($output, array_values($columns), ',', '"', '');
+
+                foreach ($dataRows as $row) {
+                    fputcsv($output, $row, ',', '"', '');
+                }
+
+                fclose($output);
+            }, $filenameBase . '.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        if ($format === 'xlsx') {
+            return response()->streamDownload(
+                static function () use ($contents): void {
+                    echo $contents;
+                },
+                $filenameBase . '.xlsx',
+                [
+                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                    'X-Content-Type-Options' => 'nosniff',
+                ]
+            );
+        }
+
+        return response($contents, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filenameBase . '.pdf"',
+            'Content-Length' => (string) strlen($contents),
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
         ]);
+    }
+
+    private function registerCatalogExportAudit(
+        CatalogIndexRequest $request,
+        string $catalog,
+        string $format,
+        int $rowCount
+    ): void {
+        try {
+            DB::table('bitacora_auditoria')->insert([
+                'numero_activo' => null,
+                'user_id' => auth()->id(),
+                'modulo' => 'M04 Administración y seguridad',
+                'accion' => match ($format) {
+                    'xlsx' => 'EXPORTACION_CATALOGO_XLSX',
+                    'pdf' => 'EXPORTACION_CATALOGO_PDF',
+                    default => 'EXPORTACION_CATALOGO_CSV',
+                },
+                'tabla_afectada' => $this->tableFor($catalog),
+                'registro_clave' => $catalog,
+                'antes' => null,
+                'despues' => json_encode([
+                    'formato' => strtoupper($format),
+                    'total_exportado' => $rowCount,
+                    'filtros' => array_intersect_key(
+                        $request->validated(),
+                        array_flip(['buscar', 'estatus', 'planta_id', 'area_id', 'categoria_activo_id'])
+                    ),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'ip' => $request->ip(),
+                'fecha_evento' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (Throwable $exception) {
+            app(\App\Services\SafeExceptionReporter::class)->warning(
+                $exception,
+                'catalog_list_export_audit',
+                [
+                    'catalog' => $catalog,
+                    'format' => $format,
+                    'user_id' => auth()->id(),
+                    'route_name' => $request->route()?->getName(),
+                ]
+            );
+        }
+    }
+
+    private function catalogFilterSummary(CatalogIndexRequest $request): string
+    {
+        $labels = [
+            'buscar' => 'Búsqueda',
+            'estatus' => 'Estatus',
+            'planta_id' => 'Planta',
+            'area_id' => 'Área',
+            'categoria_activo_id' => 'Categoría',
+        ];
+        $parts = [];
+
+        foreach ($labels as $key => $label) {
+            $value = $request->validated($key);
+
+            if ($value !== null && $value !== '') {
+                $parts[] = $label . ': ' . $value;
+            }
+        }
+
+        return $parts === [] ? 'Sin filtros adicionales' : implode(' | ', $parts);
     }
 
     private function likePattern(string $value): string
@@ -850,18 +1023,6 @@ class CatalogosController extends Controller
         );
 
         return '%' . $escaped . '%';
-    }
-
-    private function csvSafeValue(mixed $value): string
-    {
-        $value = is_scalar($value) ? (string) $value : '';
-        $trimmed = ltrim($value);
-
-        if ($trimmed !== '' && in_array($trimmed[0], ['=', '+', '-', '@'], true)) {
-            return "'" . $value;
-        }
-
-        return $value;
     }
 
     private static function safeSpreadsheetValue(mixed $value): string

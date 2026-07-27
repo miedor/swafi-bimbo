@@ -22,7 +22,6 @@ class CatalogIndexRequest extends FormRequest
 
         if ((
             $this->filled('editar')
-            || $this->filled('export')
             || $this->filled('lote')
             || $this->filled('import_status')
         ) && !$visibility->canAdminister($this)) {
@@ -42,7 +41,7 @@ class CatalogIndexRequest extends FormRequest
             'area_id' => ['nullable', 'integer', Rule::exists('areas', 'id')],
             'categoria_activo_id' => ['nullable', 'integer', Rule::exists('categorias_activo', 'id')],
             'per_page' => ['nullable', 'integer', Rule::in([10, 25, 50])],
-            'export' => ['nullable', Rule::in(['csv'])],
+            'export' => ['nullable', Rule::in(['csv', 'xlsx', 'pdf'])],
             'editar' => ['nullable', 'integer', 'min:1'],
             'detalle' => ['nullable', 'integer', 'min:1'],
             'swafi_focus' => ['nullable', 'string', 'max:80'],

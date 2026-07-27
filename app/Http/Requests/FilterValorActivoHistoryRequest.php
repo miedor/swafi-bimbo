@@ -40,6 +40,7 @@ class FilterValorActivoHistoryRequest extends FormRequest
                 'after_or_equal:fecha_desde',
             ],
             'per_page' => ['nullable', 'integer', Rule::in([10, 25, 50])],
+            'export' => ['nullable', Rule::in(['csv', 'xlsx', 'pdf'])],
             'swafi_focus' => ['nullable', 'string', 'max:80'],
         ];
     }
@@ -55,6 +56,7 @@ class FilterValorActivoHistoryRequest extends FormRequest
             'fecha_hasta.date_format' => 'La fecha final debe tener el formato año-mes-día.',
             'fecha_hasta.after_or_equal' => 'La fecha final no puede ser anterior a la fecha inicial.',
             'per_page.in' => 'Selecciona 10, 25 o 50 registros por página.',
+            'export.in' => 'El formato de exportación solicitado no está permitido.',
         ];
     }
 }

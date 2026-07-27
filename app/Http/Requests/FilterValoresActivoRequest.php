@@ -79,7 +79,7 @@ class FilterValoresActivoRequest extends FormRequest
             'valor_desde' => ['nullable', 'numeric', 'min:0', 'max:9999999999999999.99'],
             'valor_hasta' => ['nullable', 'numeric', 'gte:valor_desde', 'max:9999999999999999.99'],
             'per_page' => ['nullable', 'integer', Rule::in([10, 25, 50, 100])],
-            'export' => ['nullable', Rule::in(['csv'])],
+            'export' => ['nullable', Rule::in(['csv', 'xlsx', 'pdf'])],
             'editar_valor' => ['nullable', 'integer', 'exists:valores_activo,id'],
             'lote' => [
                 'nullable',

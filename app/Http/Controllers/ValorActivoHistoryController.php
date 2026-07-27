@@ -4,15 +4,21 @@ namespace App\Http\Controllers;
 
 use App\Http\Requests\FilterValorActivoHistoryRequest;
 use App\Services\SafeExceptionReporter;
+use App\Services\SimplePdfTableExporter;
+use App\Services\SimpleXlsxExporter;
 use App\Services\ValorActivoHistoryService;
 use Illuminate\Support\Facades\DB;
 use Throwable;
 
 class ValorActivoHistoryController extends Controller
 {
+    private const EXPORT_LIMIT = 5000;
+
     public function __construct(
         private readonly ValorActivoHistoryService $historyService,
-        private readonly SafeExceptionReporter $safeExceptions
+        private readonly SafeExceptionReporter $safeExceptions,
+        private readonly SimpleXlsxExporter $xlsxExporter,
+        private readonly SimplePdfTableExporter $pdfExporter
     ) {
     }
 
@@ -26,6 +32,17 @@ class ValorActivoHistoryController extends Controller
         abort_if(!$activo, 404, 'El activo solicitado no existe en SWAFI.');
 
         $filters = $request->validated();
+        $exportFormat = strtolower((string) ($filters['export'] ?? ''));
+
+        if (in_array($exportFormat, ['csv', 'xlsx', 'pdf'], true)) {
+            return $this->exportHistory(
+                request: $request,
+                numeroActivo: $numeroActivo,
+                filters: $filters,
+                format: $exportFormat
+            );
+        }
+
         $history = $this->historyService->paginate($numeroActivo, $filters);
 
         $this->registerQueryAudit($numeroActivo, $filters);
@@ -39,6 +56,230 @@ class ValorActivoHistoryController extends Controller
             'usuariosDisponibles' => $this->historyService->availableUsers($numeroActivo),
             'filtros' => $filters,
         ]);
+    }
+
+    private function exportHistory(
+        FilterValorActivoHistoryRequest $request,
+        string $numeroActivo,
+        array $filters,
+        string $format
+    ) {
+        $rows = $this->historyService->exportRows(
+            $numeroActivo,
+            $filters,
+            self::EXPORT_LIMIT
+        );
+
+        if ($rows->count() > self::EXPORT_LIMIT) {
+            return redirect()
+                ->route('valores.historial', array_merge(
+                    ['numeroActivo' => $numeroActivo],
+                    $request->except(['export'])
+                ))
+                ->withErrors([
+                    'exportacion' => 'La exportación supera el límite de '
+                        . number_format(self::EXPORT_LIMIT)
+                        . ' eventos. Aplica filtros más específicos.',
+                ]);
+        }
+
+        $columns = [
+            'fecha_evento' => 'Fecha',
+            'accion_label' => 'Acción',
+            'usuario_visible' => 'Usuario',
+            'cambios' => 'Cambios identificados',
+            'registro_clave' => 'Registro',
+            'ip' => 'IP',
+        ];
+
+        $dataRows = $rows->map(function (object $entry): array {
+            $changes = collect($entry->changes ?? [])
+                ->map(function (array $change): string {
+                    return ($change['label'] ?? $change['field'] ?? 'Campo')
+                        . ': '
+                        . ($change['before'] ?? 'Sin valor')
+                        . ' → '
+                        . ($change['after'] ?? 'Sin valor');
+                })
+                ->implode(' | ');
+
+            return [
+                $entry->fecha_evento,
+                $this->safeSpreadsheetValue($entry->accion_label),
+                $this->safeSpreadsheetValue($entry->usuario_visible),
+                $this->safeSpreadsheetValue($changes !== '' ? $changes : 'Sin cambios de negocio identificados'),
+                $this->safeSpreadsheetValue($entry->registro_clave),
+                $this->safeSpreadsheetValue($entry->ip),
+            ];
+        })->all();
+
+        $filenameBase = 'historial_valores_' . $numeroActivo . '_' . now()->format('Ymd_His');
+
+        try {
+            if ($format === 'xlsx') {
+                $contents = $this->xlsxExporter->exportBytes(
+                    'Histórico de valores ' . $numeroActivo,
+                    array_values($columns),
+                    $dataRows
+                );
+            } elseif ($format === 'pdf') {
+                $contents = $this->pdfExporter->export(
+                    title: 'Histórico fiscal y financiero · ' . $numeroActivo,
+                    headers: array_values($columns),
+                    rows: $dataRows,
+                    metadata: [
+                        'usuario' => session('swafi_nombre', session('swafi_usuario', 'Usuario SWAFI')),
+                        'fecha' => now()->format('d/m/Y H:i:s'),
+                        'filtros' => $this->historyFilterSummary($filters),
+                    ]
+                );
+            }
+        } catch (Throwable $exception) {
+            $reference = $this->safeExceptions->warning(
+                $exception,
+                'asset_value_history_export',
+                [
+                    'asset_number' => $numeroActivo,
+                    'format' => $format,
+                    'user_id' => auth()->id(),
+                    'route_name' => $request->route()?->getName(),
+                ]
+            );
+
+            return redirect()
+                ->route('valores.historial', array_merge(
+                    ['numeroActivo' => $numeroActivo],
+                    $request->except(['export'])
+                ))
+                ->withErrors([
+                    'exportacion' => "No fue posible generar la exportación. Referencia: {$reference}.",
+                ]);
+        }
+
+        $this->registerExportAudit(
+            request: $request,
+            numeroActivo: $numeroActivo,
+            format: $format,
+            rowCount: $rows->count()
+        );
+
+        if ($format === 'csv') {
+            return response()->streamDownload(function () use ($columns, $dataRows): void {
+                $output = fopen('php://output', 'w');
+                fwrite($output, "\xEF\xBB\xBF");
+                fputcsv($output, array_values($columns), ',', '"', '');
+
+                foreach ($dataRows as $row) {
+                    fputcsv($output, $row, ',', '"', '');
+                }
+
+                fclose($output);
+            }, $filenameBase . '.csv', [
+                'Content-Type' => 'text/csv; charset=UTF-8',
+                'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                'X-Content-Type-Options' => 'nosniff',
+            ]);
+        }
+
+        if ($format === 'xlsx') {
+            return response()->streamDownload(
+                static function () use ($contents): void {
+                    echo $contents;
+                },
+                $filenameBase . '.xlsx',
+                [
+                    'Content-Type' => 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+                    'X-Content-Type-Options' => 'nosniff',
+                ]
+            );
+        }
+
+        return response($contents, 200, [
+            'Content-Type' => 'application/pdf',
+            'Content-Disposition' => 'attachment; filename="' . $filenameBase . '.pdf"',
+            'Content-Length' => (string) strlen($contents),
+            'Cache-Control' => 'private, no-store, no-cache, must-revalidate, max-age=0',
+            'X-Content-Type-Options' => 'nosniff',
+        ]);
+    }
+
+    private function registerExportAudit(
+        FilterValorActivoHistoryRequest $request,
+        string $numeroActivo,
+        string $format,
+        int $rowCount
+    ): void {
+        try {
+            DB::table('bitacora_auditoria')->insert([
+                'numero_activo' => $numeroActivo,
+                'user_id' => auth()->id(),
+                'modulo' => 'M02 Control fiscal y financiero',
+                'accion' => match ($format) {
+                    'xlsx' => 'EXPORTACION_HIST_VAL_XLSX',
+                    'pdf' => 'EXPORTACION_HIST_VAL_PDF',
+                    default => 'EXPORTACION_HIST_VAL_CSV',
+                },
+                'tabla_afectada' => 'bitacora_auditoria',
+                'registro_clave' => $numeroActivo,
+                'antes' => null,
+                'despues' => json_encode([
+                    'formato' => strtoupper($format),
+                    'total_exportado' => $rowCount,
+                    'filtros' => array_intersect_key($request->validated(), array_flip([
+                        'accion',
+                        'usuario_id',
+                        'fecha_desde',
+                        'fecha_hasta',
+                    ])),
+                ], JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
+                'ip' => $request->ip(),
+                'fecha_evento' => now(),
+                'created_at' => now(),
+                'updated_at' => now(),
+            ]);
+        } catch (Throwable $exception) {
+            $this->safeExceptions->warning(
+                $exception,
+                'asset_value_history_export_audit',
+                [
+                    'asset_number' => $numeroActivo,
+                    'format' => $format,
+                    'user_id' => auth()->id(),
+                    'route_name' => $request->route()?->getName(),
+                ]
+            );
+        }
+    }
+
+    private function historyFilterSummary(array $filters): string
+    {
+        $parts = [];
+
+        foreach (['accion', 'usuario_id', 'fecha_desde', 'fecha_hasta'] as $key) {
+            $value = $filters[$key] ?? null;
+
+            if ($value !== null && $value !== '') {
+                $parts[] = str_replace('_', ' ', $key) . ': ' . $value;
+            }
+        }
+
+        return $parts === [] ? 'Sin filtros adicionales' : implode(' | ', $parts);
+    }
+
+    private function safeSpreadsheetValue(mixed $value): mixed
+    {
+        if (!is_string($value)) {
+            return $value;
+        }
+
+        $trimmed = ltrim($value);
+
+        if ($trimmed !== '' && in_array($trimmed[0], ['=', '+', '-', '@'], true)) {
+            return "'" . $value;
+        }
+
+        return $value;
     }
 
     private function findAsset(string $numeroActivo): ?object
