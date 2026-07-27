@@ -146,6 +146,32 @@ class UserLifecycleSecurityConfigurationTest extends TestCase
         );
     }
 
+    public function test_cloud_test_runner_normalizes_pasted_test_paths_before_validation(): void
+    {
+        $script = $this->read('scripts/run-cloud-tests.sh');
+
+        foreach ([
+            'normalize_test_path()',
+            'LC_ALL=C sed -e',
+            "s/^[[:space:]]*//",
+            "s/[[:space:]]*$//",
+            'rutas explícitas los argumentos normalizados que terminan en .php',
+        ] as $expected) {
+            self::assertStringContainsString($expected, $script);
+        }
+
+        $normalizationPosition = strpos($script, 'normalized="$(normalize_test_path "$argument")"');
+        $extensionPosition = strpos($script, '[[ "$normalized" == *.php ]] || continue');
+
+        self::assertIsInt($normalizationPosition);
+        self::assertIsInt($extensionPosition);
+        self::assertLessThan(
+            $extensionPosition,
+            $normalizationPosition,
+            'La ruta debe normalizarse antes de validar la extensión .php.'
+        );
+    }
+
     public function test_existing_captcha_session_and_password_recovery_controls_remain_present(): void
     {
         $auth = $this->read('app/Http/Controllers/AuthController.php');

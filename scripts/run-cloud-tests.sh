@@ -32,7 +32,16 @@ show_available_tests() {
 normalize_test_path() {
     local candidate="$1"
 
+    # Laravel Cloud puede conservar espacios o caracteres invisibles cuando una
+    # ruta se pega en un comando multilínea. Se normaliza el argumento antes de
+    # comprobar su extensión y existencia para no confundir una ruta válida con
+    # un archivo ausente.
+    candidate="${candidate//$'\xEF\xBB\xBF'/}"
+    candidate="${candidate//$'\xE2\x80\x8B'/}"
+    candidate="${candidate//$'\xC2\xA0'/ }"
+    candidate="$(printf '%s' "$candidate" | LC_ALL=C sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//')"
     candidate="${candidate#./}"
+
     printf '%s' "$candidate"
 }
 
@@ -45,10 +54,9 @@ validate_requested_test_files() {
 
     for argument in "$@"; do
         # PHPUnit acepta opciones y valores adicionales. Solo se consideran
-        # rutas explícitas los argumentos que terminan en .php.
-        [[ "$argument" == *.php ]] || continue
-
+        # rutas explícitas los argumentos normalizados que terminan en .php.
         normalized="$(normalize_test_path "$argument")"
+        [[ "$normalized" == *.php ]] || continue
 
         if [[ "$normalized" == /* || "$normalized" == ../* || "$normalized" == *'/../'* ]]; then
             fail "La ruta de prueba no es segura: $argument"
@@ -71,9 +79,8 @@ verify_requested_tests_in_copy() {
     local normalized
 
     for argument in "$@"; do
-        [[ "$argument" == *.php ]] || continue
-
         normalized="$(normalize_test_path "$argument")"
+        [[ "$normalized" == *.php ]] || continue
 
         if [[ ! -f "$root/$normalized" ]]; then
             fail "La copia temporal no contiene el archivo de prueba solicitado: $normalized"
