@@ -176,9 +176,10 @@ class CatalogAccessAndPlantLifecycleConfigurationTest extends TestCase
 
         self::assertStringContainsString('private function likePattern(string $value): string', $controller);
         self::assertStringContainsString("['\\\\', '%', '_']", $controller);
-        self::assertStringContainsString('private function csvSafeValue(mixed $value): string', $controller);
+        self::assertStringContainsString('private static function safeSpreadsheetValue(mixed $value): string', $controller);
+        self::assertStringContainsString('self::safeSpreadsheetValue(data_get($row, $key))', $controller);
         self::assertStringContainsString("['=', '+', '-', '@']", $controller);
-        self::assertStringContainsString('return "\'" . $value;', $controller);
+        self::assertStringContainsString('return "\'" . $string;', $controller);
     }
 
     public function test_routes_include_controlled_reactivation_without_changing_existing_public_names(): void

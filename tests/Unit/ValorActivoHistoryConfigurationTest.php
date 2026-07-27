@@ -115,7 +115,10 @@ class ValorActivoHistoryConfigurationTest extends TestCase
         self::assertStringContainsString("terminateSession('navegacion_atras')", $session);
         self::assertStringContainsString("terminateSession('cache_restaurada')", $session);
         self::assertStringContainsString("const FOCUS_PARAMETER = 'swafi_focus';", $queryUx);
-        self::assertStringContainsString('exportCsv($query)', $values);
+        self::assertStringContainsString("in_array(\$exportFormat, ['csv', 'xlsx', 'pdf'], true)", $values);
+        self::assertStringContainsString('return $this->exportValues(', $values);
+        self::assertStringContainsString('private function exportValues(', $values);
+        self::assertStringContainsString("if (\$format === 'csv')", $values);
         self::assertStringContainsString('use SoftDeletes;', $model);
         self::assertStringContainsString("'BAJA_LOGICA_VALOR'", $values);
     }
