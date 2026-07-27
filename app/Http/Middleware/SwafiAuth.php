@@ -214,9 +214,11 @@ class SwafiAuth
 
             'ubicacion.movimiento',
             'ubicacion.inventario',
-            'ubicacion.traslados.notificar',
             'inventario-evidencias.eliminar',
             'expedientes.ubicacion-inicial' => 'ubicaciones.administrar',
+
+            'ubicacion.traslados.notificar',
+            'ubicacion.traslados.notificar-resolucion' => 'ubicaciones.ver',
 
             'ubicacion.traslados.aprobar',
             'ubicacion.traslados.rechazar' => 'ubicaciones.aprobar_traslados',

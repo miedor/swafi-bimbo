@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Services\ObservationAssignmentQueueService;
+use App\Services\TransferDashboardQueueService;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
@@ -10,7 +11,8 @@ use Illuminate\Support\Facades\Schema;
 class DashboardController extends Controller
 {
     public function __construct(
-        private readonly ObservationAssignmentQueueService $observationAssignments
+        private readonly ObservationAssignmentQueueService $observationAssignments,
+        private readonly TransferDashboardQueueService $transferQueues
     ) {
     }
 
@@ -23,9 +25,12 @@ class DashboardController extends Controller
         $expedientesAtencion = $this->expedientesAtencion($plantaId, $fechaDesde, $fechaHasta);
         $attentionQueue = $this->observationAttentionQueue();
         $validationQueue = $this->observationValidationQueue();
+        $transferQueues = $this->transferDashboardQueues();
         $kpis = $this->buildKpis($plantaId, $fechaDesde, $fechaHasta);
         $kpis['observaciones_asignadas_atencion'] = $attentionQueue['total'];
         $kpis['observaciones_pendientes_validacion'] = $validationQueue['total'];
+        $kpis['traslados_pendientes_aprobacion'] = $transferQueues['approval']['total'];
+        $kpis['traslados_propios_pendientes'] = $transferQueues['requester']['pending'];
 
         return view('swafi.dashboard', [
             'filtros' => $request->all(),
@@ -36,9 +41,42 @@ class DashboardController extends Controller
             'expedientesAtencion' => $expedientesAtencion,
             'observacionesAsignadasAtencion' => $attentionQueue['items'],
             'observacionesPendientesValidacion' => $validationQueue['items'],
+            'trasladosPendientesAprobacion' => $transferQueues['approval']['items'],
+            'misSolicitudesTraslado' => $transferQueues['requester']['items'],
             'actividadReciente' => $this->actividadReciente(),
             'ultimosDocumentos' => $this->ultimosDocumentos($plantaId),
         ]);
+    }
+
+    /**
+     * @return array{
+     *   approval:array{total:int,items:\Illuminate\Support\Collection<int, object>},
+     *   requester:array{total:int,pending:int,items:\Illuminate\Support\Collection<int, object>}
+     * }
+     */
+    private function transferDashboardQueues(): array
+    {
+        $roles = session('swafi_roles', []);
+        $permissions = session('swafi_permissions', []);
+        $isAdministrator = in_array('Administrador SWAFI', $roles, true)
+            || in_array('Administrador', $roles, true);
+        $canApprove = $isAdministrator
+            || in_array('ubicaciones.aprobar_traslados', $permissions, true);
+        $canRequest = $isAdministrator
+            || in_array('ubicaciones.administrar', $permissions, true);
+        $userId = (int) (session('swafi_user_id') ?: auth()->id());
+
+        return [
+            'approval' => $this->transferQueues->pendingForApprover(
+                userId: $userId,
+                isAdministrator: $isAdministrator,
+                canApprove: $canApprove
+            ),
+            'requester' => $this->transferQueues->latestForRequester(
+                userId: $userId,
+                canRequest: $canRequest
+            ),
+        ];
     }
 
     /**

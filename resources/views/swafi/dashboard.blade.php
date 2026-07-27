@@ -730,11 +730,26 @@
 
     $filtros = $filtros ?? [];
     $observacionesAsignadasAtencion = $observacionesAsignadasAtencion ?? collect();
+    $trasladosPendientesAprobacion = $trasladosPendientesAprobacion ?? collect();
+    $misSolicitudesTraslado = $misSolicitudesTraslado ?? collect();
     $totalEstatus = max((int) ($kpis['total_expedientes'] ?? 0), 1);
     $porcentajeCompletos = (float) ($kpis['porcentaje_completos'] ?? 0);
     $porcentajePendientes = (float) ($kpis['porcentaje_incompletos'] ?? 0);
     $assignedAttentionCount = (int) ($kpis['observaciones_asignadas_atencion'] ?? 0);
     $pendingValidationCount = (int) ($kpis['observaciones_pendientes_validacion'] ?? 0);
+    $pendingTransferApprovalCount = (int) ($kpis['traslados_pendientes_aprobacion'] ?? 0);
+    $myPendingTransferCount = (int) ($kpis['traslados_propios_pendientes'] ?? 0);
+    $transferStatusLabel = fn (?string $status): string => match ((string) $status) {
+        'pendiente' => 'Pendiente de aprobación',
+        'aprobado' => 'Aprobado',
+        'rechazado' => 'Rechazado',
+        default => ucfirst(str_replace('_', ' ', (string) $status)) ?: 'Sin estatus',
+    };
+    $transferStatusClass = fn (?string $status): string => match ((string) $status) {
+        'aprobado' => 'ok',
+        'rechazado' => 'danger',
+        default => 'warn',
+    };
     $hasFilters = filled($filtros['planta_id'] ?? null) || filled($filtros['fecha_desde'] ?? null) || filled($filtros['fecha_hasta'] ?? null);
 @endphp
 
@@ -837,6 +852,27 @@
     </div>
   @endif
 
+
+  @if($can('ubicaciones.aprobar_traslados') && $pendingTransferApprovalCount > 0)
+    <div class="dash-workflow-alert" role="status" aria-live="polite">
+      <div>
+        <strong>Tienes {{ number_format($pendingTransferApprovalCount) }} traslado(s) entre plantas pendiente(s) de aprobación</strong>
+        <span>Estas solicitudes fueron asignadas a tu usuario. La ubicación actual del activo se conserva hasta que apruebes o rechaces el movimiento.</span>
+      </div>
+      <button type="button" class="tab" data-open-transfer-approval-queue>Revisar traslados</button>
+    </div>
+  @endif
+
+  @if($can('ubicaciones.administrar') && $myPendingTransferCount > 0)
+    <div class="dash-workflow-alert" role="status" aria-live="polite">
+      <div>
+        <strong>Tienes {{ number_format($myPendingTransferCount) }} solicitud(es) de traslado pendiente(s) de resolución</strong>
+        <span>Consulta el aprobador asignado, el estado del correo y el resultado del cambio de ubicación desde tu bandeja.</span>
+      </div>
+      <button type="button" class="tab" data-open-my-transfer-requests>Ver mis solicitudes</button>
+    </div>
+  @endif
+
   <div class="dash-kpi-row" data-swafi-query-results id="swafi-dashboard-resultados">
     <div class="dash-kpi">
       <span>Activos registrados</span>
@@ -888,6 +924,16 @@
       @if($can('observaciones.validar'))
         <button type="button" class="dash-tab-button" data-dashboard-tab="validaciones">
           Validaciones pendientes ({{ number_format($pendingValidationCount) }})
+        </button>
+      @endif
+      @if($can('ubicaciones.aprobar_traslados'))
+        <button type="button" class="dash-tab-button" data-dashboard-tab="transferencias-aprobar">
+          Traslados por aprobar ({{ number_format($pendingTransferApprovalCount) }})
+        </button>
+      @endif
+      @if($can('ubicaciones.administrar'))
+        <button type="button" class="dash-tab-button" data-dashboard-tab="mis-transferencias">
+          Mis traslados ({{ number_format($myPendingTransferCount) }})
         </button>
       @endif
       <button type="button" class="dash-tab-button" data-dashboard-tab="resumen">
@@ -1150,6 +1196,162 @@
       </div>
     @endif
 
+    @if($can('ubicaciones.aprobar_traslados'))
+      <div class="dash-tab-panel" data-dashboard-panel="transferencias-aprobar">
+        <div class="dash-panel">
+          <div class="dash-panel-header">
+            <h3>Traslados entre plantas asignados para aprobación</h3>
+            <span class="pill {{ $pendingTransferApprovalCount > 0 ? 'warn' : 'ok' }}">
+              {{ number_format($pendingTransferApprovalCount) }} pendiente(s)
+            </span>
+          </div>
+
+          <div class="dash-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Activo</th>
+                  <th>Origen → destino</th>
+                  <th>Solicitante</th>
+                  <th>Fecha / Motivo</th>
+                  <th>Aviso de asignación</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                @forelse($trasladosPendientesAprobacion as $item)
+                  <tr>
+                    <td class="dash-asset-cell">
+                      <strong>{{ $item->numero_activo }}</strong>
+                      <span class="dash-mini">{{ $item->activo_descripcion }}</span>
+                    </td>
+                    <td>
+                      <strong>{{ $item->origen_planta ?: 'Sin planta registrada' }}</strong><br>
+                      <span class="dash-mini">{{ $item->origen_codigo ?: 'Sin ubicación' }} · {{ $item->origen_descripcion ?: 'Origen no disponible' }}</span><br>
+                      <span aria-hidden="true">↓</span><br>
+                      <strong>{{ $item->destino_planta }}</strong><br>
+                      <span class="dash-mini">{{ $item->destino_codigo }} · {{ $item->destino_descripcion }}</span>
+                    </td>
+                    <td>
+                      {{ $item->solicitado_por_nombre ?: 'Usuario Planta / Inventarios' }}<br>
+                      <span class="dash-mini">{{ $item->solicitado_por_email ?: 'Correo no disponible' }}</span>
+                    </td>
+                    <td>
+                      {{ $item->solicitado_at ?: $item->fecha_movimiento }}<br>
+                      <span class="dash-mini">{{ \Illuminate\Support\Str::limit((string) $item->motivo, 130) }}</span>
+                    </td>
+                    <td>
+                      @if($item->notificacion_aprobador_at)
+                        <span class="dash-issue ok">Correo enviado</span>
+                      @elseif($item->notificacion_aprobador_error)
+                        <span class="dash-issue danger">Correo no enviado</span><br>
+                        <span class="dash-mini">La solicitud sigue disponible en esta bandeja.</span>
+                      @else
+                        <span class="dash-issue">Visible en Dashboard</span>
+                      @endif
+                    </td>
+                    <td>
+                      <div class="table-actions">
+                        <a href="{{ route('ubicacion', ['panel' => 'traslados', 'solicitud' => $item->uuid]).'#traslado-'.$item->uuid }}">
+                          Revisar solicitud
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                @empty
+                  <tr>
+                    <td colspan="6">No tienes traslados entre plantas pendientes de aprobación.</td>
+                  </tr>
+                @endforelse
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    @endif
+
+    @if($can('ubicaciones.administrar'))
+      <div class="dash-tab-panel" data-dashboard-panel="mis-transferencias">
+        <div class="dash-panel">
+          <div class="dash-panel-header">
+            <h3>Mis solicitudes de cambio de ubicación entre plantas</h3>
+            <span class="pill {{ $myPendingTransferCount > 0 ? 'warn' : 'ok' }}">
+              {{ number_format($myPendingTransferCount) }} pendiente(s)
+            </span>
+          </div>
+
+          <div class="dash-table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Activo</th>
+                  <th>Destino solicitado</th>
+                  <th>Aprobador asignado</th>
+                  <th>Estatus</th>
+                  <th>Notificación del resultado</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody>
+                @forelse($misSolicitudesTraslado as $item)
+                  <tr>
+                    <td class="dash-asset-cell">
+                      <strong>{{ $item->numero_activo }}</strong>
+                      <span class="dash-mini">{{ $item->activo_descripcion }}</span><br>
+                      <span class="dash-mini">Solicitado: {{ $item->solicitado_at ?: $item->fecha_movimiento }}</span>
+                    </td>
+                    <td>
+                      <strong>{{ $item->destino_planta }}</strong><br>
+                      <span class="dash-mini">{{ $item->destino_codigo }} · {{ $item->destino_descripcion }}</span>
+                    </td>
+                    <td>
+                      {{ $item->aprobador_asignado_nombre ?: 'Sin aprobador' }}<br>
+                      <span class="dash-mini">{{ $item->aprobador_asignado_email ?: 'Correo no disponible' }}</span>
+                    </td>
+                    <td>
+                      <span class="dash-issue {{ $transferStatusClass($item->estatus) }}">
+                        {{ $transferStatusLabel($item->estatus) }}
+                      </span>
+                      @if($item->resuelto_at)
+                        <br><span class="dash-mini">Resuelto: {{ $item->resuelto_at }}</span>
+                      @endif
+                      @if($item->comentario_resolucion)
+                        <br><span class="dash-mini">{{ \Illuminate\Support\Str::limit((string) $item->comentario_resolucion, 120) }}</span>
+                      @endif
+                    </td>
+                    <td>
+                      @if($item->estatus === 'pendiente')
+                        <span class="dash-issue warn">Pendiente de resolución</span><br>
+                        <span class="dash-mini">Recibirás correo cuando se apruebe o rechace.</span>
+                      @elseif($item->notificacion_solicitante_at)
+                        <span class="dash-issue ok">Correo enviado</span>
+                      @elseif($item->notificacion_solicitante_error)
+                        <span class="dash-issue danger">Correo no enviado</span><br>
+                        <span class="dash-mini">El resultado permanece visible en SWAFI.</span>
+                      @else
+                        <span class="dash-issue">Resultado visible en Dashboard</span>
+                      @endif
+                    </td>
+                    <td>
+                      <div class="table-actions">
+                        <a href="{{ route('ubicacion', ['panel' => 'traslados', 'solicitud' => $item->uuid]).'#traslado-'.$item->uuid }}">
+                          Ver detalle
+                        </a>
+                      </div>
+                    </td>
+                  </tr>
+                @empty
+                  <tr>
+                    <td colspan="6">No has registrado solicitudes de traslado entre plantas.</td>
+                  </tr>
+                @endforelse
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    @endif
+
     <div class="dash-tab-panel" data-dashboard-panel="resumen">
       <div class="dash-panel-grid">
         <div class="dash-panel">
@@ -1377,6 +1579,8 @@
 
     const openAttentionQueue = document.querySelector('[data-open-attention-queue]');
     const openValidationQueue = document.querySelector('[data-open-validation-queue]');
+    const openTransferApprovalQueue = document.querySelector('[data-open-transfer-approval-queue]');
+    const openMyTransferRequests = document.querySelector('[data-open-my-transfer-requests]');
 
     if (openAttentionQueue) {
       openAttentionQueue.addEventListener('click', function () {
@@ -1396,6 +1600,28 @@
         if (validationButton) {
           validationButton.click();
           validationButton.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+    }
+
+    if (openTransferApprovalQueue) {
+      openTransferApprovalQueue.addEventListener('click', function () {
+        const transferApprovalButton = document.querySelector('[data-dashboard-tab="transferencias-aprobar"]');
+
+        if (transferApprovalButton) {
+          transferApprovalButton.click();
+          transferApprovalButton.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      });
+    }
+
+    if (openMyTransferRequests) {
+      openMyTransferRequests.addEventListener('click', function () {
+        const myTransfersButton = document.querySelector('[data-dashboard-tab="mis-transferencias"]');
+
+        if (myTransfersButton) {
+          myTransfersButton.click();
+          myTransfersButton.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
       });
     }

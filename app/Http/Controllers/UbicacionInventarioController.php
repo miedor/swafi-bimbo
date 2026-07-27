@@ -519,6 +519,22 @@ class UbicacionInventarioController extends Controller
                 'ur.name as resuelto_por_nombre',
             ]);
 
+        if (Schema::hasColumn('solicitudes_traslado', 'notificacion_solicitante_at')) {
+            $query->addSelect([
+                'st.notificacion_solicitante_at',
+                'st.ultimo_intento_notificacion_solicitante_at',
+                'st.notificacion_solicitante_intentos',
+                'st.notificacion_solicitante_error',
+            ]);
+        } else {
+            $query->addSelect([
+                DB::raw('NULL as notificacion_solicitante_at'),
+                DB::raw('NULL as ultimo_intento_notificacion_solicitante_at'),
+                DB::raw('0 as notificacion_solicitante_intentos'),
+                DB::raw('NULL as notificacion_solicitante_error'),
+            ]);
+        }
+
         if ($canApproveTransfers) {
             if (!$isAdministrator) {
                 $query->where('st.aprobador_asignado_id', $this->userId());

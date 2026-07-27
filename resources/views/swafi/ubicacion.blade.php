@@ -305,7 +305,7 @@
             @if($catalogos['usuariosAprobadoresTraslado']->isEmpty())
               <span class="ui-notification-state warn">No existen Usuarios Captura activos con correo y permiso de aprobación.</span>
             @else
-              <span class="ui-notification-state ok">SWAFI enviará un correo y registrará el resultado de la notificación en bitácora.</span>
+              <span class="ui-notification-state ok">SWAFI enviará un correo al Usuario Captura seleccionado y registrará cada intento en bitácora. Cuando la solicitud sea aprobada o rechazada, también notificará por correo al Usuario Planta / Inventarios solicitante.</span>
             @endif
           </label>
         </div>
@@ -322,7 +322,7 @@
       </div>
 
       <div class="ui-file-note" style="margin-top:12px;">
-        Los movimientos dentro de la misma planta se aplican inmediatamente. Si la ubicación destino pertenece a otra planta, SWAFI solicitará elegir un Usuario Captura, conservará la ubicación actual y le enviará un correo para que apruebe o rechace el traslado.
+        Los movimientos dentro de la misma planta se aplican inmediatamente. Si la ubicación destino pertenece a otra planta, SWAFI solicitará elegir un Usuario Captura, conservará la ubicación actual y le enviará un correo para que apruebe o rechace el traslado. El solicitante podrá seguir el estado en su Dashboard y recibirá por correo el resultado de la resolución.
       </div>
 
       <div class="action-group" style="margin-top:12px;">

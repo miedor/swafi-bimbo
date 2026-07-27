@@ -44,6 +44,7 @@ class TransferWorkflowService
             $isCrossPlant = (int) $destination->planta_id !== (int) $asset->planta_id;
 
             if ($isCrossPlant) {
+                $requester = $this->resolveTransferRequester((int) ($userId ?? 0));
                 $assignedApproverId = !empty($data['aprobador_asignado_id'])
                     ? (int) $data['aprobador_asignado_id']
                     : 0;
@@ -79,12 +80,16 @@ class TransferWorkflowService
                     'motivo' => trim((string) $data['motivo']),
                     'evidencia' => $data['evidencia'] ?? null,
                     'estatus' => 'pendiente',
-                    'solicitado_por' => $userId,
+                    'solicitado_por' => (int) $requester->id,
                     'solicitado_at' => now(),
                     'notificacion_aprobador_at' => null,
                     'ultimo_intento_notificacion_at' => null,
                     'notificacion_aprobador_intentos' => 0,
                     'notificacion_aprobador_error' => null,
+                    'notificacion_solicitante_at' => null,
+                    'ultimo_intento_notificacion_solicitante_at' => null,
+                    'notificacion_solicitante_intentos' => 0,
+                    'notificacion_solicitante_error' => null,
                 ]);
 
                 $this->audit(
@@ -96,6 +101,11 @@ class TransferWorkflowService
                     before: ['activo' => $asset->toArray()],
                     after: [
                         'solicitud' => $request->toArray(),
+                        'solicitante' => [
+                            'id' => $requester->id,
+                            'nombre' => $requester->name,
+                            'email' => $requester->email,
+                        ],
                         'aprobador_asignado' => [
                             'id' => $assignedApprover->id,
                             'nombre' => $assignedApprover->name,
@@ -309,6 +319,40 @@ class TransferWorkflowService
                 'comentario_resolucion' => 'La solicitud ya fue resuelta y no puede procesarse nuevamente.',
             ]);
         }
+    }
+
+    private function resolveTransferRequester(int $userId): object
+    {
+        if ($userId <= 0) {
+            throw ValidationException::withMessages([
+                'numero_activo' => 'No fue posible identificar al Usuario Planta / Inventarios que solicita el traslado.',
+            ]);
+        }
+
+        $context = $this->authorization->contextForUser($userId);
+
+        if (
+            !$context['is_admin']
+            && !in_array('ubicaciones.administrar', $context['permissions'], true)
+        ) {
+            throw ValidationException::withMessages([
+                'numero_activo' => 'Solo el Usuario Planta / Inventarios o el Administrador SWAFI pueden solicitar traslados entre plantas.',
+            ]);
+        }
+
+        $requester = DB::table('users')
+            ->where('id', $userId)
+            ->where('estatus', 'activo')
+            ->select(['id', 'usuario', 'name', 'email'])
+            ->first();
+
+        if (!$requester || !filter_var($requester->email, FILTER_VALIDATE_EMAIL)) {
+            throw ValidationException::withMessages([
+                'numero_activo' => 'Tu usuario debe permanecer activo y tener un correo válido para recibir el resultado del traslado.',
+            ]);
+        }
+
+        return $requester;
     }
 
     private function resolveActiveCaptureApprover(int $approverId): object

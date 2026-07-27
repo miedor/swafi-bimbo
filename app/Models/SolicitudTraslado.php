@@ -25,6 +25,10 @@ class SolicitudTraslado extends Model
         'ultimo_intento_notificacion_at',
         'notificacion_aprobador_intentos',
         'notificacion_aprobador_error',
+        'notificacion_solicitante_at',
+        'ultimo_intento_notificacion_solicitante_at',
+        'notificacion_solicitante_intentos',
+        'notificacion_solicitante_error',
         'resuelto_por',
         'resuelto_at',
         'comentario_resolucion',
@@ -37,6 +41,9 @@ class SolicitudTraslado extends Model
         'notificacion_aprobador_at' => 'datetime',
         'ultimo_intento_notificacion_at' => 'datetime',
         'notificacion_aprobador_intentos' => 'integer',
+        'notificacion_solicitante_at' => 'datetime',
+        'ultimo_intento_notificacion_solicitante_at' => 'datetime',
+        'notificacion_solicitante_intentos' => 'integer',
         'resuelto_at' => 'datetime',
     ];
 

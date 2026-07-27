@@ -125,6 +125,12 @@
   line-height: 1;
 }
 
+.workflow-notification-divider {
+  height: 1px;
+  margin: 9px 0;
+  background: #dbe7f4;
+}
+
 .workflow-resolution-stack,
 .workflow-inline-form,
 .workflow-period-action {
@@ -310,4 +316,13 @@
   .workflow-field-wide {
     grid-column: auto;
   }
+}
+
+.workflow-notification-label {
+  display: inline-block;
+  margin-bottom: 4px;
+  color: #17345f;
+  font-size: 0.76rem;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
 }

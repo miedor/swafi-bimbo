@@ -21,7 +21,7 @@
           <th>Activo</th>
           <th>Origen → destino</th>
           <th>Fecha / solicitante</th>
-          <th>Aprobador / notificación</th>
+          <th>Aprobador / avisos</th>
           <th>Motivo</th>
           <th>Estatus</th>
           @if($canApproveTransfers)
@@ -44,9 +44,17 @@
             };
             $canResolveThisRequest = $canApproveTransfers
                 && ($isAdministrator || (int) $solicitud->aprobador_asignado_id === (int) $currentUserId);
-            $canResendNotification = $solicitud->estatus === 'pendiente'
+            $isRelatedUser = in_array((int) $currentUserId, [
+                (int) ($solicitud->solicitado_por ?? 0),
+                (int) ($solicitud->aprobador_asignado_id ?? 0),
+                (int) ($solicitud->resuelto_por ?? 0),
+            ], true);
+            $canResendAssignment = $solicitud->estatus === 'pendiente'
                 && !empty($solicitud->aprobador_asignado_id)
-                && ($isAdministrator || (int) $solicitud->solicitado_por === (int) $currentUserId);
+                && ($isAdministrator || $isRelatedUser);
+            $canResendResolution = in_array($solicitud->estatus, ['aprobado', 'rechazado'], true)
+                && ($isAdministrator || $isRelatedUser)
+                && empty($solicitud->notificacion_solicitante_at);
           @endphp
           <tr id="traslado-{{ $solicitud->uuid }}">
             <td>
@@ -64,33 +72,57 @@
             <td>
               {{ \Carbon\Carbon::parse($solicitud->fecha_movimiento)->format('d/m/Y H:i') }}<br>
               <small>{{ $solicitud->solicitado_por_nombre ?? 'Usuario no disponible' }}</small><br>
+              <small>{{ $solicitud->solicitado_por_email ?? 'Sin correo disponible' }}</small><br>
               <small>{{ \Carbon\Carbon::parse($solicitud->solicitado_at)->format('d/m/Y H:i') }}</small>
             </td>
             <td>
+              <strong class="workflow-notification-label">Aviso al aprobador</strong><br>
               @if($solicitud->aprobador_asignado_id)
                 <strong>{{ $solicitud->aprobador_asignado_nombre ?? 'Usuario Captura no disponible' }}</strong><br>
                 <small>{{ $solicitud->aprobador_asignado_email ?? 'Sin correo disponible' }}</small><br>
 
                 @if($solicitud->notificacion_aprobador_at)
-                  <span class="ui-notification-state ok">Correo enviado</span><br>
+                  <span class="ui-notification-state ok">Solicitud enviada</span><br>
                   <small>{{ \Carbon\Carbon::parse($solicitud->notificacion_aprobador_at)->format('d/m/Y H:i') }}</small>
                 @elseif($solicitud->notificacion_aprobador_error)
-                  <span class="ui-notification-state warn">Correo pendiente de reenvío</span><br>
+                  <span class="ui-notification-state warn">Solicitud pendiente de reenvío</span><br>
                   <small>Intentos: {{ (int) $solicitud->notificacion_aprobador_intentos }}</small>
                 @else
-                  <span class="ui-notification-state warn">Correo pendiente</span><br>
+                  <span class="ui-notification-state warn">Solicitud pendiente de correo</span><br>
                   <small>Intentos: {{ (int) $solicitud->notificacion_aprobador_intentos }}</small>
                 @endif
 
-                @if($canResendNotification)
+                @if($canResendAssignment)
                   <form method="POST" action="{{ route('ubicacion.traslados.notificar', $solicitud->id) }}" style="margin-top:8px;">
                     @csrf
-                    <button class="tab" type="submit">Reenviar correo</button>
+                    <button class="tab" type="submit">Reenviar asignación</button>
                   </form>
                 @endif
               @else
                 <span class="ui-notification-state warn">Solicitud histórica sin aprobador</span><br>
                 <small>Puede resolverla únicamente el Administrador SWAFI.</small>
+              @endif
+
+              @if(in_array($solicitud->estatus, ['aprobado', 'rechazado'], true))
+                <div class="workflow-notification-divider"></div>
+                <strong class="workflow-notification-label">Aviso al solicitante</strong><br>
+                @if($solicitud->notificacion_solicitante_at)
+                  <span class="ui-notification-state ok">Resultado enviado al solicitante</span><br>
+                  <small>{{ \Carbon\Carbon::parse($solicitud->notificacion_solicitante_at)->format('d/m/Y H:i') }}</small>
+                @elseif($solicitud->notificacion_solicitante_error)
+                  <span class="ui-notification-state warn">Resultado pendiente de reenvío</span><br>
+                  <small>Intentos: {{ (int) $solicitud->notificacion_solicitante_intentos }}</small>
+                @else
+                  <span class="ui-notification-state warn">Resultado pendiente de correo</span><br>
+                  <small>Intentos: {{ (int) $solicitud->notificacion_solicitante_intentos }}</small>
+                @endif
+
+                @if($canResendResolution)
+                  <form method="POST" action="{{ route('ubicacion.traslados.notificar-resolucion', $solicitud->id) }}" style="margin-top:8px;">
+                    @csrf
+                    <button class="tab" type="submit">Reenviar resultado</button>
+                  </form>
+                @endif
               @endif
             </td>
             <td>

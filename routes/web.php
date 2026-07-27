@@ -134,6 +134,10 @@ Route::middleware('swafi.auth')->group(function () {
         ->whereNumber('solicitud')
         ->name('ubicacion.traslados.notificar');
 
+    Route::post('/ubicacion-inventario/traslados/{solicitud}/notificar-resolucion', [TransferApprovalController::class, 'resendResolutionNotification'])
+        ->whereNumber('solicitud')
+        ->name('ubicacion.traslados.notificar-resolucion');
+
     Route::post('/ubicacion-inventario/periodos', [InventoryPeriodController::class, 'store'])
         ->name('ubicacion.periodos.store');
 

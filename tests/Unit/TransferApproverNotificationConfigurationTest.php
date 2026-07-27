@@ -105,9 +105,9 @@ class TransferApproverNotificationConfigurationTest extends TestCase
         self::assertStringContainsString('data-planta-id', $view);
         self::assertStringContainsString('syncTransferApprover', $view);
         self::assertStringContainsString('approverUser.required = isCrossPlant', $view);
-        self::assertStringContainsString('Aprobador / notificación', $partial);
-        self::assertStringContainsString('Correo enviado', $partial);
-        self::assertStringContainsString('Reenviar correo', $partial);
+        self::assertStringContainsString('Aprobador / avisos', $partial);
+        self::assertStringContainsString('Solicitud enviada', $partial);
+        self::assertStringContainsString('Reenviar asignación', $partial);
     }
 
     public function test_existing_session_query_inventory_and_export_features_remain_present(): void

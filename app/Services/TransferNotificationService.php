@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Mail\SwafiResolucionTrasladoMail;
 use App\Mail\SwafiSolicitudTrasladoMail;
 use App\Models\SolicitudTraslado;
 use App\Models\User;
@@ -30,11 +31,10 @@ class TransferNotificationService
         }
 
         $recipient = $this->resolveAssignedApprover($request);
-        $context = $this->mailContext($request, $recipient);
-        $attemptedAt = now();
+        $context = $this->mailContext($request);
 
         $request->update([
-            'ultimo_intento_notificacion_at' => $attemptedAt,
+            'ultimo_intento_notificacion_at' => now(),
             'notificacion_aprobador_intentos' => ((int) $request->notificacion_aprobador_intentos) + 1,
         ]);
 
@@ -52,14 +52,13 @@ class TransferNotificationService
                 movementDate: Carbon::parse($request->fecha_movimiento)->format('d/m/Y H:i'),
                 reason: $request->motivo,
                 destinationResponsible: $context['destination_responsible'],
-                reviewUrl: route('ubicacion', [
-                    'panel' => 'traslados',
-                    'solicitud' => $request->uuid,
-                ]).'#traslado-'.$request->uuid
+                reviewUrl: $this->reviewUrl($request)
             ));
 
+            $sentAt = now();
+
             $request->update([
-                'notificacion_aprobador_at' => now(),
+                'notificacion_aprobador_at' => $sentAt,
                 'notificacion_aprobador_error' => null,
             ]);
 
@@ -68,16 +67,17 @@ class TransferNotificationService
                 userId: $triggeredBy,
                 action: 'NOTIF_TRASLADO_ENVIADA',
                 after: [
+                    'tipo_notificacion' => 'solicitud_pendiente',
                     'aprobador_asignado_id' => $recipient->id,
                     'destinatario' => $recipient->email,
                     'intento' => (int) $request->fresh()->notificacion_aprobador_intentos,
-                    'fecha_notificacion' => now()->toDateTimeString(),
+                    'fecha_notificacion' => $sentAt->toDateTimeString(),
                 ]
             );
 
             return [
                 'sent' => true,
-                'message' => 'Se envió el correo de notificación a '.$recipient->name.' ('.$recipient->email.').',
+                'message' => 'Se envió el correo de solicitud pendiente a '.$recipient->name.' ('.$recipient->email.').',
                 'recipient_name' => (string) $recipient->name,
                 'recipient_email' => (string) $recipient->email,
             ];
@@ -102,6 +102,7 @@ class TransferNotificationService
                 userId: $triggeredBy,
                 action: 'NOTIF_TRASLADO_FALLIDA',
                 after: [
+                    'tipo_notificacion' => 'solicitud_pendiente',
                     'aprobador_asignado_id' => $recipient->id,
                     'referencia' => $reference,
                     'intento' => (int) $request->fresh()->notificacion_aprobador_intentos,
@@ -114,6 +115,123 @@ class TransferNotificationService
                     .", pero el correo no pudo enviarse. Referencia: {$reference}.",
                 'recipient_name' => (string) $recipient->name,
                 'recipient_email' => (string) $recipient->email,
+            ];
+        }
+    }
+
+    /**
+     * Envía al Usuario Planta / Inventarios solicitante el resultado de la
+     * aprobación o rechazo. El traslado permanece resuelto aunque el proveedor
+     * de correo falle; la incidencia queda registrada y puede reenviarse.
+     *
+     * @return array{sent:bool,message:string,recipient_name:string,recipient_email:string}
+     */
+    public function sendResolution(SolicitudTraslado $transferRequest, ?int $triggeredBy): array
+    {
+        $request = SolicitudTraslado::query()
+            ->whereKey($transferRequest->getKey())
+            ->firstOrFail();
+
+        if (!in_array($request->estatus, ['aprobado', 'rechazado'], true)) {
+            throw ValidationException::withMessages([
+                'notificacion' => 'El resultado solo puede notificarse después de aprobar o rechazar la solicitud.',
+            ]);
+        }
+
+        $request->update([
+            'ultimo_intento_notificacion_solicitante_at' => now(),
+            'notificacion_solicitante_intentos' => ((int) $request->notificacion_solicitante_intentos) + 1,
+        ]);
+
+        $recipientName = 'Usuario solicitante';
+        $recipientEmail = '';
+
+        try {
+            $recipient = $this->resolveRequester($request);
+            $recipientName = (string) ($recipient->name ?: $recipient->email);
+            $recipientEmail = (string) $recipient->email;
+            $context = $this->mailContext($request);
+            $statusLabel = $request->estatus === 'aprobado' ? 'Aprobado' : 'Rechazado';
+
+            $this->assertRealMailTransport();
+
+            Mail::to($recipient->email)->send(new SwafiResolucionTrasladoMail(
+                requesterName: $recipientName,
+                requestUuid: $request->uuid,
+                numeroActivo: $request->numero_activo,
+                descripcionActivo: $context['asset_description'],
+                status: $request->estatus,
+                statusLabel: $statusLabel,
+                originLocation: $context['origin_location'],
+                destinationLocation: $context['destination_location'],
+                resolvedBy: $context['resolved_by'],
+                resolvedAt: Carbon::parse($request->resuelto_at ?: now())->format('d/m/Y H:i'),
+                resolutionComment: trim((string) ($request->comentario_resolucion ?: 'Sin comentario adicional.')),
+                movementApplied: $request->estatus === 'aprobado',
+                reviewUrl: $this->reviewUrl($request)
+            ));
+
+            $sentAt = now();
+
+            $request->update([
+                'notificacion_solicitante_at' => $sentAt,
+                'notificacion_solicitante_error' => null,
+            ]);
+
+            $this->safeAudit(
+                request: $request,
+                userId: $triggeredBy,
+                action: 'NOTIF_RESOL_TRASLADO_ENVIADA',
+                after: [
+                    'tipo_notificacion' => 'resultado_'.$request->estatus,
+                    'solicitado_por' => $recipient->id,
+                    'destinatario' => $recipient->email,
+                    'intento' => (int) $request->fresh()->notificacion_solicitante_intentos,
+                    'fecha_notificacion' => $sentAt->toDateTimeString(),
+                ]
+            );
+
+            return [
+                'sent' => true,
+                'message' => 'Se notificó por correo el resultado a '.$recipientName.' ('.$recipientEmail.').',
+                'recipient_name' => $recipientName,
+                'recipient_email' => $recipientEmail,
+            ];
+        } catch (Throwable $exception) {
+            $reference = app(SafeExceptionReporter::class)->warning(
+                $exception,
+                'transfer_requester_resolution_notification_send',
+                [
+                    'transfer_request_id' => $request->id,
+                    'requester_user_id' => $request->solicitado_por,
+                    'triggered_by' => $triggeredBy,
+                    'status' => $request->estatus,
+                ]
+            );
+            $safeError = "No fue posible enviar la resolución al solicitante. Referencia: {$reference}.";
+
+            $request->update([
+                'notificacion_solicitante_error' => $safeError,
+            ]);
+
+            $this->safeAudit(
+                request: $request,
+                userId: $triggeredBy,
+                action: 'NOTIF_RESOL_TRASLADO_FALLIDA',
+                after: [
+                    'tipo_notificacion' => 'resultado_'.$request->estatus,
+                    'solicitado_por' => $request->solicitado_por,
+                    'referencia' => $reference,
+                    'intento' => (int) $request->fresh()->notificacion_solicitante_intentos,
+                ]
+            );
+
+            return [
+                'sent' => false,
+                'message' => 'La solicitud quedó '.$request->estatus
+                    .", pero el correo de resultado no pudo enviarse. Referencia: {$reference}. Puede reenviarse desde la bandeja de traslados.",
+                'recipient_name' => $recipientName,
+                'recipient_email' => $recipientEmail,
             ];
         }
     }
@@ -152,14 +270,38 @@ class TransferNotificationService
         return $approver;
     }
 
+    private function resolveRequester(SolicitudTraslado $request): User
+    {
+        $requesterId = (int) ($request->solicitado_por ?? 0);
+        $requester = $requesterId > 0
+            ? User::query()->find($requesterId)
+            : null;
+
+        if (!$requester || !filter_var($requester->email, FILTER_VALIDATE_EMAIL)) {
+            throw new RuntimeException(
+                'La solicitud no conserva un Usuario Planta / Inventarios con correo válido para recibir el resultado.'
+            );
+        }
+
+        return $requester;
+    }
+
     /**
-     * @return array{requested_by:string,asset_description:string,origin_location:string,destination_location:string,destination_responsible:string}
+     * @return array{
+     *   requested_by:string,
+     *   asset_description:string,
+     *   origin_location:string,
+     *   destination_location:string,
+     *   destination_responsible:string,
+     *   resolved_by:string
+     * }
      */
-    private function mailContext(SolicitudTraslado $request, User $recipient): array
+    private function mailContext(SolicitudTraslado $request): array
     {
         $row = DB::table('solicitudes_traslado as st')
             ->join('activos as a', 'a.numero_activo', '=', 'st.numero_activo')
             ->leftJoin('users as us', 'us.id', '=', 'st.solicitado_por')
+            ->leftJoin('users as ur', 'ur.id', '=', 'st.resuelto_por')
             ->leftJoin('ubicaciones as uo', 'uo.id', '=', 'st.ubicacion_origen_id')
             ->leftJoin('plantas as po', 'po.id', '=', 'uo.planta_id')
             ->join('ubicaciones as ud', 'ud.id', '=', 'st.ubicacion_destino_id')
@@ -170,6 +312,8 @@ class TransferNotificationService
                 'a.descripcion as asset_description',
                 'us.name as requested_by',
                 'us.email as requested_by_email',
+                'ur.name as resolved_by',
+                'ur.email as resolved_by_email',
                 'uo.codigo_interno as origin_code',
                 'uo.descripcion as origin_description',
                 'po.nombre as origin_plant',
@@ -200,6 +344,7 @@ class TransferNotificationService
                 'Ubicación destino no disponible'
             ),
             'destination_responsible' => trim((string) ($row->destination_responsible ?: 'Sin cambio de responsable')),
+            'resolved_by' => trim((string) ($row->resolved_by ?: $row->resolved_by_email ?: 'Usuario Captura')),
         ];
     }
 
@@ -218,14 +363,42 @@ class TransferNotificationService
         return $parts === [] ? $fallback : implode(' / ', $parts);
     }
 
+    private function reviewUrl(SolicitudTraslado $request): string
+    {
+        return route('ubicacion', [
+            'panel' => 'traslados',
+            'solicitud' => $request->uuid,
+        ]).'#traslado-'.$request->uuid;
+    }
+
     private function assertRealMailTransport(): void
     {
         $mailer = strtolower(trim((string) config('mail.default', 'log')));
 
-        if (in_array($mailer, ['log', 'array', 'failover'], true)) {
+        if ($mailer === '' || in_array($mailer, ['log', 'array'], true)) {
             throw new RuntimeException(
                 'MAIL_MAILER='.$mailer.' no entrega correos reales. Configura SMTP, SES, Postmark o Resend en Laravel Cloud.'
             );
+        }
+
+        if (in_array($mailer, ['failover', 'roundrobin'], true)) {
+            $configuredMailers = (array) config('mail.mailers.'.$mailer.'.mailers', []);
+            $hasDeliverableTransport = false;
+
+            foreach ($configuredMailers as $configuredMailer) {
+                $transport = strtolower((string) config('mail.mailers.'.$configuredMailer.'.transport', ''));
+
+                if ($transport !== '' && !in_array($transport, ['log', 'array'], true)) {
+                    $hasDeliverableTransport = true;
+                    break;
+                }
+            }
+
+            if (!$hasDeliverableTransport) {
+                throw new RuntimeException(
+                    'El mailer '.$mailer.' no contiene un transporte capaz de entregar correos reales.'
+                );
+            }
         }
     }
 
