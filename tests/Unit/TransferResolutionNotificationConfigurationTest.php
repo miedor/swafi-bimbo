@@ -115,6 +115,21 @@ class TransferResolutionNotificationConfigurationTest extends TestCase
         self::assertStringContainsString('Mis solicitudes de cambio de ubicación entre plantas', $view);
     }
 
+    public function test_location_inventory_controller_imports_schema_facade_for_optional_columns(): void
+    {
+        $controller = $this->read('app/Http/Controllers/UbicacionInventarioController.php');
+
+        self::assertStringContainsString(
+            'use Illuminate\\Support\\Facades\\Schema;',
+            $controller,
+            'El controlador debe importar Schema antes de invocar Schema::hasColumn().'
+        );
+        self::assertStringContainsString(
+            "Schema::hasColumn('solicitudes_traslado', 'notificacion_solicitante_at')",
+            $controller
+        );
+    }
+
     public function test_m02_interface_shows_both_email_states_and_manual_retries(): void
     {
         $view = $this->read('resources/views/swafi/ubicacion.blade.php');
