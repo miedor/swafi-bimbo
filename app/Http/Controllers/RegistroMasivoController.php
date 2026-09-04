@@ -3,7 +3,6 @@
 namespace App\Http\Controllers;
 
 use App\Http\Requests\ImportRegistroMasivoRequest;
-use App\Jobs\AplicarRegistroMasivoJob;
 use App\Http\Requests\RevertImportacionMasivaRequest;
 use App\Models\ImportacionMasiva;
 use App\Services\AssetStatusCatalogService;
@@ -157,26 +156,15 @@ class RegistroMasivoController extends Controller
         $batch = $this->findOwnedBatch($lote);
 
         try {
-            $batch->update([
-                'estado' => 'procesando',
-                'procesamiento_iniciado_at' => now(),
-                'procesamiento_porcentaje' => 0,
-                'resumen' => array_merge($batch->resumen ?? [], [
-                    'procesamiento' => [
-                        'estado' => 'procesando',
-                        'mensaje' => 'La carga masiva fue enviada a procesamiento en segundo plano.',
-                    ],
-                ]),
-            ]);
-
-            AplicarRegistroMasivoJob::dispatch(
-                $batch->id,
+            $summary = $this->importService->aplicar(
+                $batch,
                 auth()->id()
             );
 
             return redirect()
                 ->route('registro-masivo', ['lote' => $batch->uuid])
-                ->with('success', 'La carga masiva fue enviada a procesamiento. Puedes continuar trabajando en SWAFI mientras finaliza.');
+                ->with('success', 'La carga masiva fue aplicada correctamente.')
+                ->with('import_summary', $summary);
         } catch (ValidationException $exception) {
             throw $exception;
         } catch (\Throwable $exception) {
