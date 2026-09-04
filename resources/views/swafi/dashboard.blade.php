@@ -704,6 +704,107 @@
       justify-content: center;
     }
   }
+
+  /* Ajuste ejecutivo compacto Dashboard SWAFI 2026-09-04 */
+  .dash-exec-shell {
+    gap: 10px;
+  }
+
+  .dash-top-row {
+    grid-template-columns: minmax(260px, .55fr) minmax(0, 1.45fr);
+    gap: 10px;
+  }
+
+  .dash-health-mini {
+    padding: 12px;
+    border-radius: 18px;
+    gap: 8px;
+  }
+
+  .dash-health-title strong {
+    font-size: 24px;
+  }
+
+  .dash-health-bar {
+    height: 8px;
+  }
+
+  .dash-health-meta div {
+    padding: 6px 8px;
+    border-radius: 12px;
+  }
+
+  .dash-health-meta strong {
+    font-size: 15px;
+  }
+
+  .dash-filter-compact {
+    padding: 12px;
+    border-radius: 18px;
+  }
+
+  .dash-filter-head h2 {
+    font-size: 15px;
+  }
+
+  .dash-kpi-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  .dash-kpi {
+    min-height: 74px;
+    padding: 10px;
+    border-radius: 16px;
+  }
+
+  .dash-kpi strong {
+    font-size: 21px;
+    margin-top: 5px;
+  }
+
+  .dash-kpi small {
+    margin-top: 4px;
+  }
+
+  .dash-tabs-card {
+    padding: 8px;
+  }
+
+  .dash-panel {
+    min-height: 220px;
+    padding: 12px;
+  }
+
+  .dash-scroll-panel {
+    max-height: 170px;
+  }
+
+  .dash-table-wrap {
+    max-height: 220px;
+  }
+
+  .dash-panel-grid {
+    gap: 10px;
+  }
+
+  /* El contenido inferior conserva scroll interno, evitando crecer la página */
+  .dash-table-wrap table {
+    min-width: 900px;
+  }
+
+  @container swafi-dashboard (max-width: 980px) {
+    .dash-kpi-row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container swafi-dashboard (max-width: 620px) {
+    .dash-kpi-row {
+      grid-template-columns: 1fr;
+    }
+  }
+
 </style>
 @endsection
 
