@@ -9,12 +9,28 @@
 <style nonce="{{ request()->attributes->get('csp_nonce') }}">
   .dash-exec-shell {
     display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     gap: 12px;
+    container-type: inline-size;
+    container-name: swafi-dashboard;
+  }
+
+  .dash-exec-shell > *,
+  .dash-top-row > *,
+  .dash-kpi-row > *,
+  .dash-panel-grid > * {
+    min-width: 0;
   }
 
   .dash-top-row {
     display: grid;
-    grid-template-columns: 260px 1fr;
+    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     gap: 12px;
     align-items: stretch;
   }
@@ -95,6 +111,8 @@
   }
 
   .dash-filter-compact {
+    min-width: 0;
+    max-width: 100%;
     padding: 14px;
     border: 1px solid #dbe7f6;
     border-radius: 22px;
@@ -119,7 +137,8 @@
 
   .dash-filter-form {
     display: grid;
-    grid-template-columns: minmax(200px, 1.1fr) minmax(140px, .8fr) minmax(140px, .8fr) auto;
+    grid-template-columns: minmax(180px, 1.1fr) minmax(140px, .8fr) minmax(140px, .8fr) minmax(160px, auto);
+    min-width: 0;
     gap: 10px;
     align-items: end;
   }
@@ -159,12 +178,16 @@
 
   .dash-kpi-row {
     display: grid;
-    grid-template-columns: repeat(6, minmax(130px, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     gap: 10px;
   }
 
   .dash-kpi {
     position: relative;
+    min-width: 0;
     overflow: hidden;
     min-height: 86px;
     padding: 12px;
@@ -231,13 +254,21 @@
   }
 
   .dash-tabs-card {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
     padding: 12px;
   }
 
   .dash-tabbar {
     display: flex;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     gap: 8px;
     overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    scrollbar-width: thin;
     padding-bottom: 8px;
     border-bottom: 1px solid #e3edf8;
   }
@@ -282,12 +313,17 @@
 
   .dash-panel-grid {
     display: grid;
-    grid-template-columns: .86fr 1.14fr;
+    grid-template-columns: minmax(0, .86fr) minmax(0, 1.14fr);
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
     gap: 12px;
     align-items: start;
   }
 
   .dash-panel {
+    min-width: 0;
+    max-width: 100%;
     min-height: 274px;
     padding: 14px;
     border: 1px solid #dbe7f6;
@@ -381,8 +417,13 @@
 
   .dash-table-wrap {
     width: 100%;
+    max-width: 100%;
+    min-width: 0;
     max-height: 292px;
-    overflow: auto;
+    overflow-x: auto;
+    overflow-y: auto;
+    overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
     border: 1px solid #e5edf8;
     border-radius: 18px;
   }
@@ -597,6 +638,69 @@
 
     .dash-actions .tab {
       width: 100%;
+      justify-content: center;
+    }
+  }
+
+  /*
+   * El Dashboard vive dentro de la segunda columna del layout, por lo que el
+   * ancho útil siempre es menor que el ancho total del viewport. Las consultas
+   * de contenedor evitan que un monitor con escalado de Windows o zoom del
+   * navegador mantenga seis columnas cuando el área real del Dashboard ya no
+   * tiene espacio suficiente. Los @media anteriores quedan como respaldo para
+   * navegadores sin soporte de container queries.
+   */
+  @container swafi-dashboard (max-width: 1180px) {
+    .dash-top-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dash-kpi-row {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+    }
+  }
+
+  @container swafi-dashboard (max-width: 860px) {
+    .dash-filter-form {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dash-kpi-row {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dash-panel-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dash-quick-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @container swafi-dashboard (max-width: 620px) {
+    .dash-filter-form,
+    .dash-kpi-row,
+    .dash-health-meta,
+    .dash-quick-grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .dash-filter-head,
+    .dash-panel-header,
+    .dash-workflow-alert {
+      align-items: stretch;
+      flex-direction: column;
+    }
+
+    .dash-actions,
+    .dash-actions .tab,
+    .dash-workflow-alert .tab {
+      width: 100%;
+    }
+
+    .dash-actions .tab,
+    .dash-workflow-alert .tab {
       justify-content: center;
     }
   }
