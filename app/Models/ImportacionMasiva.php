@@ -38,6 +38,9 @@ class ImportacionMasiva extends Model
         'reversion_resumen',
         'cancelada_at',
         'expira_at',
+        'procesamiento_iniciado_at',
+        'procesamiento_finalizado_at',
+        'procesamiento_porcentaje',
     ];
 
     protected $casts = [
@@ -48,6 +51,9 @@ class ImportacionMasiva extends Model
         'revertida_at' => 'datetime',
         'cancelada_at' => 'datetime',
         'expira_at' => 'datetime',
+        'procesamiento_iniciado_at' => 'datetime',
+        'procesamiento_finalizado_at' => 'datetime',
+        'procesamiento_porcentaje' => 'integer',
         'total_filas' => 'integer',
         'filas_aceptadas' => 'integer',
         'filas_observadas' => 'integer',
