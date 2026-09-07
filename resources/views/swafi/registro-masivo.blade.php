@@ -1041,7 +1041,7 @@
 </div>
 
 @if ($lote?->estaEnProcesamiento())
-    <script>
+    <script nonce="{{ request()->attributes->get('csp_nonce') }}">
         window.setTimeout(function () {
             if (document.visibilityState === 'visible') {
                 window.location.reload();
