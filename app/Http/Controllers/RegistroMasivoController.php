@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers;
 
+use App\Jobs\AplicarRegistroMasivoJob;
 use App\Http\Requests\ImportRegistroMasivoRequest;
 use App\Http\Requests\RevertImportacionMasivaRequest;
 use App\Models\ImportacionMasiva;
@@ -155,32 +156,73 @@ class RegistroMasivoController extends Controller
 
         $batch = $this->findOwnedBatch($lote);
 
+        if (!$batch->estaVigente()) {
+            throw ValidationException::withMessages([
+                'lote' => 'La previsualización ya fue aplicada, cancelada o expiró. Genera una nueva.',
+            ]);
+        }
+
+        $claimed = ImportacionMasiva::query()
+            ->whereKey($batch->id)
+            ->where('estado', 'previsualizada')
+            ->where(function ($query): void {
+                $query->whereNull('procesamiento_estado')
+                    ->orWhereIn('procesamiento_estado', ['error', 'completado']);
+            })
+            ->update([
+                'procesamiento_estado' => 'pendiente',
+                'procesamiento_solicitado_at' => now(),
+                'procesamiento_iniciado_at' => null,
+                'procesamiento_finalizado_at' => null,
+                'procesamiento_porcentaje' => 0,
+                'procesamiento_error_referencia' => null,
+                'updated_at' => now(),
+            ]);
+
+        if ($claimed !== 1) {
+            return redirect()
+                ->route('registro-masivo', ['lote' => $batch->uuid])
+                ->with('success', 'El lote ya se encuentra en cola o en procesamiento. SWAFI continuará trabajando en segundo plano.');
+        }
+
         try {
-            $summary = $this->importService->aplicar(
-                $batch,
-                auth()->id()
+            AplicarRegistroMasivoJob::dispatch(
+                (int) $batch->id,
+                auth()->id() ? (int) auth()->id() : null
             );
 
             return redirect()
                 ->route('registro-masivo', ['lote' => $batch->uuid])
-                ->with('success', 'La carga masiva fue aplicada correctamente.')
-                ->with('import_summary', $summary);
-        } catch (ValidationException $exception) {
-            throw $exception;
+                ->with(
+                    'success',
+                    'La carga masiva fue enviada a segundo plano. Puedes continuar trabajando en SWAFI mientras termina.'
+                );
         } catch (\Throwable $exception) {
             $reference = app(\App\Services\SafeExceptionReporter::class)->warning(
                 $exception,
                 'bulk_import_apply',
                 [
+                    'batch_id' => $batch->id,
                     'user_id' => auth()->id(),
                     'route_name' => request()->route()?->getName(),
                 ]
             );
 
+            ImportacionMasiva::query()
+                ->whereKey($batch->id)
+                ->where('estado', 'previsualizada')
+                ->update([
+                    'procesamiento_estado' => 'error',
+                    'procesamiento_finalizado_at' => now(),
+                    'procesamiento_porcentaje' => 0,
+                    'procesamiento_error_referencia' => $reference,
+                    'updated_at' => now(),
+                ]);
+
             return redirect()
                 ->route('registro-masivo', ['lote' => $batch->uuid])
                 ->withErrors([
-                    'lote' => "La carga no fue aplicada. No se confirmó ningún cambio. Referencia: {$reference}.",
+                    'lote' => "No fue posible enviar la carga al procesamiento en segundo plano. Referencia: {$reference}.",
                 ]);
         }
     }
@@ -188,6 +230,12 @@ class RegistroMasivoController extends Controller
     public function cancelar(string $lote): RedirectResponse
     {
         $batch = $this->findOwnedBatch($lote);
+
+        if ($batch->estaEnProcesamiento()) {
+            throw ValidationException::withMessages([
+                'lote' => 'No es posible cancelar el lote mientras está en cola o procesándose.',
+            ]);
+        }
 
         $this->importService->cancelar($batch, auth()->id());
 

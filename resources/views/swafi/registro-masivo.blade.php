@@ -518,13 +518,23 @@
             @endif
         </div>
         @php
-            $batchPill = match ($lote->estado) {
-                'aplicada' => 'ok',
-                'cancelada', 'revertida' => 'danger',
+            $processingState = (string) ($lote->procesamiento_estado ?? '');
+            $batchLabel = match (true) {
+                $lote->estado === 'aplicada' => 'Aplicada',
+                $lote->estado === 'cancelada' => 'Cancelada',
+                $lote->estado === 'revertida' => 'Revertida',
+                $processingState === 'pendiente' => 'En cola',
+                $processingState === 'procesando' => 'Procesando',
+                $processingState === 'error' => 'Error de proceso',
+                default => 'Previsualizada',
+            };
+            $batchPill = match (true) {
+                $lote->estado === 'aplicada' => 'ok',
+                $lote->estado === 'cancelada' || $lote->estado === 'revertida' || $processingState === 'error' => 'danger',
                 default => 'warn',
             };
         @endphp
-        <span class="pill {{ $batchPill }}">{{ ucfirst($lote->estado) }}</span>
+        <span class="pill {{ $batchPill }}">{{ $batchLabel }}</span>
     </div>
 
     <div class="rm-preview-summary">
@@ -545,6 +555,39 @@
             <span>Rechazadas</span>
         </div>
     </div>
+
+    @if ($lote->estaEnProcesamiento())
+        <div class="rm-message rm-message-success" role="status" aria-live="polite">
+            @if ($lote->procesamiento_estado === 'pendiente')
+                <strong>Carga enviada a segundo plano.</strong><br>
+                El lote está en cola y será tomado por el proceso de cargas masivas.
+                Puedes continuar trabajando en SWAFI; esta pantalla se actualizará automáticamente.
+            @else
+                <strong>Procesando carga masiva en segundo plano.</strong><br>
+                SWAFI está aplicando las filas aceptadas sin mantener abierta la solicitud del navegador.
+                Puedes continuar trabajando; esta pantalla se actualizará automáticamente al finalizar.
+            @endif
+        </div>
+    @elseif ($lote->procesamientoFallo())
+        <div class="rm-message rm-message-error" role="alert">
+            <strong>No fue posible terminar el procesamiento en segundo plano.</strong><br>
+            El lote conserva el estado de previsualización para que pueda revisarse y reintentarse.
+            @if ($lote->procesamiento_error_referencia)
+                Referencia de soporte: <strong>{{ $lote->procesamiento_error_referencia }}</strong>.
+            @endif
+        </div>
+    @elseif ($lote->estado === 'aplicada' && $lote->procesamiento_estado === 'completado')
+        @php
+            $backgroundSummary = data_get($lote->resumen, 'procesamiento.resultado', []);
+        @endphp
+        <div class="rm-message rm-message-success" role="status">
+            <strong>Carga masiva finalizada correctamente.</strong><br>
+            Procesados: {{ $backgroundSummary['procesados'] ?? ($lote->filas_insertadas + $lote->filas_actualizadas) }} |
+            Insertados: {{ $backgroundSummary['insertados'] ?? $lote->filas_insertadas }} |
+            Actualizados: {{ $backgroundSummary['actualizados'] ?? $lote->filas_actualizadas }} |
+            Rechazados: {{ $backgroundSummary['rechazados'] ?? $lote->filas_rechazadas }}
+        </div>
+    @endif
 
     <div class="rm-preview-toolbar">
         <form method="GET" action="{{ route('registro-masivo') }}">
@@ -570,7 +613,7 @@
                 </a>
             @endif
 
-            @if ($lote->estaVigente() && (int) $lote->user_id === (int) auth()->id())
+            @if ($lote->estaVigente() && !$lote->estaEnProcesamiento() && (int) $lote->user_id === (int) auth()->id())
                 <form method="POST" action="{{ route('registro-masivo.aplicar', $lote->uuid) }}">
                     @csrf
                     <label class="rm-confirm-box">
@@ -737,7 +780,18 @@
         @foreach ($lotesRecientes as $batch)
             <a class="rm-batch-item" href="{{ route('registro-masivo', ['lote' => $batch->uuid]) }}">
                 <strong>{{ \Illuminate\Support\Str::limit($batch->csv_nombre_original, 28) }}</strong>
-                <span>{{ $batch->created_at?->format('d/m/Y H:i') }} · {{ ucfirst($batch->estado) }}</span>
+                @php
+                    $recentState = match (true) {
+                        $batch->estado === 'aplicada' => 'Aplicada',
+                        $batch->estado === 'cancelada' => 'Cancelada',
+                        $batch->estado === 'revertida' => 'Revertida',
+                        $batch->procesamiento_estado === 'pendiente' => 'En cola',
+                        $batch->procesamiento_estado === 'procesando' => 'Procesando',
+                        $batch->procesamiento_estado === 'error' => 'Error de proceso',
+                        default => 'Previsualizada',
+                    };
+                @endphp
+                <span>{{ $batch->created_at?->format('d/m/Y H:i') }} · {{ $recentState }}</span>
                 @if ($canRollbackImports && $batch->usuario)
                     <span>{{ $batch->usuario->name }} · {{ $batch->usuario->email }}</span>
                 @endif
@@ -985,5 +1039,15 @@
     </div>
 </section>
 </div>
+
+@if ($lote?->estaEnProcesamiento())
+    <script>
+        window.setTimeout(function () {
+            if (document.visibilityState === 'visible') {
+                window.location.reload();
+            }
+        }, 8000);
+    </script>
+@endif
 
 @endsection

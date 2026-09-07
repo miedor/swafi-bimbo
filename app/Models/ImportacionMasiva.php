@@ -38,6 +38,12 @@ class ImportacionMasiva extends Model
         'reversion_resumen',
         'cancelada_at',
         'expira_at',
+        'procesamiento_estado',
+        'procesamiento_solicitado_at',
+        'procesamiento_iniciado_at',
+        'procesamiento_finalizado_at',
+        'procesamiento_porcentaje',
+        'procesamiento_error_referencia',
     ];
 
     protected $casts = [
@@ -48,6 +54,10 @@ class ImportacionMasiva extends Model
         'revertida_at' => 'datetime',
         'cancelada_at' => 'datetime',
         'expira_at' => 'datetime',
+        'procesamiento_solicitado_at' => 'datetime',
+        'procesamiento_iniciado_at' => 'datetime',
+        'procesamiento_finalizado_at' => 'datetime',
+        'procesamiento_porcentaje' => 'integer',
         'total_filas' => 'integer',
         'filas_aceptadas' => 'integer',
         'filas_observadas' => 'integer',
@@ -75,6 +85,18 @@ class ImportacionMasiva extends Model
     {
         return $this->estado === 'previsualizada'
             && (!$this->expira_at || $this->expira_at->isFuture());
+    }
+
+    public function estaEnProcesamiento(): bool
+    {
+        return $this->estado === 'previsualizada'
+            && in_array($this->procesamiento_estado, ['pendiente', 'procesando'], true);
+    }
+
+    public function procesamientoFallo(): bool
+    {
+        return $this->estado === 'previsualizada'
+            && $this->procesamiento_estado === 'error';
     }
 
     public function esRevertible(): bool
