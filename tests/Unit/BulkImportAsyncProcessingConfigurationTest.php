@@ -109,6 +109,38 @@ class BulkImportAsyncProcessingConfigurationTest extends TestCase
         self::assertStringContainsString('No es posible cancelar el lote mientras está en cola o procesándose.', $controller);
     }
 
+    public function test_applied_batch_keeps_polling_until_background_job_finishes_and_shows_persistent_summary(): void
+    {
+        $model = $this->read('app/Models/ImportacionMasiva.php');
+        $view = $this->read('resources/views/swafi/registro-masivo.blade.php');
+
+        self::assertStringContainsString(
+            "in_array(\$this->estado, ['previsualizada', 'aplicada'], true)",
+            $model
+        );
+        self::assertStringContainsString(
+            "in_array(\$this->procesamiento_estado, ['pendiente', 'procesando'], true)",
+            $model
+        );
+        self::assertStringContainsString('Carga masiva aplicada correctamente.', $view);
+        self::assertStringContainsString("data_get(\$lote->resumen, 'aplicacion'", $view);
+        self::assertStringContainsString('Activos creados', $view);
+        self::assertStringContainsString('Activos actualizados', $view);
+        self::assertStringContainsString('No aplicados (observados/rechazados)', $view);
+    }
+
+    public function test_non_revertible_applied_batch_does_not_show_the_hu029_warning_panel(): void
+    {
+        $view = $this->read('resources/views/swafi/registro-masivo.blade.php');
+
+        self::assertStringContainsString(
+            "\$canRollbackImports && \$lote->estado === 'aplicada' && \$lote->esRevertible()",
+            $view
+        );
+        self::assertStringNotContainsString('motivoNoRevertible()', $view);
+        self::assertStringContainsString('HU-029 · Reversión administrativa controlada', $view);
+    }
+
     private function read(string $relativePath): string
     {
         $contents = file_get_contents($this->projectRoot . '/' . $relativePath);

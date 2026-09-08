@@ -89,13 +89,13 @@ class ImportacionMasiva extends Model
 
     public function estaEnProcesamiento(): bool
     {
-        return $this->estado === 'previsualizada'
+        return in_array($this->estado, ['previsualizada', 'aplicada'], true)
             && in_array($this->procesamiento_estado, ['pendiente', 'procesando'], true);
     }
 
     public function procesamientoFallo(): bool
     {
-        return $this->estado === 'previsualizada'
+        return in_array($this->estado, ['previsualizada', 'aplicada'], true)
             && $this->procesamiento_estado === 'error';
     }
 

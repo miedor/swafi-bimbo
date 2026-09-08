@@ -255,6 +255,68 @@
         font-size: 11px;
     }
 
+    .rm-result-panel {
+        margin: 14px 0;
+        padding: 14px 16px;
+        border: 1px solid #b8dfc1;
+        border-radius: 16px;
+        background: #eef9f1;
+    }
+
+    .rm-result-heading {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        margin-bottom: 12px;
+    }
+
+    .rm-result-heading strong {
+        display: block;
+        color: #14532d;
+        font-size: 15px;
+        font-weight: 900;
+    }
+
+    .rm-result-heading span:not(.pill) {
+        display: block;
+        margin-top: 3px;
+        color: #52705b;
+        font-size: 12px;
+        line-height: 1.4;
+    }
+
+    .rm-result-grid {
+        display: grid;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: 10px;
+    }
+
+    .rm-result-stat {
+        min-width: 0;
+        padding: 10px 12px;
+        border: 1px solid #cde7d3;
+        border-radius: 12px;
+        background: #ffffff;
+    }
+
+    .rm-result-stat strong {
+        display: block;
+        color: #17375e;
+        font-size: 20px;
+        line-height: 1;
+        font-weight: 900;
+    }
+
+    .rm-result-stat span {
+        display: block;
+        margin-top: 5px;
+        color: #5f728a;
+        font-size: 11px;
+        font-weight: 800;
+        line-height: 1.25;
+    }
+
     .rm-rollback-panel {
         margin: 14px 0;
         padding: 16px;
@@ -316,8 +378,13 @@
         }
 
         .rm-preview-summary,
-        .rm-batches {
+        .rm-batches,
+        .rm-result-grid {
             grid-template-columns: 1fr !important;
+        }
+
+        .rm-result-heading {
+            flex-direction: column;
         }
     }
 </style>
@@ -520,17 +587,19 @@
         @php
             $processingState = (string) ($lote->procesamiento_estado ?? '');
             $batchLabel = match (true) {
-                $lote->estado === 'aplicada' => 'Aplicada',
-                $lote->estado === 'cancelada' => 'Cancelada',
-                $lote->estado === 'revertida' => 'Revertida',
                 $processingState === 'pendiente' => 'En cola',
                 $processingState === 'procesando' => 'Procesando',
                 $processingState === 'error' => 'Error de proceso',
+                $lote->estado === 'aplicada' => 'Aplicada',
+                $lote->estado === 'cancelada' => 'Cancelada',
+                $lote->estado === 'revertida' => 'Revertida',
                 default => 'Previsualizada',
             };
             $batchPill = match (true) {
+                $processingState === 'error' => 'danger',
+                in_array($processingState, ['pendiente', 'procesando'], true) => 'warn',
                 $lote->estado === 'aplicada' => 'ok',
-                $lote->estado === 'cancelada' || $lote->estado === 'revertida' || $processingState === 'error' => 'danger',
+                $lote->estado === 'cancelada' || $lote->estado === 'revertida' => 'danger',
                 default => 'warn',
             };
         @endphp
@@ -570,22 +639,56 @@
         </div>
     @elseif ($lote->procesamientoFallo())
         <div class="rm-message rm-message-error" role="alert">
-            <strong>No fue posible terminar el procesamiento en segundo plano.</strong><br>
-            El lote conserva el estado de previsualización para que pueda revisarse y reintentarse.
+            <strong>No fue posible completar el cierre del procesamiento en segundo plano.</strong><br>
+            @if ($lote->estado === 'aplicada')
+                La aplicación principal del lote quedó registrada, pero una tarea posterior de cierre presentó una incidencia.
+                No vuelvas a aplicar el mismo lote; utiliza la referencia de soporte para su revisión.
+            @else
+                El lote conserva el estado de previsualización para que pueda revisarse y reintentarse.
+            @endif
             @if ($lote->procesamiento_error_referencia)
                 Referencia de soporte: <strong>{{ $lote->procesamiento_error_referencia }}</strong>.
             @endif
         </div>
-    @elseif ($lote->estado === 'aplicada' && $lote->procesamiento_estado === 'completado')
+    @elseif ($lote->estado === 'aplicada' && !$lote->estaEnProcesamiento())
         @php
-            $backgroundSummary = data_get($lote->resumen, 'procesamiento.resultado', []);
+            $applicationSummary = data_get(
+                $lote->resumen,
+                'aplicacion',
+                data_get($lote->resumen, 'procesamiento.resultado', [])
+            );
+            $processedCount = (int) ($applicationSummary['procesados'] ?? ($lote->filas_insertadas + $lote->filas_actualizadas));
+            $insertedCount = (int) ($applicationSummary['insertados'] ?? $lote->filas_insertadas);
+            $updatedCount = (int) ($applicationSummary['actualizados'] ?? $lote->filas_actualizadas);
+            $notAppliedCount = (int) ($applicationSummary['rechazados'] ?? ($lote->filas_observadas + $lote->filas_rechazadas));
         @endphp
-        <div class="rm-message rm-message-success" role="status">
-            <strong>Carga masiva finalizada correctamente.</strong><br>
-            Procesados: {{ $backgroundSummary['procesados'] ?? ($lote->filas_insertadas + $lote->filas_actualizadas) }} |
-            Insertados: {{ $backgroundSummary['insertados'] ?? $lote->filas_insertadas }} |
-            Actualizados: {{ $backgroundSummary['actualizados'] ?? $lote->filas_actualizadas }} |
-            Rechazados: {{ $backgroundSummary['rechazados'] ?? $lote->filas_rechazadas }}
+        <div class="rm-result-panel" role="status" aria-live="polite">
+            <div class="rm-result-heading">
+                <div>
+                    <strong>Carga masiva aplicada correctamente.</strong>
+                    <span>El procesamiento en segundo plano terminó y SWAFI registró el resultado final del lote.</span>
+                </div>
+                <span class="pill ok">Proceso finalizado</span>
+            </div>
+
+            <div class="rm-result-grid" aria-label="Resumen final de la carga masiva">
+                <div class="rm-result-stat">
+                    <strong>{{ $processedCount }}</strong>
+                    <span>Registros procesados</span>
+                </div>
+                <div class="rm-result-stat">
+                    <strong>{{ $insertedCount }}</strong>
+                    <span>Activos creados</span>
+                </div>
+                <div class="rm-result-stat">
+                    <strong>{{ $updatedCount }}</strong>
+                    <span>Activos actualizados</span>
+                </div>
+                <div class="rm-result-stat">
+                    <strong>{{ $notAppliedCount }}</strong>
+                    <span>No aplicados (observados/rechazados)</span>
+                </div>
+            </div>
         </div>
     @endif
 
@@ -632,7 +735,7 @@
         </div>
     </div>
 
-    @if ($canRollbackImports && $lote->estado === 'aplicada')
+    @if ($canRollbackImports && $lote->estado === 'aplicada' && $lote->esRevertible())
         <div class="rm-rollback-panel">
             <h3>HU-029 · Reversión administrativa controlada</h3>
             <p>
@@ -641,46 +744,40 @@
                 La reversión se cancela completa si SWAFI detecta cambios o dependencias posteriores.
             </p>
 
-            @if ($lote->esRevertible())
-                <p>
-                    Disponible hasta:
-                    <strong>{{ $lote->reversion_disponible_hasta?->format('d/m/Y H:i') }}</strong>.
-                    Solo el Administrador SWAFI puede ejecutar esta acción.
-                </p>
+            <p>
+                Disponible hasta:
+                <strong>{{ $lote->reversion_disponible_hasta?->format('d/m/Y H:i') }}</strong>.
+                Solo el Administrador SWAFI puede ejecutar esta acción.
+            </p>
 
-                <form
-                    method="POST"
-                    action="{{ route('registro-masivo.revertir', $lote->uuid) }}"
-                    data-confirm="¿Confirmas la reversión completa de este lote? SWAFI volverá a validar dependencias antes de modificar información."
-                >
-                    @csrf
-                    @method('PATCH')
+            <form
+                method="POST"
+                action="{{ route('registro-masivo.revertir', $lote->uuid) }}"
+                data-confirm="¿Confirmas la reversión completa de este lote? SWAFI volverá a validar dependencias antes de modificar información."
+            >
+                @csrf
+                @method('PATCH')
 
-                    <label>
-                        <span>Motivo administrativo de la reversión</span>
-                        <textarea
-                            name="motivo_reversion"
-                            minlength="20"
-                            maxlength="500"
-                            required
-                            placeholder="Describe la causa, autorización y alcance esperado de la reversión."
-                        >{{ old('motivo_reversion') }}</textarea>
-                    </label>
+                <label>
+                    <span>Motivo administrativo de la reversión</span>
+                    <textarea
+                        name="motivo_reversion"
+                        minlength="20"
+                        maxlength="500"
+                        required
+                        placeholder="Describe la causa, autorización y alcance esperado de la reversión."
+                    >{{ old('motivo_reversion') }}</textarea>
+                </label>
 
-                    <label class="rm-confirm-box" style="margin-top:10px">
-                        <input type="checkbox" name="confirmar_reversion" value="1" required>
-                        Confirmo que revisé el lote y que la reversión debe ejecutarse de forma integral.
-                    </label>
+                <label class="rm-confirm-box" style="margin-top:10px">
+                    <input type="checkbox" name="confirmar_reversion" value="1" required>
+                    Confirmo que revisé el lote y que la reversión debe ejecutarse de forma integral.
+                </label>
 
-                    <button class="tab" type="submit" style="margin-top:10px">
-                        Revertir lote aplicado
-                    </button>
-                </form>
-            @else
-                <div class="rm-rollback-warning">
-                    {{ $lote->motivoNoRevertible() ?? 'El lote no puede revertirse en su estado actual.' }}
-                </div>
-            @endif
+                <button class="tab" type="submit" style="margin-top:10px">
+                    Revertir lote aplicado
+                </button>
+            </form>
         </div>
     @elseif ($lote->estado === 'revertida')
         <div class="rm-rollback-panel is-complete">
