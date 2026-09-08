@@ -1042,11 +1042,33 @@
 
 @if ($lote?->estaEnProcesamiento())
     <script nonce="{{ request()->attributes->get('csp_nonce') }}">
-        window.setTimeout(function () {
-            if (document.visibilityState === 'visible') {
-                window.location.reload();
-            }
-        }, 8000);
+        (function () {
+            const refreshIntervalMs = 8000;
+            let refreshTimer = null;
+
+            const scheduleRefresh = function () {
+                window.clearTimeout(refreshTimer);
+                refreshTimer = window.setTimeout(function () {
+                    if (document.visibilityState === 'visible') {
+                        window.location.reload();
+                        return;
+                    }
+
+                    // Si la pestaña está oculta, conserva el ciclo de consulta en lugar
+                    // de detenerlo definitivamente. Al volver a SWAFI se actualizará.
+                    scheduleRefresh();
+                }, refreshIntervalMs);
+            };
+
+            document.addEventListener('visibilitychange', function () {
+                if (document.visibilityState === 'visible') {
+                    window.clearTimeout(refreshTimer);
+                    window.location.reload();
+                }
+            });
+
+            scheduleRefresh();
+        })();
     </script>
 @endif
 
