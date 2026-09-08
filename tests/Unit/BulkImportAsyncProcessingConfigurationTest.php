@@ -101,6 +101,9 @@ class BulkImportAsyncProcessingConfigurationTest extends TestCase
         self::assertStringContainsString('Procesando carga masiva en segundo plano.', $view);
         self::assertStringContainsString('estaEnProcesamiento()', $view);
         self::assertStringContainsString('window.location.reload()', $view);
+        self::assertStringContainsString('scheduleRefresh()', $view);
+        self::assertStringContainsString("document.addEventListener('visibilitychange'", $view);
+        self::assertStringContainsString("nonce=\"{{ request()->attributes->get('csp_nonce') }}\"", $view);
         self::assertStringContainsString("whereNull('procesamiento_estado')", $controller);
         self::assertStringContainsString("orWhereIn('procesamiento_estado', ['error', 'completado'])", $controller);
         self::assertStringContainsString('No es posible cancelar el lote mientras está en cola o procesándose.', $controller);
