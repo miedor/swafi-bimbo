@@ -123,7 +123,10 @@ class BulkImportAsyncProcessingConfigurationTest extends TestCase
             $model
         );
         self::assertStringContainsString('Carga masiva aplicada correctamente.', $view);
-        self::assertStringContainsString("data_get(\$lote->resumen, 'aplicacion'", $view);
+        self::assertMatchesRegularExpression(
+            '/data_get\(\s*\$lote->resumen\s*,\s*\'aplicacion\'/s',
+            $view
+        );
         self::assertStringContainsString('Activos creados', $view);
         self::assertStringContainsString('Activos actualizados', $view);
         self::assertStringContainsString('No aplicados (observados/rechazados)', $view);
