@@ -19,6 +19,7 @@ class BulkImportAsyncProcessingConfigurationTest extends TestCase
         $job = $this->read('app/Jobs/AplicarRegistroMasivoJob.php');
         $controller = $this->read('app/Http/Controllers/RegistroMasivoController.php');
         $queue = $this->read('config/queue.php');
+        $environment = $this->read('.env.example');
 
         self::assertStringContainsString('implements ShouldQueue', $job);
         self::assertStringContainsString("onConnection('bulk_imports')", $job);
@@ -34,6 +35,15 @@ class BulkImportAsyncProcessingConfigurationTest extends TestCase
         self::assertStringContainsString("'driver' => 'database'", $queue);
         self::assertStringContainsString("'queue' => 'swafi-imports'", $queue);
         self::assertStringContainsString("env('SWAFI_BULK_QUEUE_RETRY_AFTER', 1500)", $queue);
+
+        self::assertStringContainsString(
+            'SWAFI_BULK_QUEUE_RETRY_AFTER=1500',
+            $environment
+        );
+        self::assertStringContainsString(
+            'php artisan queue:work bulk_imports --queue=swafi-imports --sleep=1 --tries=1 --timeout=1200',
+            $environment
+        );
     }
 
     public function test_existing_bulk_import_business_logic_remains_transactional_and_unchanged(): void

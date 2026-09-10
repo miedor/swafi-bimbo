@@ -1210,10 +1210,10 @@
             @endif
 
             @if ($importIncidentCount > 0)
-                <a class="tab" href="{{ route('catalogos.importaciones.incidencias.xlsx', ['lote' => $importBatch->uuid]) }}">
+                <a class="tab" href="{{ route('catalogos.importaciones.incidencias-xlsx', ['lote' => $importBatch->uuid]) }}">
                     Incidencias Excel
                 </a>
-                <a class="tab" href="{{ route('catalogos.importaciones.incidencias.csv', ['lote' => $importBatch->uuid]) }}">
+                <a class="tab" href="{{ route('catalogos.importaciones.incidencias-csv', ['lote' => $importBatch->uuid]) }}">
                     Incidencias CSV
                 </a>
             @endif

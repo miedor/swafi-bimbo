@@ -227,6 +227,22 @@ class CatalogImportPreviewConfigurationTest extends TestCase
             self::assertStringContainsString($expected, $view);
         }
 
+        self::assertStringContainsString(
+            "route('catalogos.importaciones.incidencias-xlsx'",
+            $view
+        );
+        self::assertStringContainsString(
+            "route('catalogos.importaciones.incidencias-csv'",
+            $view
+        );
+        self::assertStringNotContainsString(
+            "route('catalogos.importaciones.incidencias.xlsx'",
+            $view
+        );
+        self::assertStringNotContainsString(
+            "route('catalogos.importaciones.incidencias.csv'",
+            $view
+        );
         self::assertStringNotContainsString('{!! $message !!}', $view);
     }
 

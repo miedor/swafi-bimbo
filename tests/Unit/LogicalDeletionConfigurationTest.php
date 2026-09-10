@@ -95,6 +95,30 @@ PHP;
         }
     }
 
+    public function test_logical_deletion_recalculates_asset_documentary_status_preserving_observed_precedence(): void
+    {
+        $controller = $this->read('app/Http/Controllers/ExpedienteGestionController.php');
+
+        self::assertStringContainsString("->pluck('estatus')", $controller);
+        self::assertStringContainsString(
+            "in_array('observado', \$estatusExpedientes, true)",
+            $controller
+        );
+        self::assertStringContainsString(
+            "static fn (string \$estatus): bool => \$estatus === 'completo'",
+            $controller
+        );
+        self::assertStringContainsString(
+            "'estatus_documental' => \$estatusDocumental",
+            $controller
+        );
+
+        self::assertStringNotContainsString(
+            "'estatus_documental' => \$todosCompletos ? 'completo' : 'incompleto'",
+            $controller
+        );
+    }
+
     public function test_user_interface_describes_the_operation_as_logical_deletion(): void
     {
         foreach ([

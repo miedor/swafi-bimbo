@@ -258,45 +258,33 @@ class ExpedienteGestionController extends Controller
 
     private function actualizarEstatusDocumentalActivo(string $numeroActivo): void
     {
-        $expedientes = DB::table('expedientes')
+        $estatusExpedientes = DB::table('expedientes')
             ->where('numero_activo', $numeroActivo)
             ->whereNull('deleted_at')
-            ->pluck('id');
+            ->pluck('estatus')
+            ->map(static fn ($estatus) => strtolower(trim((string) $estatus)))
+            ->filter()
+            ->values()
+            ->all();
 
-        if ($expedientes->isEmpty()) {
-            DB::table('activos')
-                ->where('numero_activo', $numeroActivo)
-                ->update([
-                    'estatus_documental' => 'incompleto',
-                    'actualizado_por' => auth()->id(),
-                    'updated_at' => now(),
-                ]);
-
-            return;
-        }
-
-        $todosCompletos = true;
-
-        foreach ($expedientes as $expedienteId) {
-            $tipos = DB::table('documentos_expediente')
-                ->where('expediente_id', $expedienteId)
-                ->where('vigente', true)
-                ->pluck('tipo_documento')
-                ->map(fn ($tipo) => strtoupper((string) $tipo))
-                ->unique()
-                ->values()
-                ->all();
-
-            if (!in_array('PDF', $tipos, true) || !in_array('XML', $tipos, true)) {
-                $todosCompletos = false;
-                break;
-            }
+        if ($estatusExpedientes === []) {
+            $estatusDocumental = 'incompleto';
+        } elseif (in_array('observado', $estatusExpedientes, true)) {
+            $estatusDocumental = 'observado';
+        } elseif (collect($estatusExpedientes)->every(
+            static fn (string $estatus): bool => $estatus === 'completo'
+        )) {
+            $estatusDocumental = 'completo';
+        } else {
+            // Cualquier estado distinto de "completo" se conserva de forma
+            // conservadora como incompleto para no ocultar incidencias.
+            $estatusDocumental = 'incompleto';
         }
 
         DB::table('activos')
             ->where('numero_activo', $numeroActivo)
             ->update([
-                'estatus_documental' => $todosCompletos ? 'completo' : 'incompleto',
+                'estatus_documental' => $estatusDocumental,
                 'actualizado_por' => auth()->id(),
                 'updated_at' => now(),
             ]);
