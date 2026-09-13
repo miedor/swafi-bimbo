@@ -101,4 +101,44 @@ class Pcb013WhiteBoxTest extends TestCase
      * IN: payload="{json-invalido".
      * OUT: [] y una advertencia controlada en SafeExceptionReporter.
      */
-    public function test_camino_7_controla_json_invalido
+    public function test_camino_7_controla_json_invalido_y_registra_la_advertencia(): void
+    {
+        $payload = '{json-invalido';
+
+        $reporter = new class
+        {
+            /** @var array<int, array<string, mixed>> */
+            public array $warnings = [];
+
+            /**
+             * @param array<string, mixed> $context
+             */
+            public function warning(
+                Throwable $exception,
+                string $operation,
+                array $context = []
+            ): string {
+                $this->warnings[] = [
+                    'exception_class' => $exception::class,
+                    'operation' => $operation,
+                    'context' => $context,
+                ];
+
+                return 'pcb013-test-warning';
+            }
+        };
+
+        $this->app->instance(SafeExceptionReporter::class, $reporter);
+
+        self::assertSame([], $this->service->decodePayload($payload));
+        self::assertSame([
+            [
+                'exception_class' => JsonException::class,
+                'operation' => 'asset_value_history_snapshot_decode',
+                'context' => [
+                    'payload_length' => strlen($payload),
+                ],
+            ],
+        ], $reporter->warnings);
+    }
+}
